@@ -15,21 +15,28 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 // Initialize Firebase Admin
-// Note: You'll need to add your serviceAccountKey.json file
-// Download it from Firebase Console > Project Settings > Service Accounts
-admin.initializeApp({
-  credential: admin.credential.cert("./serviceAccountKey.json"),
-});
+// For Vercel: uses FIREBASE_SERVICE_ACCOUNT env var
+// For local: uses serviceAccountKey.json file
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  admin.initializeApp({
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
+  });
+} else {
+  admin.initializeApp({
+    credential: admin.credential.cert("./serviceAccountKey.json"),
+  });
+}
 
 const db = admin.firestore();
 
 // CORS configuration - allow multiple origins
 const allowedOrigins = [
   "http://localhost:3000",
-  "http://localhost:3001", 
+  "http://localhost:3001",
   "http://localhost:3002",
-  "http://localhost:5173"
-];
+  "http://localhost:5173",
+  process.env.FRONTEND_URL, // Production frontend URL
+].filter(Boolean); // Remove undefined values
 
 app.use(
   cors({
