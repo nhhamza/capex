@@ -10,6 +10,10 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Initialize Stripe
+if (!process.env.STRIPE_SECRET_KEY) {
+  console.error("ERROR: STRIPE_SECRET_KEY environment variable is not set");
+}
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20",
 });
@@ -17,14 +21,24 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 // Initialize Firebase Admin
 // For Vercel: uses FIREBASE_SERVICE_ACCOUNT env var
 // For local: uses serviceAccountKey.json file
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
-  });
-} else {
-  admin.initializeApp({
-    credential: admin.credential.cert("./serviceAccountKey.json"),
-  });
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    console.log("Initializing Firebase Admin with environment variable...");
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("Firebase Admin initialized successfully");
+  } else {
+    console.log("Initializing Firebase Admin with local file...");
+    admin.initializeApp({
+      credential: admin.credential.cert("./serviceAccountKey.json"),
+    });
+    console.log("Firebase Admin initialized successfully");
+  }
+} catch (error) {
+  console.error("Failed to initialize Firebase Admin:", error);
+  throw error;
 }
 
 const db = admin.firestore();
@@ -76,7 +90,18 @@ function mapPrice(priceId) {
 
 // Health check
 app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "Billing API is running" });
+  const healthCheck = {
+    status: "ok",
+    message: "Billing API is running",
+    environment: {
+      hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
+      hasWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+      hasFirebaseAccount: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+      hasFrontendUrl: !!process.env.FRONTEND_URL,
+    },
+    timestamp: new Date().toISOString(),
+  };
+  res.json(healthCheck);
 });
 
 // Stripe webhook (must be BEFORE express.json() to get raw body)

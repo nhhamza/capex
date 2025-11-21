@@ -8,6 +8,7 @@ import { RequireAuth, RequireOrg } from "@/auth/guards";
 import { RequireAdmin } from "@/auth/RequireAdmin";
 import { LoginPage } from "@/auth/LoginPage";
 import SignUp from "@/auth/SignUp";
+import { ForgotPasswordPage } from "@/auth/ForgotPasswordPage";
 import { OnboardingWizard } from "@/modules/onboarding/OnboardingWizard";
 import { DashboardPage } from "@/modules/dashboard/DashboardPage";
 import { PropertiesList } from "@/modules/properties/pages/PropertiesList";
@@ -34,6 +35,10 @@ export const router = makeRouter()([
   {
     path: "/signup",
     element: <SignUp />,
+  },
+  {
+    path: "/forgot-password",
+    element: <ForgotPasswordPage />,
   },
   {
     path: "/setup-org",

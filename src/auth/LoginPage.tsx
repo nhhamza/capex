@@ -105,6 +105,11 @@ export function LoginPage() {
             </Button>
 
             <Box sx={{ mt: 2, textAlign: "center" }}>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                <Link component={RouterLink} to="/forgot-password">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </Typography>
               <Typography variant="body2">
                 ¿No tienes cuenta?{" "}
                 <Link component={RouterLink} to="/signup">
