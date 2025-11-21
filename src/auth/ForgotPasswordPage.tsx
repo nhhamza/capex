@@ -27,10 +27,14 @@ export function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      await sendPasswordResetEmail(auth, email, {
-        url: window.location.origin + "/login",
-        handleCodeInApp: false,
-      });
+      // If your domain is whitelisted in Firebase Console, uncomment the lines below
+      // to redirect users back to your app after password reset
+      // await sendPasswordResetEmail(auth, email, {
+      //   url: window.location.origin + "/login",
+      //   handleCodeInApp: false,
+      // });
+
+      await sendPasswordResetEmail(auth, email);
       setSuccess(true);
       setEmail("");
     } catch (err: any) {
