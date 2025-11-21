@@ -1,0 +1,413 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Box,
+  Button,
+  Typography,
+  IconButton,
+  Snackbar,
+  Alert,
+  Card,
+  CardContent,
+  CardActions,
+  Grid,
+  Chip,
+  Stack,
+  Tooltip,
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import HomeIcon from "@mui/icons-material/Home";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+
+import { useAuth } from "@/auth/authContext";
+import { useOrgLimits } from "@/hooks/useOrgLimits";
+import {
+  getProperties,
+  deleteProperty,
+  getLeases,
+  getLoan,
+  getRecurringExpenses,
+} from "../api";
+import { Property } from "../types";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { computeLeveredMetrics, sumClosingCosts } from "../calculations";
+import { formatPercent, formatCurrency } from "@/utils/format";
+
+export function PropertiesList() {
+  const navigate = useNavigate();
+  const { userDoc } = useAuth();
+  const { loading: limitsLoading, propertyLimit } = useOrgLimits(
+    userDoc?.orgId
+  );
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success" as "success" | "error",
+  });
+
+  const hasReachedLimit = !limitsLoading && properties.length >= propertyLimit;
+
+  const loadData = async () => {
+    if (!userDoc?.orgId) return;
+
+    setLoading(true);
+    try {
+      const props = await getProperties(userDoc.orgId);
+      setProperties(props);
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: "Error al cargar viviendas",
+        severity: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [userDoc]);
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+
+    try {
+      await deleteProperty(deleteId);
+      setSnackbar({
+        open: true,
+        message: "Vivienda eliminada",
+        severity: "success",
+      });
+      loadData();
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: "Error al eliminar",
+        severity: "error",
+      });
+    } finally {
+      setDeleteId(null);
+    }
+  };
+
+  // Build enriched rows with metrics
+  const [rows, setRows] = useState<any[]>([]);
+
+  useEffect(() => {
+    const enrichRows = async () => {
+      const enriched = await Promise.all(
+        properties.map(async (property) => {
+          const leases = await getLeases(property.id);
+          const lease = leases[0];
+          const loan = await getLoan(property.id);
+          const recurring = await getRecurringExpenses(property.id);
+
+          const closingCostsTotal = sumClosingCosts(property.closingCosts);
+          const totalInvestment = property.purchasePrice + closingCostsTotal;
+
+          if (!lease) {
+            return {
+              id: property.id,
+              address: property.address,
+              purchasePrice: property.purchasePrice,
+              totalInvestment,
+              monthlyRent: 0,
+              capRate: 0,
+              cashOnCash: 0,
+              occupancy: 0,
+            };
+          }
+
+          const metrics = computeLeveredMetrics({
+            monthlyRent: lease.monthlyRent,
+            vacancyPct: lease.vacancyPct || 0,
+            recurring,
+            variableAnnualBudget: 0,
+            purchasePrice: property.purchasePrice,
+            closingCostsTotal,
+            loan,
+          });
+
+          return {
+            id: property.id,
+            address: property.address,
+            purchasePrice: property.purchasePrice,
+            totalInvestment,
+            monthlyRent: lease.monthlyRent,
+            capRate: metrics.capRateNet,
+            cashOnCash: metrics.cashOnCash,
+            occupancy: (1 - (lease.vacancyPct || 0)) * 100,
+          };
+        })
+      );
+      setRows(enriched);
+    };
+
+    if (properties.length > 0) {
+      enrichRows();
+    }
+  }, [properties]);
+
+  return (
+    <Box>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          mb: 3,
+          alignItems: "center",
+        }}
+      >
+        <Typography variant="h4">Viviendas</Typography>
+        <Tooltip
+          title={
+            hasReachedLimit
+              ? "Plan Free: Límite de 1 vivienda alcanzado. Mejora tu plan para agregar más."
+              : ""
+          }
+          arrow
+        >
+          <span>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<AddIcon />}
+              onClick={() => navigate("/properties/new")}
+              disabled={limitsLoading || hasReachedLimit}
+            >
+              Nueva Vivienda
+            </Button>
+          </span>
+        </Tooltip>
+      </Box>
+
+      {loading && properties.length === 0 && (
+        <Typography>Cargando...</Typography>
+      )}
+
+      <Grid container spacing={3}>
+        {rows.map((row) => (
+          <Grid item xs={12} sm={6} lg={4} key={row.id}>
+            <Card
+              sx={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                transition: "all 0.3s ease",
+                "&:hover": {
+                  transform: "translateY(-4px)",
+                  boxShadow: 4,
+                },
+                cursor: "pointer",
+              }}
+              onClick={() => navigate(`/properties/${row.id}`)}
+            >
+              <CardContent sx={{ flexGrow: 1, pb: 2 }}>
+                <Box sx={{ display: "flex", alignItems: "flex-start", mb: 3 }}>
+                  <Box
+                    sx={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 2,
+                      bgcolor: "primary.main",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      mr: 2,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <HomeIcon sx={{ fontSize: 32, color: "white" }} />
+                  </Box>
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography
+                      variant="h6"
+                      component="div"
+                      sx={{
+                        lineHeight: 1.3,
+                        mb: 0.5,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                      }}
+                    >
+                      {row.address.split(",")[0]}
+                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center" }}>
+                      <LocationOnIcon
+                        sx={{
+                          fontSize: 18,
+                          color: "text.secondary",
+                          mr: 0.5,
+                        }}
+                      />
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {row.address.split(",").slice(1).join(",")}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+
+                <Stack spacing={2}>
+                  <Box sx={{ display: "flex", gap: 3 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Precio Vivienda
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        fontWeight={600}
+                        color="primary.main"
+                      >
+                        {formatCurrency(row.purchasePrice)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Inversión Total
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        fontWeight={600}
+                        color="secondary.main"
+                      >
+                        {formatCurrency(row.totalInvestment)}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                    >
+                      Renta Mensual
+                    </Typography>
+                    <Typography variant="h6" color="success.main">
+                      {formatCurrency(row.monthlyRent)}
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 1 }}
+                  >
+                    <Tooltip title="Cap Rate Neto">
+                      <Chip
+                        icon={<TrendingUpIcon />}
+                        label={formatPercent(row.capRate, 2)}
+                        color={
+                          row.capRate > 5
+                            ? "success"
+                            : row.capRate > 3
+                            ? "warning"
+                            : "default"
+                        }
+                        size="small"
+                      />
+                    </Tooltip>
+                    <Tooltip title="Cash-on-Cash">
+                      <Chip
+                        label={`CoC: ${formatPercent(row.cashOnCash, 2)}`}
+                        color={
+                          row.cashOnCash > 5
+                            ? "success"
+                            : row.cashOnCash > 3
+                            ? "warning"
+                            : "default"
+                        }
+                        size="small"
+                      />
+                    </Tooltip>
+                    <Tooltip title="Ocupación">
+                      <Chip
+                        label={`${formatPercent(row.occupancy, 0)}`}
+                        color={
+                          row.occupancy === 100
+                            ? "success"
+                            : row.occupancy > 0
+                            ? "warning"
+                            : "error"
+                        }
+                        size="small"
+                      />
+                    </Tooltip>
+                  </Box>
+                </Stack>
+              </CardContent>
+
+              <CardActions sx={{ justifyContent: "flex-end", pt: 0 }}>
+                <Tooltip title="Editar">
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/properties/${row.id}`);
+                    }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Eliminar">
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteId(row.id);
+                    }}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Tooltip>
+              </CardActions>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        title="Eliminar vivienda"
+        message="¿Estás seguro de que deseas eliminar esta vivienda? Se eliminarán también todos los datos relacionados."
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteId(null)}
+      />
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
+      </Snackbar>
+    </Box>
+  );
+}

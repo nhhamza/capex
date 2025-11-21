@@ -1,0 +1,13 @@
+# Firebase Firestore Security Rules (QUICK DEBUG - OPEN ACCESS)
+# WARNING: These rules allow ALL reads/writes without authentication.
+# Use ONLY for development/testing. Replace with proper auth checks before production.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow all reads and writes (NO AUTHENTICATION REQUIRED)
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

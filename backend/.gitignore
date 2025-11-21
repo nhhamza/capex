@@ -1,0 +1,6 @@
+# Backend
+
+node_modules/
+serviceAccountKey.json
+.env
+lib/
