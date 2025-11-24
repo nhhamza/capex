@@ -48,7 +48,7 @@ export function LoginPage() {
       sx={{
         minHeight: "100vh",
         display: "flex",
-        alignItems: "center",
+        alignItems: { xs: "flex-start", md: "center" },
         justifyContent: "center",
         bgcolor: "grey.100",
         py: 4,
@@ -62,11 +62,15 @@ export function LoginPage() {
           display: "flex",
           gap: 4,
           flexDirection: { xs: "column", md: "row" },
-          alignItems: "center",
+          alignItems: { xs: "stretch", md: "center" },
         }}
       >
         {/* Features Section */}
-        <Box sx={{ flex: 1, display: { xs: "none", md: "block" } }}>
+        <Box sx={{
+          flex: 1,
+          order: { xs: 2, md: 1 },
+          width: "100%"
+        }}>
           <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
             Gestión Inmobiliaria
           </Typography>
@@ -120,7 +124,12 @@ export function LoginPage() {
         </Box>
 
         {/* Login Form Section */}
-        <Card sx={{ maxWidth: 400, width: "100%", flex: { xs: 1, md: "0 0 400px" } }}>
+        <Card sx={{
+          maxWidth: 400,
+          width: "100%",
+          flex: { xs: 1, md: "0 0 400px" },
+          order: { xs: 1, md: 2 }
+        }}>
           <CardContent sx={{ p: 4 }}>
             <Typography variant="h5" component="h1" gutterBottom align="center">
               Iniciar Sesión
