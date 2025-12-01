@@ -60,19 +60,21 @@ export function OnboardingWizard() {
           });
 
           // If user entered a first property, persist it now (with organizationId)
+          let createdPropertyId: string | null = null;
           if (
             firstAddress &&
             typeof firstPurchasePrice === "number" &&
             firstPurchasePrice > 0
           ) {
             try {
-              await createProperty({
+              const newProperty = await createProperty({
                 organizationId: orgId,
                 address: firstAddress,
                 purchasePrice: firstPurchasePrice,
                 purchaseDate: dayjs().toISOString(),
                 notes: "Creado durante onboarding",
               });
+              createdPropertyId = newProperty.id;
             } catch (err) {
               console.error(
                 "[Onboarding] Error creando primera vivienda:",
@@ -84,7 +86,11 @@ export function OnboardingWizard() {
 
           // Wait briefly then redirect (full reload to ensure context picks new org)
           setTimeout(() => {
-            window.location.href = "/properties";
+            if (createdPropertyId) {
+              window.location.href = `/properties/${createdPropertyId}`;
+            } else {
+              window.location.href = "/properties";
+            }
           }, 700);
         } catch (err) {
           console.error("Error creating organization:", err);
@@ -94,6 +100,7 @@ export function OnboardingWizard() {
         }
       } else {
         // Organization already exists; optionally create property under existing org
+        let createdPropertyId: string | null = null;
         if (
           userDoc?.orgId &&
           firstAddress &&
@@ -102,13 +109,14 @@ export function OnboardingWizard() {
         ) {
           try {
             setSaving(true);
-            await createProperty({
+            const newProperty = await createProperty({
               organizationId: userDoc.orgId,
               address: firstAddress,
               purchasePrice: firstPurchasePrice,
               purchaseDate: dayjs().toISOString(),
               notes: "Creado durante onboarding (org existente)",
             });
+            createdPropertyId = newProperty.id;
           } catch (err) {
             console.error(
               "[Onboarding] Error creando primera vivienda (org existente):",
@@ -118,7 +126,13 @@ export function OnboardingWizard() {
             setSaving(false);
           }
         }
-        navigate("/properties");
+
+        // Navigate to the created property or properties list
+        if (createdPropertyId) {
+          navigate(`/properties/${createdPropertyId}`);
+        } else {
+          navigate("/properties");
+        }
       }
     } else {
       setActiveStep((prev) => prev + 1);
@@ -307,7 +321,7 @@ export function OnboardingWizard() {
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label="Renta Mensual (€)"
+                    label="Renta Alquier Mensual (€)"
                     type="number"
                     value={firstMonthlyRent}
                     onChange={(e) =>

@@ -562,49 +562,63 @@ export function PropertyCapexTab({
                 />
               </Grid>
 
-              <Grid item xs={12}>
+              <Grid item xs={10}>
                 <Typography variant="subtitle2" gutterBottom>
                   Archivo adjunto (opcional)
                 </Typography>
                 {uploadedFile ? (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 1,
-                      p: 2,
-                      border: 1,
-                      borderColor: "divider",
-                      borderRadius: 1,
-                    }}
-                  >
-                    <AttachFileIcon color="action" />
-                    <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                      {uploadedFile.name}
-                    </Typography>
-                    <Tooltip title="Descargar">
-                      <IconButton
-                        size="small"
-                        onClick={() => {
-                          const a = document.createElement("a");
-                          a.href = uploadedFile.url;
-                          a.download = uploadedFile.name;
-                          a.click();
-                        }}
-                      >
-                        <DownloadIcon />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Eliminar">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={handleFileDelete}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
+                  <>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 2,
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 1,
+                      }}
+                    >
+                      <AttachFileIcon color="action" />
+                      <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                        {uploadedFile.name}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 2,
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 1,
+                      }}
+                    >
+                      <Tooltip title="Descargar">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            const a = document.createElement("a");
+                            a.href = uploadedFile.url;
+                            a.download = uploadedFile.name;
+                            a.click();
+                          }}
+                        >
+                          <DownloadIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={handleFileDelete}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </>
                 ) : (
                   <Button
                     component="label"
