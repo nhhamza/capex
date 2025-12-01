@@ -21,6 +21,8 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -533,6 +535,30 @@ export function PropertyCapexTab({
                   {...register("notes")}
                   multiline
                   rows={2}
+                />
+              </Grid>
+
+              {/* Is Deductible Checkbox */}
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Controller
+                      name="isDeductible"
+                      control={control}
+                      render={({ field }) => (
+                        <Checkbox
+                          {...field}
+                          checked={field.value !== false}
+                          onChange={(e) => field.onChange(e.target.checked)}
+                        />
+                      )}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      Gasto deducible fiscalmente (para Hacienda)
+                    </Typography>
+                  }
                 />
               </Grid>
 

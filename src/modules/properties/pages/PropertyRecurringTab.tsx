@@ -20,6 +20,8 @@ import {
   Stack,
   Divider,
   Tooltip,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -46,6 +48,7 @@ const schema = z.object({
   amount: z.number().min(0.01, "Importe requerido"),
   periodicity: z.enum(["monthly", "quarterly", "yearly"]),
   nextDueDate: z.any().optional(),
+  isDeductible: z.boolean().optional(),
   notes: z.string().optional(),
 });
 
@@ -96,6 +99,7 @@ export function PropertyRecurringTab({
       amount: 0,
       periodicity: "monthly",
       nextDueDate: null,
+      isDeductible: true,
       notes: "",
     },
   });
@@ -106,6 +110,7 @@ export function PropertyRecurringTab({
       amount: 0,
       periodicity: "monthly",
       nextDueDate: null,
+      isDeductible: true,
       notes: "",
     });
     setEditingExpense(null);
@@ -118,6 +123,7 @@ export function PropertyRecurringTab({
       amount: expense.amount,
       periodicity: expense.periodicity,
       nextDueDate: parseDate(expense.nextDueDate),
+      isDeductible: expense.isDeductible !== false,
       notes: expense.notes || "",
     });
     setEditingExpense(expense);
@@ -145,6 +151,7 @@ export function PropertyRecurringTab({
         amount: data.amount,
         periodicity: data.periodicity,
         nextDueDate: toISOString(data.nextDueDate),
+        isDeductible: data.isDeductible,
         notes: data.notes,
       };
 
@@ -233,6 +240,16 @@ export function PropertyRecurringTab({
                     color="primary"
                     sx={{ mb: 2 }}
                   />
+
+                  {expense.isDeductible !== false && (
+                    <Chip
+                      label="Deducible"
+                      color="success"
+                      size="small"
+                      variant="outlined"
+                      sx={{ ml: 1, mb: 2 }}
+                    />
+                  )}
 
                   {/* Amount */}
                   <Typography
@@ -400,6 +417,30 @@ export function PropertyRecurringTab({
                   multiline
                   rows={2}
                   {...register("notes")}
+                />
+              </Grid>
+
+              {/* Is Deductible Checkbox */}
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Controller
+                      name="isDeductible"
+                      control={control}
+                      render={({ field }) => (
+                        <Checkbox
+                          {...field}
+                          checked={field.value !== false}
+                          onChange={(e) => field.onChange(e.target.checked)}
+                        />
+                      )}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2">
+                      Gasto deducible fiscalmente (para Hacienda)
+                    </Typography>
+                  }
                 />
               </Grid>
             </Grid>
