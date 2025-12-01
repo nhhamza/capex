@@ -12,6 +12,8 @@ import {
   Typography,
   Alert,
   Link,
+  Chip,
+  Stack,
 } from "@mui/material";
 
 export function LoginPage() {
@@ -65,74 +67,143 @@ export function LoginPage() {
           alignItems: { xs: "stretch", md: "center" },
         }}
       >
-        {/* Features Section */}
-        <Box sx={{
-          flex: 1,
-          order: { xs: 2, md: 1 },
-          width: "100%"
-        }}>
-          <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
-            Gestión Inmobiliaria
+        {/* Marketing / Features Section */}
+        <Box
+          sx={{
+            flex: 1,
+            order: { xs: 2, md: 1 },
+            width: "100%",
+          }}
+        >
+          <Chip
+            label="Beta privada para propietarios e inversores"
+            color="primary"
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+
+          <Typography
+            variant="h4"
+            component="h1"
+            gutterBottom
+            fontWeight="bold"
+          >
+            Controla tus pisos de alquiler en un solo sitio
           </Typography>
+
           <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 3 }}>
-            Rentabilidad de inversiones en España
+            Dashboard de gestión inmobiliaria para inversiones en España
           </Typography>
 
           <Typography variant="body1" paragraph>
-            El dashboard ofrece una visión consolidada de toda tu cartera inmobiliaria
-            con métricas en tiempo real sobre ingresos, gastos, rentabilidad y deuda.
+            Deja de pelearte con Excel. Centraliza tus viviendas, ingresos,
+            gastos e hipotecas y entiende, de verdad,{" "}
+            <strong>cuánto te está dejando cada piso al mes y al año</strong>.
           </Typography>
 
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={2}
+            sx={{ mt: 2, mb: 3 }}
+          >
+            <Chip label="Hasta X propiedades en plan gratis" />
+            <Chip label="Sin tarjeta de crédito" />
+            <Chip label="Pensado para propietarios reales" />
+          </Stack>
+
           <Box sx={{ mt: 3 }}>
-            <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              📊 Resumen General
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+            >
+              📊 Resumen General de tu cartera
             </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph sx={{ ml: 4 }}>
-              • Número total de viviendas en gestión<br />
-              • Ingresos anuales totales procedentes de los alquileres<br />
-              • Cash Flow anual (beneficio neto después de gastos e hipoteca)<br />
-              • Ratio de endeudamiento sobre el total de la inversión
-            </Typography>
-
-            <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1, mt: 2 }}>
-              💸 Gastos Anuales
-            </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph sx={{ ml: 4 }}>
-              • Gastos totales anuales<br />
-              • Gastos fijos (IBI, comunidad, seguros…)<br />
-              • Gastos de mantenimiento y reparaciones
-            </Typography>
-
-            <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1, mt: 2 }}>
-              📈 Flujo de Caja Consolidado
-            </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph sx={{ ml: 4 }}>
-              • Ingresos totales acumulados (últimos 12 meses)<br />
-              • Gastos totales acumulados<br />
-              • Deuda pagada durante el año
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              paragraph
+              sx={{ ml: 4 }}
+            >
+              • Número total de viviendas en alquiler
+              <br />
+              • Ingresos anuales totales por rentas
+              <br />
+              • Cash Flow anual (después de gastos e hipotecas)
+              <br />• Ratio de endeudamiento sobre el valor de tus activos
             </Typography>
 
-            <Typography variant="h6" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1, mt: 2 }}>
-              📉 Rentabilidad de la Cartera
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1, mt: 2 }}
+            >
+              💸 Control de gastos sin sorpresas
             </Typography>
-            <Typography variant="body2" color="text.secondary" paragraph sx={{ ml: 4 }}>
-              • Capital invertido total (equity)<br />
-              • Cash-on-Cash Return (% sobre el dinero aportado)<br />
-              • Cap Rate neto (% de rentabilidad sin deuda)
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              paragraph
+              sx={{ ml: 4 }}
+            >
+              • Gastos fijos (IBI, comunidad, seguros…)
+              <br />
+              • Mantenimiento y reparaciones por vivienda
+              <br />• Visión anual y mensual de todo lo que sale de tu bolsillo
+            </Typography>
+
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1, mt: 2 }}
+            >
+              📈 Flujo de caja y deuda
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              paragraph
+              sx={{ ml: 4 }}
+            >
+              • Ingresos y gastos acumulados últimos 12 meses
+              <br />
+              • Deuda amortizada durante el año
+              <br />• Evolución del cash flow mes a mes
+            </Typography>
+
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", gap: 1, mt: 2 }}
+            >
+              📉 Rentabilidad de cada inversión
+            </Typography>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              paragraph
+              sx={{ ml: 4 }}
+            >
+              • Capital invertido (equity) en cada operación
+              <br />
+              • Cash-on-Cash Return sobre tu dinero aportado
+              <br />• Cap Rate neto de cada vivienda y de toda la cartera
             </Typography>
           </Box>
         </Box>
 
-        {/* Login Form Section */}
-        <Card sx={{
-          maxWidth: 400,
-          width: "100%",
-          flex: { xs: 1, md: "0 0 400px" },
-          order: { xs: 1, md: 2 }
-        }}>
+        {/* Login / Signup Section */}
+        <Card
+          sx={{
+            maxWidth: 400,
+            width: "100%",
+            flex: { xs: 1, md: "0 0 400px" },
+            order: { xs: 1, md: 2 },
+          }}
+        >
           <CardContent sx={{ p: 4 }}>
-            <Typography variant="h5" component="h1" gutterBottom align="center">
-              Iniciar Sesión
+            <Typography variant="h5" component="h2" gutterBottom align="center">
+              Accede a tu panel
             </Typography>
             <Typography
               variant="body2"
@@ -140,7 +211,8 @@ export function LoginPage() {
               paragraph
               align="center"
             >
-              Accede a tu dashboard inmobiliario
+              Gestiona tus propiedades, gastos, hipotecas y rentabilidad desde
+              un único dashboard.
             </Typography>
 
             <Box component="form" onSubmit={onSubmit} sx={{ mt: 3 }}>
@@ -177,19 +249,29 @@ export function LoginPage() {
                 disabled={loading}
                 sx={{ mt: 3 }}
               >
-                {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
+                {loading ? "Iniciando sesión..." : "Entrar en mi cuenta"}
               </Button>
 
-              <Box sx={{ mt: 2, textAlign: "center" }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+                align="center"
+                sx={{ mt: 1.5 }}
+              >
+                Acceso gratuito durante la beta · Sin tarjeta de crédito
+              </Typography>
+
+              <Box sx={{ mt: 3, textAlign: "center" }}>
                 <Typography variant="body2" sx={{ mb: 1 }}>
                   <Link component={RouterLink} to="/forgot-password">
                     ¿Olvidaste tu contraseña?
                   </Link>
                 </Typography>
                 <Typography variant="body2">
-                  ¿No tienes cuenta?{" "}
+                  ¿Aún no tienes cuenta?{" "}
                   <Link component={RouterLink} to="/signup">
-                    Crear cuenta
+                    Crear cuenta gratis
                   </Link>
                 </Typography>
               </Box>

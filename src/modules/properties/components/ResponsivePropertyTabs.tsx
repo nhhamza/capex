@@ -51,7 +51,11 @@ const TABS: PropertyTabConfig[] = [
     label: "Gastos Fijos",
     icon: <PaymentsIcon fontSize="small" />,
   },
-  { value: "capex", label: "CapEx", icon: <BuildIcon fontSize="small" /> },
+  {
+    value: "capex",
+    label: "Gastos Puntuales",
+    icon: <BuildIcon fontSize="small" />,
+  },
   { value: "docs", label: "Documentos", icon: <FolderIcon fontSize="small" /> },
   {
     value: "financiacion",

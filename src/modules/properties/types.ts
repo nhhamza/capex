@@ -72,6 +72,7 @@ export interface OneOffExpense {
   vendor?: string;
   invoiceNumber?: string;
   attachmentUrl?: string;
+  attachmentName?: string;
   isDeductible?: boolean; // Para Hacienda
   notes?: string;
 }

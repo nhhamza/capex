@@ -20,10 +20,14 @@ import {
   Divider,
   IconButton,
   Tooltip,
+  CircularProgress,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import DownloadIcon from "@mui/icons-material/Download";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { DatePicker } from "@mui/x-date-pickers";
 import { OneOffExpense } from "../types";
 import {
@@ -53,6 +57,8 @@ const schema = z.object({
   invoiceNumber: z.string().optional(),
   isDeductible: z.boolean().optional(),
   notes: z.string().optional(),
+  attachmentUrl: z.string().optional(),
+  attachmentName: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -85,6 +91,20 @@ export function PropertyCapexTab({
     null
   );
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{
+    name: string;
+    url: string;
+  } | null>(null);
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
 
   const {
     control,
@@ -106,8 +126,11 @@ export function PropertyCapexTab({
       invoiceNumber: "",
       isDeductible: true,
       notes: "",
+      attachmentUrl: "",
+      attachmentName: "",
     });
     setEditingExpense(null);
+    setUploadedFile(null);
     setDialogOpen(true);
   };
 
@@ -121,7 +144,17 @@ export function PropertyCapexTab({
       invoiceNumber: expense.invoiceNumber || "",
       isDeductible: expense.isDeductible !== false,
       notes: expense.notes || "",
+      attachmentUrl: expense.attachmentUrl || "",
+      attachmentName: expense.attachmentName || "",
     });
+    if (expense.attachmentUrl) {
+      setUploadedFile({
+        name: expense.attachmentName || "archivo",
+        url: expense.attachmentUrl,
+      });
+    } else {
+      setUploadedFile(null);
+    }
     setEditingExpense(expense);
     setDialogOpen(true);
   };
@@ -138,6 +171,27 @@ export function PropertyCapexTab({
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const file = e.target.files[0]; // Only take first file
+      const base64Url = await fileToBase64(file);
+      setUploadedFile({ name: file.name, url: base64Url });
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      alert("Error al subir el archivo");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileDelete = () => {
+    if (!confirm("¿Eliminar el archivo adjunto?")) return;
+    setUploadedFile(null);
+  };
+
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
@@ -151,6 +205,8 @@ export function PropertyCapexTab({
         invoiceNumber: data.invoiceNumber,
         isDeductible: data.isDeductible,
         notes: data.notes,
+        attachmentUrl: uploadedFile?.url || undefined,
+        attachmentName: uploadedFile?.name || undefined,
       };
 
       if (editingExpense) {
@@ -309,12 +365,59 @@ export function PropertyCapexTab({
                         {expense.notes}
                       </Typography>
                     )}
+                    {expense.attachmentUrl && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          mt: 1,
+                        }}
+                      >
+                        <AttachFileIcon
+                          sx={{ fontSize: "0.875rem" }}
+                          color="action"
+                        />
+                        <Typography
+                          variant="caption"
+                          color="primary"
+                          sx={{
+                            textDecoration: "none",
+                            cursor: "pointer",
+                            "&:hover": { textDecoration: "underline" },
+                          }}
+                          onClick={() => {
+                            const a = document.createElement("a");
+                            a.href = expense.attachmentUrl!;
+                            a.download = expense.attachmentName || "archivo";
+                            a.click();
+                          }}
+                        >
+                          {expense.attachmentName || "Archivo adjunto"}
+                        </Typography>
+                      </Box>
+                    )}
                   </Stack>
                 </CardContent>
 
                 {/* Actions */}
                 <Divider />
                 <Box sx={{ display: "flex", justifyContent: "flex-end", p: 1 }}>
+                  {expense.attachmentUrl && (
+                    <Tooltip title="Descargar archivo">
+                      <IconButton
+                        onClick={() => {
+                          const a = document.createElement("a");
+                          a.href = expense.attachmentUrl!;
+                          a.download = expense.attachmentName || "archivo";
+                          a.click();
+                        }}
+                        sx={{ minWidth: 48, minHeight: 48 }}
+                      >
+                        <DownloadIcon />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   <Tooltip title="Editar">
                     <IconButton
                       onClick={() => handleEdit(expense)}
@@ -431,6 +534,73 @@ export function PropertyCapexTab({
                   multiline
                   rows={2}
                 />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Archivo adjunto (opcional)
+                </Typography>
+                {uploadedFile ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      p: 2,
+                      border: 1,
+                      borderColor: "divider",
+                      borderRadius: 1,
+                    }}
+                  >
+                    <AttachFileIcon color="action" />
+                    <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                      {uploadedFile.name}
+                    </Typography>
+                    <Tooltip title="Descargar">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          const a = document.createElement("a");
+                          a.href = uploadedFile.url;
+                          a.download = uploadedFile.name;
+                          a.click();
+                        }}
+                      >
+                        <DownloadIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Eliminar">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={handleFileDelete}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                ) : (
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    startIcon={
+                      uploading ? (
+                        <CircularProgress size={18} />
+                      ) : (
+                        <CloudUploadIcon />
+                      )
+                    }
+                    disabled={uploading}
+                  >
+                    {uploading ? "Subiendo..." : "Subir archivo"}
+                    <input
+                      type="file"
+                      hidden
+                      accept="*"
+                      onChange={handleFileChange}
+                    />
+                  </Button>
+                )}
               </Grid>
             </Grid>
           </DialogContent>

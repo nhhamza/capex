@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { addDoc, collection, doc, setDoc } from "firebase/firestore/lite";
+import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase/client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,16 +34,17 @@ const signupSchema = z
         "Debe contener mayúsculas, minúsculas y números"
       ),
     confirmPassword: z.string(),
-    city: z.string().min(2, "La ciudad es requerida"),
     phone: z
       .string()
       .regex(/^[+]?[0-9]{9,15}$/, "Teléfono inválido (9-15 dígitos)")
       .optional()
       .or(z.literal("")),
+    city: z.string().min(2, "La ciudad es requerida"),
     userType: z.enum(["investor", "small_owner"], {
       required_error: "Selecciona tu perfil",
     }),
-    orgName: z.string().min(2, "El nombre de la organización es requerido"),
+    companyName: z.string().optional(),
+    propertyCount: z.enum(["0", "1-3", "4-10", "11-20", "21+"]),
     acceptTerms: z.boolean().refine((val) => val === true, {
       message: "Debes aceptar los términos y condiciones",
     }),
@@ -58,10 +59,10 @@ const signupSchema = z
 
 type SignupFormData = z.infer<typeof signupSchema>;
 
-export default function SignUp() {
+export function SignupPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const {
     register,
@@ -70,6 +71,8 @@ export default function SignUp() {
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
+      userType: undefined,
+      propertyCount: "0",
       acceptTerms: false,
       acceptPrivacy: false,
     },
@@ -80,34 +83,53 @@ export default function SignUp() {
     setLoading(true);
 
     try {
-      const cred = await createUserWithEmailAndPassword(
+      // Create Firebase Auth user
+      const userCredential = await createUserWithEmailAndPassword(
         auth,
         data.email,
         data.password
       );
-      const uid = cred.user.uid;
 
-      const orgRef = await addDoc(collection(db, "organizations"), {
-        name: data.orgName,
-        ownerUid: uid,
-        createdAt: new Date().toISOString(),
-      });
-      const orgId = orgRef.id;
+      // Create organization ID (for multi-tenant)
+      const organizationId = `org_${userCredential.user.uid}`;
 
-      await setDoc(doc(db, "users", uid), {
+      // Store user profile in Firestore
+      await setDoc(doc(db, "users", userCredential.user.uid), {
         name: data.name,
         email: data.email,
-        city: data.city,
         phone: data.phone || null,
+        city: data.city,
         userType: data.userType,
-        orgId,
-        role: "owner",
+        companyName: data.companyName || null,
+        propertyCount: data.propertyCount,
+        organizationId,
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       });
 
+      // Create organization document
+      await setDoc(doc(db, "organizations", organizationId), {
+        name: data.companyName || data.name,
+        ownerId: userCredential.user.uid,
+        createdAt: new Date().toISOString(),
+        plan: "free",
+      });
+
+      // Navigate to dashboard
       navigate("/dashboard");
     } catch (err: any) {
-      setError(err.message || "Error al crear cuenta");
+      console.error("Signup error:", err);
+      let errorMessage = "Error al crear la cuenta";
+
+      if (err.code === "auth/email-already-in-use") {
+        errorMessage = "Este email ya está registrado";
+      } else if (err.code === "auth/weak-password") {
+        errorMessage = "La contraseña es demasiado débil";
+      } else if (err.code === "auth/invalid-email") {
+        errorMessage = "Email inválido";
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -135,7 +157,8 @@ export default function SignUp() {
             Crear cuenta gratis
           </Typography>
           <Typography variant="body2" color="text.secondary" paragraph>
-            Gestiona tu cartera inmobiliaria desde un único dashboard
+            Únete a la plataforma de gestión inmobiliaria para inversores y
+            propietarios en España.
           </Typography>
 
           <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 3 }}>
@@ -194,18 +217,6 @@ export default function SignUp() {
                 />
               </Grid>
 
-              {/* City */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Ciudad"
-                  {...register("city")}
-                  error={!!errors.city}
-                  helperText={errors.city?.message}
-                  required
-                />
-              </Grid>
-
               {/* Phone */}
               <Grid item xs={12} sm={6}>
                 <TextField
@@ -218,20 +229,20 @@ export default function SignUp() {
                 />
               </Grid>
 
-              {/* Organization Name */}
+              {/* City */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="Nombre de la Organización"
-                  {...register("orgName")}
-                  error={!!errors.orgName}
-                  helperText={errors.orgName?.message || "Ej: Mi Cartera Inmobiliaria"}
+                  label="Ciudad"
+                  {...register("city")}
+                  error={!!errors.city}
+                  helperText={errors.city?.message}
                   required
                 />
               </Grid>
 
               {/* User Type */}
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12}>
                 <TextField
                   fullWidth
                   select
@@ -240,7 +251,6 @@ export default function SignUp() {
                   error={!!errors.userType}
                   helperText={errors.userType?.message}
                   required
-                  defaultValue=""
                 >
                   <MenuItem value="investor">
                     Inversor (múltiples propiedades)
@@ -249,6 +259,36 @@ export default function SignUp() {
                     Pequeño propietario (1-3 propiedades)
                   </MenuItem>
                 </TextField>
+              </Grid>
+
+              {/* Property Count */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  select
+                  label="¿Cuántas propiedades gestionas?"
+                  {...register("propertyCount")}
+                  error={!!errors.propertyCount}
+                  helperText={errors.propertyCount?.message}
+                  required
+                >
+                  <MenuItem value="0">Ninguna (empezando)</MenuItem>
+                  <MenuItem value="1-3">1-3 propiedades</MenuItem>
+                  <MenuItem value="4-10">4-10 propiedades</MenuItem>
+                  <MenuItem value="11-20">11-20 propiedades</MenuItem>
+                  <MenuItem value="21+">21 o más propiedades</MenuItem>
+                </TextField>
+              </Grid>
+
+              {/* Company Name */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Nombre de empresa (opcional)"
+                  {...register("companyName")}
+                  error={!!errors.companyName}
+                  helperText="Si gestionas propiedades a través de una empresa"
+                />
               </Grid>
 
               {/* Terms and Privacy */}
