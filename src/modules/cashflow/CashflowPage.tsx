@@ -380,14 +380,6 @@ export function CashflowPage() {
     flujoNeto: row.netCashflow,
   }));
 
-  // Calculate totals from chartData for potential aggregate usage
-  const chartTotals = {
-    ingresos: chartData.reduce((sum, d) => sum + d.ingresos, 0),
-    gastos: chartData.reduce((sum, d) => sum + d.gastos, 0),
-    deuda: chartData.reduce((sum, d) => sum + d.deuda, 0),
-    flujoNeto: chartData.reduce((sum, d) => sum + d.flujoNeto, 0),
-  };
-
   // Compute display totals depending on viewMode:
   // - monthly: show the most recent month (not sum of all months)
   // - yearly: show the most recent year's numbers (not sum of all years)
