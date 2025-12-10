@@ -181,9 +181,7 @@ export function PropertyCapexTab({
 
       // Track progress
       uploadTask.on("state_changed", (snap) => {
-        const pct = Math.round(
-          (snap.bytesTransferred / snap.totalBytes) * 100
-        );
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
         setUploadProgress(pct);
       });
 
@@ -657,7 +655,11 @@ export function PropertyCapexTab({
                       />
                     </Button>
                     {uploading && uploadProgress > 0 && (
-                      <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ mt: 1 }}
+                      >
                         Progreso: {uploadProgress}%
                       </Typography>
                     )}

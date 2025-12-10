@@ -22,8 +22,8 @@ import {
   Filler,
   Tooltip as ChartTooltip,
   Legend as ChartLegend,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 import HomeWorkIcon from "@mui/icons-material/HomeWork";
 import BuildIcon from "@mui/icons-material/Build";
 
@@ -101,7 +101,7 @@ export function DashboardPage() {
       for (const prop of filteredProps) {
         const lease = await getLeases(prop.id).then((leases) => leases[0]);
         const loan = await getLoans(prop.id).then((loans) => loans[0]);
-        
+
         // Always accumulate debt ratio based on currentValue, regardless of lease
         if (loan) {
           totalPrincipal += loan.principal;
@@ -258,7 +258,13 @@ export function DashboardPage() {
             }}
           >
             <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-              <Box sx={{ display: "flex", alignItems: "center", mb: { xs: 2, sm: 3 } }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  mb: { xs: 2, sm: 3 },
+                }}
+              >
                 <Box
                   sx={{
                     display: "flex",
@@ -274,7 +280,13 @@ export function DashboardPage() {
                 >
                   <HomeWorkIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
                 </Box>
-                <Typography variant="h6" sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 600,
+                    fontSize: { xs: "1rem", sm: "1.25rem" },
+                  }}
+                >
                   Resumen General
                 </Typography>
               </Box>
@@ -306,7 +318,11 @@ export function DashboardPage() {
                   </Typography>
                   <Typography
                     variant="h5"
-                    sx={{ fontWeight: 700, color: "#4caf50", fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
+                    sx={{
+                      fontWeight: 700,
+                      color: "#4caf50",
+                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                    }}
                   >
                     {formatCurrency(totalIncome)}
                   </Typography>
@@ -324,7 +340,7 @@ export function DashboardPage() {
                     sx={{
                       fontWeight: 700,
                       color: totalCFAF > 0 ? "#4caf50" : "#f44336",
-                      fontSize: { xs: '1.25rem', sm: '1.5rem' }
+                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
                     }}
                   >
                     {formatCurrency(totalCFAF)}
@@ -366,7 +382,13 @@ export function DashboardPage() {
             }}
           >
             <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-              <Box sx={{ display: "flex", alignItems: "center", mb: { xs: 2, sm: 3 } }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  mb: { xs: 2, sm: 3 },
+                }}
+              >
                 <Box
                   sx={{
                     display: "flex",
@@ -382,7 +404,13 @@ export function DashboardPage() {
                 >
                   <BuildIcon sx={{ fontSize: { xs: 24, sm: 28 } }} />
                 </Box>
-                <Typography variant="h6" sx={{ fontWeight: 600, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 600,
+                    fontSize: { xs: "1rem", sm: "1.25rem" },
+                  }}
+                >
                   Gastos Anuales
                 </Typography>
               </Box>
@@ -397,7 +425,11 @@ export function DashboardPage() {
                   </Typography>
                   <Typography
                     variant="h5"
-                    sx={{ fontWeight: 700, color: "#ff9800", fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
+                    sx={{
+                      fontWeight: 700,
+                      color: "#ff9800",
+                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                    }}
                   >
                     {formatCurrency(
                       totalRecurringExpenses + totalOneOffExpenses
@@ -414,7 +446,11 @@ export function DashboardPage() {
                   </Typography>
                   <Typography
                     variant="h5"
-                    sx={{ fontWeight: 700, color: alpha("#ff9800", 0.8), fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
+                    sx={{
+                      fontWeight: 700,
+                      color: alpha("#ff9800", 0.8),
+                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                    }}
                   >
                     {formatCurrency(totalRecurringExpenses)}
                   </Typography>
@@ -429,7 +465,11 @@ export function DashboardPage() {
                   </Typography>
                   <Typography
                     variant="h5"
-                    sx={{ fontWeight: 700, color: alpha("#ff9800", 0.8), fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
+                    sx={{
+                      fontWeight: 700,
+                      color: alpha("#ff9800", 0.8),
+                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                    }}
                   >
                     {formatCurrency(totalOneOffExpenses)}
                   </Typography>
@@ -450,36 +490,75 @@ export function DashboardPage() {
             >
               Flujo de Caja Consolidado (12 meses)
             </Typography>
-            
+
             {/* Summary boxes - visible data without hover */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={4}>
-                <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(76, 175, 80, 0.08)', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                <Box
+                  sx={{
+                    textAlign: "center",
+                    p: 1.5,
+                    bgcolor: "rgba(76, 175, 80, 0.08)",
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
                     Ingresos Totales
                   </Typography>
                   <Typography variant="h6" fontWeight="bold" color="#4caf50">
-                    {formatCurrency(chartData.reduce((sum, d) => sum + d.ingresos, 0))}
+                    {formatCurrency(
+                      chartData.reduce((sum, d) => sum + d.ingresos, 0)
+                    )}
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={4}>
-                <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(255, 152, 0, 0.08)', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                <Box
+                  sx={{
+                    textAlign: "center",
+                    p: 1.5,
+                    bgcolor: "rgba(255, 152, 0, 0.08)",
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
                     Gastos Totales
                   </Typography>
                   <Typography variant="h6" fontWeight="bold" color="#ff9800">
-                    {formatCurrency(chartData.reduce((sum, d) => sum + d.gastos, 0))}
+                    {formatCurrency(
+                      chartData.reduce((sum, d) => sum + d.gastos, 0)
+                    )}
                   </Typography>
                 </Box>
               </Grid>
               <Grid item xs={4}>
-                <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: 'rgba(244, 67, 54, 0.08)', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                <Box
+                  sx={{
+                    textAlign: "center",
+                    p: 1.5,
+                    bgcolor: "rgba(244, 67, 54, 0.08)",
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
                     Deuda Pagada
                   </Typography>
                   <Typography variant="h6" fontWeight="bold" color="#f44336">
-                    {formatCurrency(chartData.reduce((sum, d) => sum + d.deuda, 0))}
+                    {formatCurrency(
+                      chartData.reduce((sum, d) => sum + d.deuda, 0)
+                    )}
                   </Typography>
                 </Box>
               </Grid>
@@ -491,40 +570,40 @@ export function DashboardPage() {
                   labels: chartData.map((d) => d.month),
                   datasets: [
                     {
-                      label: 'Ingresos',
+                      label: "Ingresos",
                       data: chartData.map((d) => d.ingresos),
-                      borderColor: '#4caf50',
-                      backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                      borderColor: "#4caf50",
+                      backgroundColor: "rgba(76, 175, 80, 0.1)",
                       fill: true,
                       tension: 0.4,
                       borderWidth: 2,
                       pointRadius: 4,
                       pointHoverRadius: 6,
-                      pointBackgroundColor: '#4caf50',
+                      pointBackgroundColor: "#4caf50",
                     },
                     {
-                      label: 'Gastos',
+                      label: "Gastos",
                       data: chartData.map((d) => d.gastos),
-                      borderColor: '#ff9800',
-                      backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                      borderColor: "#ff9800",
+                      backgroundColor: "rgba(255, 152, 0, 0.1)",
                       fill: true,
                       tension: 0.4,
                       borderWidth: 2,
                       pointRadius: 4,
                       pointHoverRadius: 6,
-                      pointBackgroundColor: '#ff9800',
+                      pointBackgroundColor: "#ff9800",
                     },
                     {
-                      label: 'Deuda',
+                      label: "Deuda",
                       data: chartData.map((d) => d.deuda),
-                      borderColor: '#f44336',
-                      backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                      borderColor: "#f44336",
+                      backgroundColor: "rgba(244, 67, 54, 0.1)",
                       fill: true,
                       tension: 0.4,
                       borderWidth: 2,
                       pointRadius: 4,
                       pointHoverRadius: 6,
-                      pointBackgroundColor: '#f44336',
+                      pointBackgroundColor: "#f44336",
                     },
                   ],
                 }}
@@ -532,13 +611,13 @@ export function DashboardPage() {
                   responsive: true,
                   maintainAspectRatio: false,
                   interaction: {
-                    mode: 'index',
+                    mode: "index",
                     intersect: false,
                   },
                   plugins: {
                     legend: {
                       display: true,
-                      position: 'top',
+                      position: "top",
                       labels: {
                         usePointStyle: true,
                         padding: 15,
@@ -558,7 +637,9 @@ export function DashboardPage() {
                       displayColors: true,
                       callbacks: {
                         label: (context) => {
-                          return `${context.dataset.label}: ${formatCurrency(context.parsed.y ?? 0)}`;
+                          return `${context.dataset.label}: ${formatCurrency(
+                            context.parsed.y ?? 0
+                          )}`;
                         },
                       },
                     },

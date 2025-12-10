@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { addDoc, collection, doc, setDoc } from "firebase/firestore/lite";
-import { createProperty, createLease, createLoan } from "@/modules/properties/api";
+import {
+  createProperty,
+  createLease,
+  createLoan,
+} from "@/modules/properties/api";
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
 import { db, storage } from "@/firebase/client";
@@ -25,7 +29,12 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/Delete";
 
-const steps = ["Perfil", "Primera Vivienda", "Contrato (Opcional)", "Financiación (Opcional)"];
+const steps = [
+  "Perfil",
+  "Primera Vivienda",
+  "Contrato (Opcional)",
+  "Financiación (Opcional)",
+];
 
 export function OnboardingWizard() {
   const navigate = useNavigate();
@@ -50,18 +59,27 @@ export function OnboardingWizard() {
   const [contractTenantName, setContractTenantName] = useState("");
   const [contractStartDate, setContractStartDate] = useState("");
   const [contractEndDate, setContractEndDate] = useState("");
-  const [contractFile, setContractFile] = useState<{ name: string; url: string } | null>(null);
+  const [contractFile, setContractFile] = useState<{
+    name: string;
+    url: string;
+  } | null>(null);
   const [contractUploading, setContractUploading] = useState(false);
   const [contractUploadProgress, setContractUploadProgress] = useState(0);
 
   // Financing information state
-  const [financingLoanAmount, setFinancingLoanAmount] = useState<number | "">("");
-  const [financingInterestRate, setFinancingInterestRate] = useState<number | "">("");
+  const [financingLoanAmount, setFinancingLoanAmount] = useState<number | "">(
+    ""
+  );
+  const [financingInterestRate, setFinancingInterestRate] = useState<
+    number | ""
+  >("");
   const [financingTermYears, setFinancingTermYears] = useState<number | "">("");
   const [financingBank, setFinancingBank] = useState("");
   const [financingLoanType, setFinancingLoanType] = useState("fixed");
 
-  const handleContractFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleContractFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     if (!e.target.files || e.target.files.length === 0) return;
 
     setContractUploading(true);
@@ -75,9 +93,7 @@ export function OnboardingWizard() {
 
       // Track progress
       uploadTask.on("state_changed", (snap) => {
-        const pct = Math.round(
-          (snap.bytesTransferred / snap.totalBytes) * 100
-        );
+        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
         setContractUploadProgress(pct);
       });
 
@@ -172,8 +188,8 @@ export function OnboardingWizard() {
               // If financing info provided, create a loan
               if (
                 createdPropertyId &&
-                (typeof financingLoanAmount === "number" &&
-                  financingLoanAmount > 0)
+                typeof financingLoanAmount === "number" &&
+                financingLoanAmount > 0
               ) {
                 try {
                   await createLoan({
@@ -187,10 +203,15 @@ export function OnboardingWizard() {
                       typeof financingTermYears === "number"
                         ? financingTermYears * 12
                         : 0,
-                    notes: `Préstamo ${financingLoanType} - ${financingBank || "No especificado"}`,
+                    notes: `Préstamo ${financingLoanType} - ${
+                      financingBank || "No especificado"
+                    }`,
                   });
                 } catch (err) {
-                  console.error("[Onboarding] Error creando financiación:", err);
+                  console.error(
+                    "[Onboarding] Error creando financiación:",
+                    err
+                  );
                 }
               }
             } catch (err) {
@@ -240,8 +261,7 @@ export function OnboardingWizard() {
               createdPropertyId &&
               (contractTenantName ||
                 contractStartDate ||
-                (typeof firstMonthlyRent === "number" &&
-                  firstMonthlyRent > 0))
+                (typeof firstMonthlyRent === "number" && firstMonthlyRent > 0))
             ) {
               try {
                 await createLease({
@@ -254,9 +274,7 @@ export function OnboardingWizard() {
                     ? dayjs(contractEndDate).toISOString()
                     : undefined,
                   monthlyRent:
-                    typeof firstMonthlyRent === "number"
-                      ? firstMonthlyRent
-                      : 0,
+                    typeof firstMonthlyRent === "number" ? firstMonthlyRent : 0,
                   contractUrl: contractFile?.url || undefined,
                   isActive: true,
                 });
@@ -268,8 +286,8 @@ export function OnboardingWizard() {
             // If financing info provided, create a loan
             if (
               createdPropertyId &&
-              (typeof financingLoanAmount === "number" &&
-                financingLoanAmount > 0)
+              typeof financingLoanAmount === "number" &&
+              financingLoanAmount > 0
             ) {
               try {
                 await createLoan({
@@ -283,7 +301,9 @@ export function OnboardingWizard() {
                     typeof financingTermYears === "number"
                       ? financingTermYears * 12
                       : 0,
-                  notes: `Préstamo ${financingLoanType} - ${financingBank || "No especificado"}`,
+                  notes: `Préstamo ${financingLoanType} - ${
+                    financingBank || "No especificado"
+                  }`,
                 });
               } catch (err) {
                 console.error("[Onboarding] Error creando financiación:", err);
@@ -567,7 +587,11 @@ export function OnboardingWizard() {
                         />
                       </Button>
                       {contractUploading && contractUploadProgress > 0 && (
-                        <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                        <Typography
+                          variant="caption"
+                          display="block"
+                          sx={{ mt: 1 }}
+                        >
                           Progreso: {contractUploadProgress}%
                         </Typography>
                       )}
@@ -611,7 +635,9 @@ export function OnboardingWizard() {
                     onChange={(e) => setFinancingLoanType(e.target.value)}
                   >
                     <MenuItem value="fixed">Hipoteca de tipo fijo</MenuItem>
-                    <MenuItem value="variable">Hipoteca de tipo variable</MenuItem>
+                    <MenuItem value="variable">
+                      Hipoteca de tipo variable
+                    </MenuItem>
                     <MenuItem value="mixed">Hipoteca mixta</MenuItem>
                     <MenuItem value="personal">Préstamo personal</MenuItem>
                     <MenuItem value="other">Otro</MenuItem>

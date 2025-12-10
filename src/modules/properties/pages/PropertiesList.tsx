@@ -33,7 +33,11 @@ import {
 } from "../api";
 import { Property } from "../types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { computeLeveredMetrics, sumClosingCosts, buildAmortizationSchedule } from "../calculations";
+import {
+  computeLeveredMetrics,
+  sumClosingCosts,
+  buildAmortizationSchedule,
+} from "../calculations";
 import { formatPercent, formatCurrency } from "@/utils/format";
 
 /**
@@ -370,7 +374,9 @@ export function PropertiesList() {
                       <Typography
                         variant="body1"
                         fontWeight={600}
-                        color={row.loanBalance > 0 ? "error.main" : "success.main"}
+                        color={
+                          row.loanBalance > 0 ? "error.main" : "success.main"
+                        }
                       >
                         {row.loanBalance > 0
                           ? formatCurrency(row.loanBalance)
@@ -385,7 +391,11 @@ export function PropertiesList() {
                       >
                         Renta Mensual
                       </Typography>
-                      <Typography variant="body1" fontWeight={600} color="success.main">
+                      <Typography
+                        variant="body1"
+                        fontWeight={600}
+                        color="success.main"
+                      >
                         {formatCurrency(row.monthlyRent)}
                       </Typography>
                     </Box>

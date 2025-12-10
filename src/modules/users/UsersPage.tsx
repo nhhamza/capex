@@ -25,7 +25,17 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { collection, getDocs, doc, getDoc, updateDoc, setDoc, deleteDoc, query, where } from "firebase/firestore/lite";
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  setDoc,
+  deleteDoc,
+  query,
+  where,
+} from "firebase/firestore/lite";
 import { db } from "@/firebase/client";
 import { useAuth } from "@/auth/authContext";
 
@@ -56,7 +66,10 @@ export function UsersPage() {
   const getPropertiesCount = async (orgId: string): Promise<number> => {
     try {
       const propertiesSnap = await getDocs(
-        query(collection(db, "properties"), where("organizationId", "==", orgId))
+        query(
+          collection(db, "properties"),
+          where("organizationId", "==", orgId)
+        )
       );
       return propertiesSnap.size;
     } catch (err) {
@@ -125,7 +138,9 @@ export function UsersPage() {
 
       // Update local state
       setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, role: newRole as User["role"] } : u))
+        prev.map((u) =>
+          u.id === userId ? { ...u, role: newRole as User["role"] } : u
+        )
       );
       setSuccess("Rol actualizado correctamente");
     } catch (err) {
@@ -136,7 +151,11 @@ export function UsersPage() {
     }
   };
 
-  const handlePlanChange = async (userId: string, orgId: string, newPlan: string) => {
+  const handlePlanChange = async (
+    userId: string,
+    orgId: string,
+    newPlan: string
+  ) => {
     if (!isAdmin) return;
 
     setUpdating(userId);
@@ -144,11 +163,7 @@ export function UsersPage() {
     setSuccess(null);
     try {
       // Use setDoc with merge to create org document if it doesn't exist
-      await setDoc(
-        doc(db, "orgs", orgId),
-        { plan: newPlan },
-        { merge: true }
-      );
+      await setDoc(doc(db, "orgs", orgId), { plan: newPlan }, { merge: true });
 
       // Update local state for all users in this org
       setUsers((prev) =>
@@ -181,7 +196,10 @@ export function UsersPage() {
 
       // Delete all properties for this user's organization
       const propertiesSnap = await getDocs(
-        query(collection(db, "properties"), where("organizationId", "==", orgId))
+        query(
+          collection(db, "properties"),
+          where("organizationId", "==", orgId)
+        )
       );
       for (const propertyDoc of propertiesSnap.docs) {
         // Delete all related data for this property
@@ -234,13 +252,17 @@ export function UsersPage() {
 
       // Remove from local state
       setUsers((prev) => prev.filter((u) => u.id !== userId));
-      setSuccess(`Usuario ${userToDelete.email} eliminado correctamente con todos sus datos`);
+      setSuccess(
+        `Usuario ${userToDelete.email} eliminado correctamente con todos sus datos`
+      );
       setDeleteDialogOpen(false);
       setUserToDelete(null);
     } catch (err) {
       console.error("Error deleting user:", err);
       setError(
-        `Error al eliminar el usuario: ${err instanceof Error ? err.message : "Error desconocido"}`
+        `Error al eliminar el usuario: ${
+          err instanceof Error ? err.message : "Error desconocido"
+        }`
       );
     } finally {
       setDeleting(false);
@@ -378,7 +400,11 @@ export function UsersPage() {
                         <Select
                           value={user.plan || "free"}
                           onChange={(e: SelectChangeEvent) =>
-                            handlePlanChange(user.id, user.orgId, e.target.value)
+                            handlePlanChange(
+                              user.id,
+                              user.orgId,
+                              e.target.value
+                            )
                           }
                           size="small"
                           disabled={updating === user.id}
@@ -457,7 +483,8 @@ export function UsersPage() {
         <DialogTitle>Confirmar eliminación de usuario</DialogTitle>
         <DialogContent>
           <Typography variant="body2" paragraph>
-            ¿Estás seguro de que deseas eliminar el usuario <strong>{userToDelete?.email}</strong>?
+            ¿Estás seguro de que deseas eliminar el usuario{" "}
+            <strong>{userToDelete?.email}</strong>?
           </Typography>
           <Typography variant="body2" color="error" paragraph>
             Esta acción eliminará:
