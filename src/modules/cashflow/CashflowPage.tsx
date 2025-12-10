@@ -10,11 +10,12 @@ import {
   Grid,
   ToggleButtonGroup,
   ToggleButton,
-  Chip,
   Stack,
   Card,
   CardContent,
   Divider,
+  Skeleton,
+  CircularProgress,
 } from "@mui/material";
 import {
   Chart as ChartJS,
@@ -24,8 +25,8 @@ import {
   LineElement,
   Tooltip as ChartTooltip,
   Legend as ChartLegend,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 import dayjs from "dayjs";
 
 // Register Chart.js components
@@ -37,6 +38,7 @@ ChartJS.register(
   ChartTooltip,
   ChartLegend
 );
+
 import { useAuth } from "@/auth/authContext";
 import {
   getProperties,
@@ -143,22 +145,28 @@ export function CashflowPage() {
 
     for (const prop of propsToProcess) {
       const leases = await getLeases(prop.id);
-      const lease = leases[0];
-      if (!lease) continue;
+      if (!leases || leases.length === 0) continue;
 
-      // Check if lease is active in this month
-      const leaseStart = dayjs(lease.startDate);
-      const leaseEnd = lease.endDate ? dayjs(lease.endDate) : null;
+      // Find lease active for this month (inclusive of start and end month)
+      const activeLease = leases.find((l) => {
+        if (!l || !l.startDate) return false;
+        const ls = dayjs(l.startDate);
+        const le = l.endDate ? dayjs(l.endDate) : null;
 
-      if (
-        monthDate.isSame(leaseStart, "month") ||
-        monthDate.isAfter(leaseStart, "month")
-      ) {
-        if (!leaseEnd || monthDate.isBefore(leaseEnd, "month")) {
-          // Rent income for the month
-          rentIncome += lease.monthlyRent * (1 - (lease.vacancyPct || 0));
-        }
-      }
+        const startsOnOrBefore =
+          monthDate.isSame(ls, "month") || monthDate.isAfter(ls, "month");
+        const endsOnOrAfter =
+          !le ||
+          monthDate.isBefore(le, "month") ||
+          monthDate.isSame(le, "month");
+        return startsOnOrBefore && endsOnOrAfter;
+      });
+
+      if (!activeLease) continue;
+
+      // Rent income for the month (apply vacancy)
+      rentIncome +=
+        activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
 
       // Recurring expenses
       const recurring = await getRecurringExpenses(prop.id);
@@ -195,9 +203,11 @@ export function CashflowPage() {
 
       // Debt payment
       const loans = await getLoans(prop.id);
-      const loan = loans[0];
+      const loan = loans && loans.length > 0 ? loans[0] : null;
       if (loan) {
-        const loanStart = loan.startDate ? dayjs(loan.startDate) : leaseStart;
+        const loanStart = loan.startDate
+          ? dayjs(loan.startDate)
+          : dayjs(activeLease.startDate);
         const monthsSinceLoanStart = monthDate.diff(loanStart, "month");
 
         if (
@@ -206,8 +216,8 @@ export function CashflowPage() {
         ) {
           const closingCostsTotal = sumClosingCosts(prop.closingCosts);
           const metrics = computeLeveredMetrics({
-            monthlyRent: lease.monthlyRent,
-            vacancyPct: lease.vacancyPct || 0,
+            monthlyRent: activeLease.monthlyRent,
+            vacancyPct: activeLease.vacancyPct || 0,
             recurring,
             variableAnnualBudget: 0,
             purchasePrice: prop.purchasePrice,
@@ -257,11 +267,27 @@ export function CashflowPage() {
 
     for (const prop of propsToProcess) {
       const leases = await getLeases(prop.id);
-      const lease = leases[0];
-      if (!lease) continue;
+      if (!leases || leases.length === 0) continue;
 
-      // Annual rent (simplified - assumes active all year)
-      rentIncome += lease.monthlyRent * 12 * (1 - (lease.vacancyPct || 0));
+      // Choose a lease that is active during this year if possible
+      const leaseFallback = leases[0];
+      const yearStart = dayjs(`${year}-01-01`);
+      const yearEnd = dayjs(`${year}-12-31`);
+      const activeLease =
+        leases.find((l) => {
+          if (!l || !l.startDate) return false;
+          const ls = dayjs(l.startDate);
+          const le = l.endDate ? dayjs(l.endDate) : null;
+          const startsOnOrBeforeYearEnd =
+            ls.isSame(yearEnd, "day") || ls.isBefore(yearEnd, "day");
+          const endsOnOrAfterYearStart =
+            !le || le.isSame(yearStart, "day") || le.isAfter(yearStart, "day");
+          return startsOnOrBeforeYearEnd && endsOnOrAfterYearStart;
+        }) || leaseFallback;
+
+      // Annual rent (assumes activeLease covers the year; if starts/ends mid-year this is a simplification)
+      rentIncome +=
+        activeLease.monthlyRent * 12 * (1 - (activeLease.vacancyPct || 0));
 
       // Recurring expenses
       const recurring = await getRecurringExpenses(prop.id);
@@ -286,12 +312,12 @@ export function CashflowPage() {
 
       // Annual debt payment
       const loans = await getLoans(prop.id);
-      const loan = loans[0];
+      const loan = loans && loans.length > 0 ? loans[0] : null;
       if (loan) {
         const closingCostsTotal = sumClosingCosts(prop.closingCosts);
         const metrics = computeLeveredMetrics({
-          monthlyRent: lease.monthlyRent,
-          vacancyPct: lease.vacancyPct || 0,
+          monthlyRent: activeLease.monthlyRent,
+          vacancyPct: activeLease.vacancyPct || 0,
           recurring,
           variableAnnualBudget: 0,
           purchasePrice: prop.purchasePrice,
@@ -354,6 +380,50 @@ export function CashflowPage() {
     flujoNeto: row.netCashflow,
   }));
 
+  // Calculate totals from chartData for potential aggregate usage
+  const chartTotals = {
+    ingresos: chartData.reduce((sum, d) => sum + d.ingresos, 0),
+    gastos: chartData.reduce((sum, d) => sum + d.gastos, 0),
+    deuda: chartData.reduce((sum, d) => sum + d.deuda, 0),
+    flujoNeto: chartData.reduce((sum, d) => sum + d.flujoNeto, 0),
+  };
+
+  // Compute display totals depending on viewMode:
+  // - monthly: show the most recent month (not sum of all months)
+  // - yearly: show the most recent year's numbers (not sum of all years)
+  const displayTotals = (() => {
+    if (chartData.length === 0) {
+      return {
+        ingresos: 0,
+        gastos: 0,
+        deuda: 0,
+        flujoNeto: 0,
+        label: "",
+      };
+    }
+
+    const last = chartData[chartData.length - 1];
+
+    if (viewMode === "monthly") {
+      return {
+        ingresos: last.ingresos,
+        gastos: last.gastos,
+        deuda: last.deuda,
+        flujoNeto: last.flujoNeto,
+        label: last.period,
+      };
+    }
+
+    // yearly -> pick the last year shown (most recent)
+    return {
+      ingresos: last.ingresos,
+      gastos: last.gastos,
+      deuda: last.deuda,
+      flujoNeto: last.flujoNeto,
+      label: `Año ${last.period}`,
+    };
+  })();
+
   if (!userDoc?.orgId) {
     return <Typography variant="body1">Cargando organización...</Typography>;
   }
@@ -396,15 +466,7 @@ export function CashflowPage() {
             </ToggleButtonGroup>
           </Grid>
 
-          <Grid item xs={12} sm={4}>
-            <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
-              <Chip
-                label={`Total: ${formatCurrency(totals.netCashflow)}`}
-                color={totals.netCashflow >= 0 ? "success" : "error"}
-                sx={{ fontWeight: "bold" }}
-              />
-            </Box>
-          </Grid>
+          <Grid item xs={12} sm={4}></Grid>
         </Grid>
       </Paper>
 
@@ -412,162 +474,255 @@ export function CashflowPage() {
         <Typography variant="h6" gutterBottom>
           Evolución del Cashflow
         </Typography>
-        
+
         {/* Summary stats - always visible */}
-        <Grid container spacing={1.5} sx={{ mb: 2 }}>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'rgba(76, 175, 80, 0.08)', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem' }}>
-                Ingresos
-              </Typography>
-              <Typography variant="body2" fontWeight="bold" color="#4caf50" sx={{ fontSize: { xs: '0.85rem', sm: '1rem' } }}>
-                {formatCurrency(chartData.reduce((sum, d) => sum + d.ingresos, 0))}
-              </Typography>
-            </Box>
+        {loading ? (
+          <Box sx={{ display: "flex", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
+            {[1, 2, 3, 4].map((i) => (
+              <Box key={i} sx={{ flex: "0 1 calc(25% - 12px)", minWidth: 100 }}>
+                <Skeleton variant="rectangular" height={60} />
+              </Box>
+            ))}
+          </Box>
+        ) : (
+          <Grid container spacing={1.5} sx={{ mb: 2 }}>
+            <Grid item xs={6} sm={3}>
+              <Box
+                sx={{
+                  textAlign: "center",
+                  p: 1,
+                  bgcolor: "rgba(76, 175, 80, 0.08)",
+                  borderRadius: 1,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  sx={{ fontSize: "0.7rem" }}
+                >
+                  Ingresos
+                </Typography>
+                <Typography
+                  variant="body2"
+                  fontWeight="bold"
+                  color="#4caf50"
+                  sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}
+                >
+                  {formatCurrency(displayTotals.ingresos)}
+                </Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <Box
+                sx={{
+                  textAlign: "center",
+                  p: 1,
+                  bgcolor: "rgba(255, 152, 0, 0.08)",
+                  borderRadius: 1,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  sx={{ fontSize: "0.7rem" }}
+                >
+                  Gastos
+                </Typography>
+                <Typography
+                  variant="body2"
+                  fontWeight="bold"
+                  color="#ff9800"
+                  sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}
+                >
+                  {formatCurrency(displayTotals.gastos)}
+                </Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <Box
+                sx={{
+                  textAlign: "center",
+                  p: 1,
+                  bgcolor: "rgba(244, 67, 54, 0.08)",
+                  borderRadius: 1,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  sx={{ fontSize: "0.7rem" }}
+                >
+                  Deuda
+                </Typography>
+                <Typography
+                  variant="body2"
+                  fontWeight="bold"
+                  color="#f44336"
+                  sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}
+                >
+                  {formatCurrency(displayTotals.deuda)}
+                </Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <Box
+                sx={{
+                  textAlign: "center",
+                  p: 1,
+                  bgcolor: "rgba(33, 150, 243, 0.08)",
+                  borderRadius: 1,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  sx={{ fontSize: "0.7rem" }}
+                >
+                  Flujo Neto
+                </Typography>
+                <Typography
+                  variant="body2"
+                  fontWeight="bold"
+                  color="#2196f3"
+                  sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}
+                >
+                  {formatCurrency(displayTotals.flujoNeto)}
+                </Typography>
+              </Box>
+            </Grid>
           </Grid>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'rgba(255, 152, 0, 0.08)', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem' }}>
-                Gastos
-              </Typography>
-              <Typography variant="body2" fontWeight="bold" color="#ff9800" sx={{ fontSize: { xs: '0.85rem', sm: '1rem' } }}>
-                {formatCurrency(chartData.reduce((sum, d) => sum + d.gastos, 0))}
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'rgba(244, 67, 54, 0.08)', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem' }}>
-                Deuda
-              </Typography>
-              <Typography variant="body2" fontWeight="bold" color="#f44336" sx={{ fontSize: { xs: '0.85rem', sm: '1rem' } }}>
-                {formatCurrency(chartData.reduce((sum, d) => sum + d.deuda, 0))}
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'rgba(33, 150, 243, 0.08)', borderRadius: 1 }}>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem' }}>
-                Flujo Neto
-              </Typography>
-              <Typography variant="body2" fontWeight="bold" color="#2196f3" sx={{ fontSize: { xs: '0.85rem', sm: '1rem' } }}>
-                {formatCurrency(chartData.reduce((sum, d) => sum + d.flujoNeto, 0))}
-              </Typography>
-            </Box>
-          </Grid>
-        </Grid>
+        )}
 
         <Box sx={{ height: { xs: 200, sm: 250 } }}>
-          <Line
-            data={{
-              labels: chartData.map((d) => d.period),
-              datasets: [
-                {
-                  label: 'Ingresos',
-                  data: chartData.map((d) => d.ingresos),
-                  borderColor: '#4caf50',
-                  backgroundColor: 'rgba(76, 175, 80, 0.1)',
-                  tension: 0.4,
-                  borderWidth: 2,
-                  pointRadius: 4,
-                  pointHoverRadius: 6,
-                  pointBackgroundColor: '#4caf50',
+          {loading ? (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+              }}
+            >
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Line
+              data={{
+                labels: chartData.map((d) => d.period),
+                datasets: [
+                  {
+                    label: "Ingresos",
+                    data: chartData.map((d) => d.ingresos),
+                    borderColor: "#4caf50",
+                    backgroundColor: "rgba(76, 175, 80, 0.1)",
+                    tension: 0.4,
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: "#4caf50",
+                  },
+                  {
+                    label: "Gastos",
+                    data: chartData.map((d) => d.gastos),
+                    borderColor: "#ff9800",
+                    backgroundColor: "rgba(255, 152, 0, 0.1)",
+                    tension: 0.4,
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: "#ff9800",
+                  },
+                  {
+                    label: "Deuda",
+                    data: chartData.map((d) => d.deuda),
+                    borderColor: "#f44336",
+                    backgroundColor: "rgba(244, 67, 54, 0.1)",
+                    tension: 0.4,
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: "#f44336",
+                  },
+                  {
+                    label: "Flujo Neto",
+                    data: chartData.map((d) => d.flujoNeto),
+                    borderColor: "#2196f3",
+                    backgroundColor: "rgba(33, 150, 243, 0.1)",
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: "#2196f3",
+                  },
+                ],
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                  mode: "index",
+                  intersect: false,
                 },
-                {
-                  label: 'Gastos',
-                  data: chartData.map((d) => d.gastos),
-                  borderColor: '#ff9800',
-                  backgroundColor: 'rgba(255, 152, 0, 0.1)',
-                  tension: 0.4,
-                  borderWidth: 2,
-                  pointRadius: 4,
-                  pointHoverRadius: 6,
-                  pointBackgroundColor: '#ff9800',
-                },
-                {
-                  label: 'Deuda',
-                  data: chartData.map((d) => d.deuda),
-                  borderColor: '#f44336',
-                  backgroundColor: 'rgba(244, 67, 54, 0.1)',
-                  tension: 0.4,
-                  borderWidth: 2,
-                  pointRadius: 4,
-                  pointHoverRadius: 6,
-                  pointBackgroundColor: '#f44336',
-                },
-                {
-                  label: 'Flujo Neto',
-                  data: chartData.map((d) => d.flujoNeto),
-                  borderColor: '#2196f3',
-                  backgroundColor: 'rgba(33, 150, 243, 0.1)',
-                  tension: 0.4,
-                  borderWidth: 3,
-                  pointRadius: 5,
-                  pointHoverRadius: 7,
-                  pointBackgroundColor: '#2196f3',
-                },
-              ],
-            }}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              interaction: {
-                mode: 'index',
-                intersect: false,
-              },
-              plugins: {
-                legend: {
-                  display: true,
-                  position: 'top',
-                  labels: {
-                    usePointStyle: true,
+                plugins: {
+                  legend: {
+                    display: true,
+                    position: "top",
+                    labels: {
+                      usePointStyle: true,
+                      padding: 12,
+                      font: {
+                        size: 10,
+                      },
+                    },
+                  },
+                  tooltip: {
+                    enabled: true,
+                    backgroundColor: "rgba(255, 255, 255, 0.95)",
+                    titleColor: "#000",
+                    bodyColor: "#666",
+                    borderColor: "#ddd",
+                    borderWidth: 1,
                     padding: 12,
-                    font: {
-                      size: 10,
+                    displayColors: true,
+                    callbacks: {
+                      label: (context) => {
+                        return `${context.dataset.label}: ${formatCurrency(
+                          context.parsed.y ?? 0
+                        )}`;
+                      },
                     },
                   },
                 },
-                tooltip: {
-                  enabled: true,
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                  titleColor: '#000',
-                  bodyColor: '#666',
-                  borderColor: '#ddd',
-                  borderWidth: 1,
-                  padding: 12,
-                  displayColors: true,
-                  callbacks: {
-                    label: (context) => {
-                      return `${context.dataset.label}: ${formatCurrency(context.parsed.y ?? 0)}`;
+                scales: {
+                  x: {
+                    grid: {
+                      display: false,
+                    },
+                    ticks: {
+                      font: {
+                        size: 9,
+                      },
+                    },
+                  },
+                  y: {
+                    grid: {
+                      color: "rgba(0, 0, 0, 0.05)",
+                    },
+                    ticks: {
+                      callback: (value) => formatCurrency(value as number),
+                      font: {
+                        size: 9,
+                      },
                     },
                   },
                 },
-              },
-              scales: {
-                x: {
-                  grid: {
-                    display: false,
-                  },
-                  ticks: {
-                    font: {
-                      size: 9,
-                    },
-                  },
-                },
-                y: {
-                  grid: {
-                    color: 'rgba(0, 0, 0, 0.05)',
-                  },
-                  ticks: {
-                    callback: (value) => formatCurrency(value as number),
-                    font: {
-                      size: 9,
-                    },
-                  },
-                },
-              },
-            }}
-          />
+              }}
+            />
+          )}
         </Box>
       </Paper>
 
@@ -575,6 +730,14 @@ export function CashflowPage() {
         <Typography variant="h6" gutterBottom>
           Detalle {viewMode === "monthly" ? "Mensual" : "Anual"}
         </Typography>
+
+        {loading && (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, py: 4 }}>
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} variant="rectangular" height={200} />
+            ))}
+          </Box>
+        )}
 
         {cashflowData.length === 0 && !loading && (
           <Box sx={{ py: 6, textAlign: "center" }}>
@@ -679,10 +842,18 @@ export function CashflowPage() {
                       pl: 2,
                     }}
                   >
-                    <Typography variant="body2" fontSize="0.875rem" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      fontSize="0.875rem"
+                      color="text.secondary"
+                    >
                       - Intereses
                     </Typography>
-                    <Typography variant="body2" fontSize="0.875rem" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      fontSize="0.875rem"
+                      color="text.secondary"
+                    >
                       <Money amount={row.debtInterest} />
                     </Typography>
                   </Box>
@@ -695,10 +866,18 @@ export function CashflowPage() {
                       pl: 2,
                     }}
                   >
-                    <Typography variant="body2" fontSize="0.875rem" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      fontSize="0.875rem"
+                      color="text.secondary"
+                    >
                       - Amortización
                     </Typography>
-                    <Typography variant="body2" fontSize="0.875rem" color="text.secondary">
+                    <Typography
+                      variant="body2"
+                      fontSize="0.875rem"
+                      color="text.secondary"
+                    >
                       <Money amount={row.debtPrincipal} />
                     </Typography>
                   </Box>
@@ -858,7 +1037,9 @@ export function CashflowPage() {
                       justifyContent: "space-between",
                       alignItems: "center",
                       bgcolor:
-                        totals.netCashflow >= 0 ? "success.light" : "error.light",
+                        totals.netCashflow >= 0
+                          ? "success.light"
+                          : "error.light",
                       p: 1.5,
                       borderRadius: 1,
                       mt: 1,
