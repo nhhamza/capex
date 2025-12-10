@@ -33,8 +33,55 @@ import {
 } from "../api";
 import { Property } from "../types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { computeLeveredMetrics, sumClosingCosts } from "../calculations";
+import { computeLeveredMetrics, sumClosingCosts, buildAmortizationSchedule } from "../calculations";
 import { formatPercent, formatCurrency } from "@/utils/format";
+
+/**
+ * Calculate current loan balance based on months elapsed since start date
+ */
+function getRemainingLoanBalance(
+  loan: any,
+  currentDate: Date = new Date()
+): number {
+  if (!loan || !loan.startDate || !loan.principal || !loan.termMonths) {
+    return 0;
+  }
+
+  try {
+    const startDate = new Date(loan.startDate);
+    const monthsElapsed = Math.floor(
+      (currentDate.getFullYear() - startDate.getFullYear()) * 12 +
+        (currentDate.getMonth() - startDate.getMonth())
+    );
+
+    // Don't calculate if loan hasn't started yet
+    if (monthsElapsed < 0) {
+      return loan.principal;
+    }
+
+    // If loan term is complete, balance is 0
+    if (monthsElapsed >= loan.termMonths) {
+      return 0;
+    }
+
+    // Build amortization schedule and get the balance at current month
+    const schedule = buildAmortizationSchedule({
+      principal: loan.principal,
+      annualRatePct: loan.annualRatePct || 0,
+      termMonths: loan.termMonths,
+      interestOnlyMonths: loan.interestOnlyMonths || 0,
+    });
+
+    if (monthsElapsed > 0 && monthsElapsed <= schedule.schedule.length) {
+      return schedule.schedule[monthsElapsed - 1]?.balance || 0;
+    }
+
+    return loan.principal;
+  } catch (error) {
+    console.error("Error calculating remaining loan balance:", error);
+    return loan?.principal || 0;
+  }
+}
 
 export function PropertiesList() {
   const navigate = useNavigate();
@@ -112,16 +159,22 @@ export function PropertiesList() {
           const closingCostsTotal = sumClosingCosts(property.closingCosts);
           const totalInvestment = property.purchasePrice + closingCostsTotal;
 
+          // Calculate remaining loan balance
+          const remainingBalance = getRemainingLoanBalance(loan);
+
           if (!lease) {
             return {
               id: property.id,
               address: property.address,
               purchasePrice: property.purchasePrice,
+              currentValue: property.currentValue || property.purchasePrice,
               totalInvestment,
               monthlyRent: 0,
               capRate: 0,
               cashOnCash: 0,
               occupancy: 0,
+              loanBalance: remainingBalance,
+              loan,
             };
           }
 
@@ -139,11 +192,14 @@ export function PropertiesList() {
             id: property.id,
             address: property.address,
             purchasePrice: property.purchasePrice,
+            currentValue: property.currentValue || property.purchasePrice,
             totalInvestment,
             monthlyRent: lease.monthlyRent,
             capRate: metrics.capRateNet,
             cashOnCash: metrics.cashOnCash,
             occupancy: (1 - (lease.vacancyPct || 0)) * 100,
+            loanBalance: remainingBalance,
+            loan,
           };
         })
       );
@@ -290,29 +346,49 @@ export function PropertiesList() {
                         color="text.secondary"
                         display="block"
                       >
-                        Inversión Total
+                        Valor Actual
                       </Typography>
                       <Typography
                         variant="body1"
                         fontWeight={600}
                         color="secondary.main"
                       >
-                        {formatCurrency(row.totalInvestment)}
+                        {formatCurrency(row.currentValue)}
                       </Typography>
                     </Box>
                   </Box>
 
-                  <Box>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      display="block"
-                    >
-                      Renta Mensual
-                    </Typography>
-                    <Typography variant="h6" color="success.main">
-                      {formatCurrency(row.monthlyRent)}
-                    </Typography>
+                  <Box sx={{ display: "flex", gap: 3 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Hipoteca Pendiente
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        fontWeight={600}
+                        color={row.loanBalance > 0 ? "error.main" : "success.main"}
+                      >
+                        {row.loanBalance > 0
+                          ? formatCurrency(row.loanBalance)
+                          : "Pagada"}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                      >
+                        Renta Mensual
+                      </Typography>
+                      <Typography variant="body1" fontWeight={600} color="success.main">
+                        {formatCurrency(row.monthlyRent)}
+                      </Typography>
+                    </Box>
                   </Box>
 
                   <Box

@@ -31,6 +31,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import PeopleIcon from "@mui/icons-material/People";
 import UpgradeIcon from "@mui/icons-material/Upgrade";
 import CalculateIcon from "@mui/icons-material/Calculate";
+import ApartmentIcon from "@mui/icons-material/Apartment";
 import { useAuth } from "@/auth/authContext";
 import { useOrgLimits } from "@/hooks/useOrgLimits";
 
@@ -94,7 +95,6 @@ export function Layout() {
 
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon /> },
-    { label: "Analizador", path: "/deal-analyzer", icon: <CalculateIcon /> },
     { label: "Viviendas", path: "/properties", icon: <HomeWorkIcon /> },
     { label: "Gastos", path: "/expenses", icon: <ReceiptIcon /> },
     { label: "Cashflow", path: "/cashflow", icon: <AccountBalanceIcon /> },
@@ -102,6 +102,7 @@ export function Layout() {
     ...(isAdmin
       ? [{ label: "Usuarios", path: "/users", icon: <PeopleIcon /> }]
       : []),
+    { label: "Analizador", path: "/deal-analyzer", icon: <CalculateIcon /> },
     { label: "Configuración", path: "/settings", icon: <SettingsIcon /> },
   ];
 
@@ -188,8 +189,9 @@ export function Layout() {
           >
             <MenuIcon />
           </IconButton>
+          <ApartmentIcon sx={{ mr: 1, fontSize: 28 }} />
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {userDoc?.orgId ? "Gestión Inmobiliaria" : "Cargando..."}
+            {userDoc?.orgId ? "TY Gestión Inmobiliaria" : "Cargando..."}
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {!planLoading && (

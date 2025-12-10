@@ -100,9 +100,20 @@ export function DashboardPage() {
 
       for (const prop of filteredProps) {
         const lease = await getLeases(prop.id).then((leases) => leases[0]);
-        if (!lease) continue;
-
         const loan = await getLoans(prop.id).then((loans) => loans[0]);
+        
+        // Always accumulate debt ratio based on currentValue, regardless of lease
+        if (loan) {
+          totalPrincipal += loan.principal;
+        }
+        // Use currentValue if available else purchasePrice as proxy
+        totalCurrentValue +=
+          typeof prop.currentValue === "number" && prop.currentValue > 0
+            ? prop.currentValue
+            : prop.purchasePrice;
+
+        // Skip rest of calculations if no lease
+        if (!lease) continue;
         const recurring = await getRecurringExpenses(prop.id);
         const oneOffExpenses = await getOneOffExpenses(prop.id);
 
@@ -133,14 +144,6 @@ export function DashboardPage() {
         totalEquitySum += metrics.equity;
         weightedCashOnCash += metrics.cashOnCash * metrics.equity;
         weightedCapRate += metrics.capRateNet * metrics.equity;
-        if (loan) {
-          totalPrincipal += loan.principal;
-        }
-        // Use currentValue if available else purchasePrice as proxy
-        totalCurrentValue +=
-          typeof prop.currentValue === "number" && prop.currentValue > 0
-            ? prop.currentValue
-            : prop.purchasePrice;
 
         // Calculate one-off expenses for current year
         const currentYear = new Date().getFullYear();

@@ -160,8 +160,11 @@ export function SignupPage() {
             Únete a la plataforma de gestión inmobiliaria para inversores y
             propietarios en España.
           </Typography>
-
-          <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 3 }}>
+          <Box
+            component="form"
+            onSubmit={handleSubmit(onSubmit)}
+            sx={{ mt: 3 }}
+          >
             <Grid container spacing={2}>
               {/* Name */}
               <Grid item xs={12}>
@@ -355,8 +358,8 @@ export function SignupPage() {
               align="center"
               sx={{ mt: 2 }}
             >
-              Durante la beta, tu cuenta es completamente gratuita. No
-              necesitas tarjeta de crédito.
+              Durante la beta, tu cuenta es completamente gratuita. No necesitas
+              tarjeta de crédito.
             </Typography>
 
             <Box sx={{ mt: 3, textAlign: "center" }}>

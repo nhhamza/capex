@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { addDoc, collection, doc, setDoc } from "firebase/firestore/lite";
-import { createProperty } from "@/modules/properties/api";
+import { createProperty, createLease, createLoan } from "@/modules/properties/api";
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
-import { db } from "@/firebase/client";
+import { db, storage } from "@/firebase/client";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import {
   Box,
   Paper,
@@ -16,9 +17,15 @@ import {
   TextField,
   Grid,
   CircularProgress,
+  Tooltip,
+  IconButton,
+  MenuItem,
 } from "@mui/material";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import DownloadIcon from "@mui/icons-material/Download";
+import DeleteIcon from "@mui/icons-material/Delete";
 
-const steps = ["Perfil", "Parámetros", "Primera Vivienda"];
+const steps = ["Perfil", "Primera Vivienda", "Contrato (Opcional)", "Financiación (Opcional)"];
 
 export function OnboardingWizard() {
   const navigate = useNavigate();
@@ -38,6 +45,62 @@ export function OnboardingWizard() {
   const [firstAddress, setFirstAddress] = useState("");
   const [firstPurchasePrice, setFirstPurchasePrice] = useState<number | "">("");
   const [firstMonthlyRent, setFirstMonthlyRent] = useState<number | "">("");
+
+  // Contract information state
+  const [contractTenantName, setContractTenantName] = useState("");
+  const [contractStartDate, setContractStartDate] = useState("");
+  const [contractEndDate, setContractEndDate] = useState("");
+  const [contractFile, setContractFile] = useState<{ name: string; url: string } | null>(null);
+  const [contractUploading, setContractUploading] = useState(false);
+  const [contractUploadProgress, setContractUploadProgress] = useState(0);
+
+  // Financing information state
+  const [financingLoanAmount, setFinancingLoanAmount] = useState<number | "">("");
+  const [financingInterestRate, setFinancingInterestRate] = useState<number | "">("");
+  const [financingTermYears, setFinancingTermYears] = useState<number | "">("");
+  const [financingBank, setFinancingBank] = useState("");
+  const [financingLoanType, setFinancingLoanType] = useState("fixed");
+
+  const handleContractFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    setContractUploading(true);
+    setContractUploadProgress(0);
+    try {
+      const file = e.target.files[0];
+      const storagePath = `onboarding-contracts/${Date.now()}_${file.name}`;
+      const fileRef = ref(storage, storagePath);
+
+      const uploadTask = uploadBytesResumable(fileRef, file);
+
+      // Track progress
+      uploadTask.on("state_changed", (snap) => {
+        const pct = Math.round(
+          (snap.bytesTransferred / snap.totalBytes) * 100
+        );
+        setContractUploadProgress(pct);
+      });
+
+      // Wait for upload to complete
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on("state_changed", undefined, reject, () => resolve());
+      });
+
+      // Get download URL
+      const url = await getDownloadURL(fileRef);
+      setContractFile({ name: file.name, url });
+    } catch (error) {
+      console.error("Error uploading contract:", error);
+      alert("Error al subir el contrato");
+    } finally {
+      setContractUploading(false);
+      setContractUploadProgress(0);
+    }
+  };
+
+  const handleContractFileDelete = () => {
+    setContractFile(null);
+  };
 
   const handleNext = async () => {
     if (activeStep === steps.length - 1) {
@@ -75,6 +138,61 @@ export function OnboardingWizard() {
                 notes: "Creado durante onboarding",
               });
               createdPropertyId = newProperty.id;
+
+              // If contract info provided, create a lease
+              if (
+                createdPropertyId &&
+                (contractTenantName ||
+                  contractStartDate ||
+                  (typeof firstMonthlyRent === "number" &&
+                    firstMonthlyRent > 0))
+              ) {
+                try {
+                  await createLease({
+                    propertyId: createdPropertyId,
+                    tenantName: contractTenantName || undefined,
+                    startDate: contractStartDate
+                      ? dayjs(contractStartDate).toISOString()
+                      : dayjs().toISOString(),
+                    endDate: contractEndDate
+                      ? dayjs(contractEndDate).toISOString()
+                      : undefined,
+                    monthlyRent:
+                      typeof firstMonthlyRent === "number"
+                        ? firstMonthlyRent
+                        : 0,
+                    contractUrl: contractFile?.url || undefined,
+                    isActive: true,
+                  });
+                } catch (err) {
+                  console.error("[Onboarding] Error creando contrato:", err);
+                }
+              }
+
+              // If financing info provided, create a loan
+              if (
+                createdPropertyId &&
+                (typeof financingLoanAmount === "number" &&
+                  financingLoanAmount > 0)
+              ) {
+                try {
+                  await createLoan({
+                    propertyId: createdPropertyId,
+                    principal: financingLoanAmount,
+                    annualRatePct:
+                      typeof financingInterestRate === "number"
+                        ? financingInterestRate
+                        : 0,
+                    termMonths:
+                      typeof financingTermYears === "number"
+                        ? financingTermYears * 12
+                        : 0,
+                    notes: `Préstamo ${financingLoanType} - ${financingBank || "No especificado"}`,
+                  });
+                } catch (err) {
+                  console.error("[Onboarding] Error creando financiación:", err);
+                }
+              }
             } catch (err) {
               console.error(
                 "[Onboarding] Error creando primera vivienda:",
@@ -82,7 +200,6 @@ export function OnboardingWizard() {
               );
             }
           }
-          // If rent provided also could create a lease later (future enhancement)
 
           // Wait briefly then redirect (full reload to ensure context picks new org)
           setTimeout(() => {
@@ -117,6 +234,61 @@ export function OnboardingWizard() {
               notes: "Creado durante onboarding (org existente)",
             });
             createdPropertyId = newProperty.id;
+
+            // If contract info provided, create a lease
+            if (
+              createdPropertyId &&
+              (contractTenantName ||
+                contractStartDate ||
+                (typeof firstMonthlyRent === "number" &&
+                  firstMonthlyRent > 0))
+            ) {
+              try {
+                await createLease({
+                  propertyId: createdPropertyId,
+                  tenantName: contractTenantName || undefined,
+                  startDate: contractStartDate
+                    ? dayjs(contractStartDate).toISOString()
+                    : dayjs().toISOString(),
+                  endDate: contractEndDate
+                    ? dayjs(contractEndDate).toISOString()
+                    : undefined,
+                  monthlyRent:
+                    typeof firstMonthlyRent === "number"
+                      ? firstMonthlyRent
+                      : 0,
+                  contractUrl: contractFile?.url || undefined,
+                  isActive: true,
+                });
+              } catch (err) {
+                console.error("[Onboarding] Error creando contrato:", err);
+              }
+            }
+
+            // If financing info provided, create a loan
+            if (
+              createdPropertyId &&
+              (typeof financingLoanAmount === "number" &&
+                financingLoanAmount > 0)
+            ) {
+              try {
+                await createLoan({
+                  propertyId: createdPropertyId,
+                  principal: financingLoanAmount,
+                  annualRatePct:
+                    typeof financingInterestRate === "number"
+                      ? financingInterestRate
+                      : 0,
+                  termMonths:
+                    typeof financingTermYears === "number"
+                      ? financingTermYears * 12
+                      : 0,
+                  notes: `Préstamo ${financingLoanType} - ${financingBank || "No especificado"}`,
+                });
+              } catch (err) {
+                console.error("[Onboarding] Error creando financiación:", err);
+              }
+            }
           } catch (err) {
             console.error(
               "[Onboarding] Error creando primera vivienda (org existente):",
@@ -245,52 +417,6 @@ export function OnboardingWizard() {
           {activeStep === 1 && (
             <Box>
               <Typography variant="h6" gutterBottom>
-                Parámetros por Defecto
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Estos valores se usarán como base para nuevas viviendas. Podrás
-                cambiarlos más tarde.
-              </Typography>
-              <Grid container spacing={2} sx={{ mt: 2 }}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="% ITP"
-                    type="number"
-                    defaultValue="10"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="% Vacancia"
-                    type="number"
-                    defaultValue="5"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Gastos Notaría (€)"
-                    type="number"
-                    defaultValue="1200"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Gastos Registro (€)"
-                    type="number"
-                    defaultValue="800"
-                  />
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-
-          {activeStep === 2 && (
-            <Box>
-              <Typography variant="h6" gutterBottom>
                 Añadir Primera Vivienda (Opcional)
               </Typography>
               <Typography variant="body2" color="text.secondary" paragraph>
@@ -321,7 +447,7 @@ export function OnboardingWizard() {
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
-                    label="Renta Alquier Mensual (€)"
+                    label="Renta Alquiler Mensual (€)"
                     type="number"
                     value={firstMonthlyRent}
                     onChange={(e) =>
@@ -329,7 +455,205 @@ export function OnboardingWizard() {
                         e.target.value === "" ? "" : Number(e.target.value)
                       )
                     }
-                    helperText="(Guardaremos la vivienda; el contrato se añade luego)"
+                    helperText="(Puedes añadir el contrato en el siguiente paso)"
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+
+          {activeStep === 2 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Información del Contrato de Arrendamiento (Opcional)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                Añade los detalles del contrato de alquiler. Puedes completarlo
+                más tarde si prefieres.
+              </Typography>
+              <Grid container spacing={2} sx={{ mt: 2 }}>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Nombre del Arrendatario"
+                    placeholder="Ej: Juan García López"
+                    value={contractTenantName}
+                    onChange={(e) => setContractTenantName(e.target.value)}
+                    helperText="(Opcional)"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Fecha de Inicio del Contrato"
+                    type="date"
+                    value={contractStartDate}
+                    onChange={(e) => setContractStartDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Fecha de Fin del Contrato"
+                    type="date"
+                    value={contractEndDate}
+                    onChange={(e) => setContractEndDate(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Documento del Contrato (PDF) Optional
+                  </Typography>
+                  {contractFile ? (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 2,
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 1,
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                        {contractFile.name}
+                      </Typography>
+                      <Tooltip title="Descargar">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            const a = document.createElement("a");
+                            a.href = contractFile.url;
+                            a.download = contractFile.name;
+                            a.click();
+                          }}
+                        >
+                          <DownloadIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={handleContractFileDelete}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  ) : (
+                    <>
+                      <Button
+                        component="label"
+                        variant="outlined"
+                        startIcon={
+                          contractUploading ? (
+                            <CircularProgress size={18} />
+                          ) : (
+                            <CloudUploadIcon />
+                          )
+                        }
+                        disabled={contractUploading}
+                      >
+                        {contractUploading ? "Subiendo..." : "Subir Contrato"}
+                        <input
+                          type="file"
+                          hidden
+                          accept=".pdf"
+                          onChange={handleContractFileChange}
+                        />
+                      </Button>
+                      {contractUploading && contractUploadProgress > 0 && (
+                        <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                          Progreso: {contractUploadProgress}%
+                        </Typography>
+                      )}
+                    </>
+                  )}
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+
+          {activeStep === 3 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Información de Financiación (Opcional)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                Añade los detalles de tu hipoteca o préstamo. Puedes completarlo
+                más tarde si prefieres.
+              </Typography>
+              <Grid container spacing={2} sx={{ mt: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Importe del Préstamo (€)"
+                    type="number"
+                    value={financingLoanAmount}
+                    onChange={(e) =>
+                      setFinancingLoanAmount(
+                        e.target.value === "" ? "" : Number(e.target.value)
+                      )
+                    }
+                    helperText="(Opcional)"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Tipo de Préstamo"
+                    select
+                    value={financingLoanType}
+                    onChange={(e) => setFinancingLoanType(e.target.value)}
+                  >
+                    <MenuItem value="fixed">Hipoteca de tipo fijo</MenuItem>
+                    <MenuItem value="variable">Hipoteca de tipo variable</MenuItem>
+                    <MenuItem value="mixed">Hipoteca mixta</MenuItem>
+                    <MenuItem value="personal">Préstamo personal</MenuItem>
+                    <MenuItem value="other">Otro</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Tipo de Interés Anual (%)"
+                    type="number"
+                    inputProps={{ step: "0.01" }}
+                    value={financingInterestRate}
+                    onChange={(e) =>
+                      setFinancingInterestRate(
+                        e.target.value === "" ? "" : Number(e.target.value)
+                      )
+                    }
+                    helperText="(Ej: 3.5)"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Plazo del Préstamo (Años)"
+                    type="number"
+                    value={financingTermYears}
+                    onChange={(e) =>
+                      setFinancingTermYears(
+                        e.target.value === "" ? "" : Number(e.target.value)
+                      )
+                    }
+                    helperText="(Ej: 25, 30)"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Entidad Financiera"
+                    placeholder="Ej: Banco Bilbao Vizcaya Argentaria"
+                    value={financingBank}
+                    onChange={(e) => setFinancingBank(e.target.value)}
+                    helperText="(Opcional)"
                   />
                 </Grid>
               </Grid>

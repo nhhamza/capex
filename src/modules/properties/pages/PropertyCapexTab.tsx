@@ -31,6 +31,8 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DownloadIcon from "@mui/icons-material/Download";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { DatePicker } from "@mui/x-date-pickers";
+import { storage } from "@/firebase/client";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { OneOffExpense } from "../types";
 import {
   createOneOffExpense,
@@ -98,15 +100,7 @@ export function PropertyCapexTab({
     name: string;
     url: string;
   } | null>(null);
-
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
-  };
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const {
     control,
@@ -177,15 +171,36 @@ export function PropertyCapexTab({
     if (!e.target.files || e.target.files.length === 0) return;
 
     setUploading(true);
+    setUploadProgress(0);
     try {
       const file = e.target.files[0]; // Only take first file
-      const base64Url = await fileToBase64(file);
-      setUploadedFile({ name: file.name, url: base64Url });
+      const storagePath = `capex/${propertyId}/${Date.now()}_${file.name}`;
+      const fileRef = ref(storage, storagePath);
+
+      const uploadTask = uploadBytesResumable(fileRef, file);
+
+      // Track progress
+      uploadTask.on("state_changed", (snap) => {
+        const pct = Math.round(
+          (snap.bytesTransferred / snap.totalBytes) * 100
+        );
+        setUploadProgress(pct);
+      });
+
+      // Wait for upload to complete
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on("state_changed", undefined, reject, () => resolve());
+      });
+
+      // Get download URL
+      const url = await getDownloadURL(fileRef);
+      setUploadedFile({ name: file.name, url });
     } catch (error) {
       console.error("Error uploading file:", error);
       alert("Error al subir el archivo");
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -620,26 +635,33 @@ export function PropertyCapexTab({
                     </Box>
                   </>
                 ) : (
-                  <Button
-                    component="label"
-                    variant="outlined"
-                    startIcon={
-                      uploading ? (
-                        <CircularProgress size={18} />
-                      ) : (
-                        <CloudUploadIcon />
-                      )
-                    }
-                    disabled={uploading}
-                  >
-                    {uploading ? "Subiendo..." : "Subir archivo"}
-                    <input
-                      type="file"
-                      hidden
-                      accept="*"
-                      onChange={handleFileChange}
-                    />
-                  </Button>
+                  <>
+                    <Button
+                      component="label"
+                      variant="outlined"
+                      startIcon={
+                        uploading ? (
+                          <CircularProgress size={18} />
+                        ) : (
+                          <CloudUploadIcon />
+                        )
+                      }
+                      disabled={uploading}
+                    >
+                      {uploading ? "Subiendo..." : "Subir archivo"}
+                      <input
+                        type="file"
+                        hidden
+                        accept="*"
+                        onChange={handleFileChange}
+                      />
+                    </Button>
+                    {uploading && uploadProgress > 0 && (
+                      <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                        Progreso: {uploadProgress}%
+                      </Typography>
+                    )}
+                  </>
                 )}
               </Grid>
             </Grid>

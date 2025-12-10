@@ -43,7 +43,7 @@ const TABS: PropertyTabConfig[] = [
   },
   {
     value: "contrato",
-    label: "Contrato",
+    label: "Contrato de alquiler",
     icon: <AssignmentIcon fontSize="small" />,
   },
   {
@@ -59,7 +59,7 @@ const TABS: PropertyTabConfig[] = [
   { value: "docs", label: "Documentos", icon: <FolderIcon fontSize="small" /> },
   {
     value: "financiacion",
-    label: "Financiación",
+    label: "Financiación (Hipotecas)",
     icon: <AccountBalanceIcon fontSize="small" />,
   },
   { value: "notas", label: "Notas", icon: <NotesIcon fontSize="small" /> },
