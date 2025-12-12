@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -47,7 +47,12 @@ import {
   getRecurringExpenses,
   getOneOffExpenses,
 } from "@/modules/properties/api";
-import { Property } from "@/modules/properties/types";
+import {
+  Property,
+  Lease,
+  Loan,
+  RecurringExpense,
+} from "@/modules/properties/types";
 import {
   computeLeveredMetrics,
   sumClosingCosts,
@@ -69,151 +74,322 @@ interface CashflowRow {
   netCashflow: number;
 }
 
+interface OneOffExpense {
+  id: string;
+  propertyId: string;
+  date: string;
+  amount: number;
+}
+
+type LeasesByProp = Record<string, Lease[]>;
+type RecurringByProp = Record<string, RecurringExpense[]>;
+type OneOffByProp = Record<string, OneOffExpense[]>;
+type LoansByProp = Record<string, Loan[]>;
+
 export function CashflowPage() {
   const { userDoc } = useAuth();
+
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("monthly");
-  const [cashflowData, setCashflowData] = useState<CashflowRow[]>([]);
+
+  const [leasesByProp, setLeasesByProp] = useState<LeasesByProp>({});
+  const [recurringByProp, setRecurringByProp] = useState<RecurringByProp>({});
+  const [oneOffByProp, setOneOffByProp] = useState<OneOffByProp>({});
+  const [loansByProp, setLoansByProp] = useState<LoansByProp>({});
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  const [monthlyData, setMonthlyData] = useState<CashflowRow[]>([]);
+  const [yearlyData, setYearlyData] = useState<CashflowRow[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 1) Load properties
   useEffect(() => {
     const loadProperties = async () => {
       if (!userDoc?.orgId) return;
-      const props = await getProperties(userDoc.orgId);
-      setProperties(props);
+      setLoading(true);
+      try {
+        const props = await getProperties(userDoc.orgId);
+        setProperties(props);
+      } finally {
+        setLoading(false);
+      }
     };
     loadProperties();
   }, [userDoc]);
 
+  // 2) Load all per-property data ONCE (leases, recurring, one-off, loans)
   useEffect(() => {
-    const loadCashflowData = async () => {
+    const loadPerPropertyData = async () => {
+      if (!userDoc?.orgId || properties.length === 0) {
+        setLeasesByProp({});
+        setRecurringByProp({});
+        setOneOffByProp({});
+        setLoansByProp({});
+        setDataLoaded(false);
+        return;
+      }
+
       setLoading(true);
+      setDataLoaded(false);
+
       try {
-        const currentYear = dayjs().year();
-        const data: CashflowRow[] = [];
+        const leaseEntries = await Promise.all(
+          properties.map(async (prop) => {
+            const leases = await getLeases(prop.id);
+            return [prop.id, leases || []] as const;
+          })
+        );
 
-        if (viewMode === "monthly") {
-          // Generate 12 months of data
-          for (let i = 0; i < 12; i++) {
-            const monthDate = dayjs().year(currentYear).month(i);
-            const row = await calculateMonthCashflow(
-              monthDate,
-              selectedPropertyId
-            );
-            data.push(row);
-          }
-        } else {
-          // Generate 5 years of data
-          for (let i = 0; i < 5; i++) {
-            const year = currentYear - 4 + i;
-            const row = await calculateYearCashflow(year, selectedPropertyId);
-            data.push(row);
-          }
-        }
+        const recurringEntries = await Promise.all(
+          properties.map(async (prop) => {
+            const rec = await getRecurringExpenses(prop.id);
+            return [prop.id, rec || []] as const;
+          })
+        );
 
-        setCashflowData(data);
+        const oneOffEntries = await Promise.all(
+          properties.map(async (prop) => {
+            const capex = await getOneOffExpenses(prop.id);
+            return [prop.id, capex || []] as const;
+          })
+        );
+
+        const loanEntries = await Promise.all(
+          properties.map(async (prop) => {
+            const loans = await getLoans(prop.id);
+            return [prop.id, loans || []] as const;
+          })
+        );
+
+        const leasesMap: LeasesByProp = {};
+        leaseEntries.forEach(([id, leases]) => {
+          leasesMap[id] = leases;
+        });
+
+        const recurringMap: RecurringByProp = {};
+        recurringEntries.forEach(([id, rec]) => {
+          recurringMap[id] = rec;
+        });
+
+        const oneOffMap: OneOffByProp = {};
+        oneOffEntries.forEach(([id, capex]) => {
+          oneOffMap[id] = capex as OneOffExpense[];
+        });
+
+        const loansMap: LoansByProp = {};
+        loanEntries.forEach(([id, loans]) => {
+          loansMap[id] = loans;
+        });
+
+        setLeasesByProp(leasesMap);
+        setRecurringByProp(recurringMap);
+        setOneOffByProp(oneOffMap);
+        setLoansByProp(loansMap);
+        setDataLoaded(true);
       } finally {
         setLoading(false);
       }
     };
 
-    if (properties.length > 0) {
-      loadCashflowData();
-    } else {
-      setCashflowData([]);
-      setLoading(false);
-    }
-  }, [properties, selectedPropertyId, viewMode]);
+    loadPerPropertyData();
+  }, [userDoc, properties]);
 
-  const calculateMonthCashflow = async (
-    monthDate: dayjs.Dayjs,
-    propertyId: string
-  ): Promise<CashflowRow> => {
-    const period = monthDate.format("MMM YYYY");
-    let rentIncome = 0;
-    let recurringExpenses = 0;
-    let oneOffExpenses = 0;
-    let debtPayment = 0;
-    let debtInterest = 0;
-    let debtPrincipal = 0;
-
-    const propsToProcess =
-      propertyId === "all"
+  // Helper to pick which properties to process
+  const propsToProcess = useMemo(
+    () =>
+      selectedPropertyId === "all"
         ? properties
-        : properties.filter((p) => p.id === propertyId);
+        : properties.filter((p) => p.id === selectedPropertyId),
+    [properties, selectedPropertyId]
+  );
 
-    for (const prop of propsToProcess) {
-      const leases = await getLeases(prop.id);
-      if (!leases || leases.length === 0) continue;
+  // 3) Compute monthly & yearly data purely in memory (no more API calls)
+  useEffect(() => {
+    if (!dataLoaded || propsToProcess.length === 0) {
+      setMonthlyData([]);
+      setYearlyData([]);
+      return;
+    }
 
-      // Find lease active for this month (inclusive of start and end month)
-      const activeLease = leases.find((l) => {
-        if (!l || !l.startDate) return false;
-        const ls = dayjs(l.startDate);
-        const le = l.endDate ? dayjs(l.endDate) : null;
+    setLoading(true);
+    const currentYear = dayjs().year();
 
-        const startsOnOrBefore =
-          monthDate.isSame(ls, "month") || monthDate.isAfter(ls, "month");
-        const endsOnOrAfter =
-          !le ||
-          monthDate.isBefore(le, "month") ||
-          monthDate.isSame(le, "month");
-        return startsOnOrBefore && endsOnOrAfter;
-      });
+    const computeMonthCashflow = (monthDate: dayjs.Dayjs): CashflowRow => {
+      const period = monthDate.format("MMM YYYY");
+      let rentIncome = 0;
+      let recurringExpenses = 0;
+      let oneOffExpenses = 0;
+      let debtPayment = 0;
+      let debtInterest = 0;
+      let debtPrincipal = 0;
 
-      if (!activeLease) continue;
+      for (const prop of propsToProcess) {
+        const leases = leasesByProp[prop.id] || [];
+        if (!leases.length) continue;
 
-      // Rent income for the month (apply vacancy)
-      rentIncome +=
-        activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
+        // Lease active this month
+        const activeLease = leases.find((l) => {
+          if (!l || !l.startDate) return false;
+          const ls = dayjs(l.startDate);
+          const le = l.endDate ? dayjs(l.endDate) : null;
 
-      // Recurring expenses
-      const recurring = await getRecurringExpenses(prop.id);
-      for (const exp of recurring) {
-        if (exp.periodicity === "monthly") {
-          recurringExpenses += exp.amount;
-        } else if (exp.periodicity === "quarterly") {
-          // Check if this month is a quarter end (Jan, Apr, Jul, Oct = months 0, 3, 6, 9)
-          if ([0, 3, 6, 9].includes(monthDate.month())) {
+          const startsOnOrBefore =
+            monthDate.isSame(ls, "month") || monthDate.isAfter(ls, "month");
+          const endsOnOrAfter =
+            !le ||
+            monthDate.isBefore(le, "month") ||
+            monthDate.isSame(le, "month");
+
+          return startsOnOrBefore && endsOnOrAfter;
+        });
+
+        if (!activeLease) continue;
+
+        // Rent income (with vacancy)
+        rentIncome +=
+          activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
+
+        // Recurring expenses
+        const recurring = recurringByProp[prop.id] || [];
+        for (const exp of recurring) {
+          if (exp.periodicity === "monthly") {
             recurringExpenses += exp.amount;
-          }
-        } else if (exp.periodicity === "yearly") {
-          // Check if this is the due month
-          if (exp.nextDueDate) {
-            const dueDate = dayjs(exp.nextDueDate);
-            if (monthDate.isSame(dueDate, "month")) {
+          } else if (exp.periodicity === "quarterly") {
+            if ([0, 3, 6, 9].includes(monthDate.month())) {
               recurringExpenses += exp.amount;
+            }
+          } else if (exp.periodicity === "yearly") {
+            if (exp.nextDueDate) {
+              const dueDate = dayjs(exp.nextDueDate);
+              if (monthDate.isSame(dueDate, "month")) {
+                recurringExpenses += exp.amount;
+              }
             }
           }
         }
-      }
 
-      // One-off expenses (CapEx)
-      const capex = await getOneOffExpenses(prop.id);
-      for (const exp of capex) {
-        const expDate = dayjs(exp.date);
-        if (
-          monthDate.isSame(expDate, "month") &&
-          monthDate.isSame(expDate, "year")
-        ) {
-          oneOffExpenses += exp.amount;
+        // One-off expenses (CapEx)
+        const capex = oneOffByProp[prop.id] || [];
+        for (const exp of capex) {
+          const expDate = dayjs(exp.date);
+          if (
+            monthDate.isSame(expDate, "month") &&
+            monthDate.isSame(expDate, "year")
+          ) {
+            oneOffExpenses += exp.amount;
+          }
+        }
+
+        // Debt
+        const loans = loansByProp[prop.id] || [];
+        const loan = loans.length > 0 ? loans[0] : null;
+
+        if (loan) {
+          const loanStart = loan.startDate
+            ? dayjs(loan.startDate)
+            : dayjs(activeLease.startDate);
+          const monthsSinceLoanStart = monthDate.diff(loanStart, "month");
+
+          if (
+            monthsSinceLoanStart >= 0 &&
+            monthsSinceLoanStart < loan.termMonths
+          ) {
+            const closingCostsTotal = sumClosingCosts(prop.closingCosts);
+            const metrics = computeLeveredMetrics({
+              monthlyRent: activeLease.monthlyRent,
+              vacancyPct: activeLease.vacancyPct || 0,
+              recurring,
+              variableAnnualBudget: 0,
+              purchasePrice: prop.purchasePrice,
+              closingCostsTotal,
+              loan,
+            });
+
+            debtPayment += metrics.ads / 12;
+            debtInterest += metrics.interestsAnnual / 12;
+            debtPrincipal += metrics.principalAnnual / 12;
+          }
         }
       }
 
-      // Debt payment
-      const loans = await getLoans(prop.id);
-      const loan = loans && loans.length > 0 ? loans[0] : null;
-      if (loan) {
-        const loanStart = loan.startDate
-          ? dayjs(loan.startDate)
-          : dayjs(activeLease.startDate);
-        const monthsSinceLoanStart = monthDate.diff(loanStart, "month");
+      const noi = rentIncome - recurringExpenses - oneOffExpenses;
+      const netCashflow = noi - debtPayment;
 
-        if (
-          monthsSinceLoanStart >= 0 &&
-          monthsSinceLoanStart < loan.termMonths
-        ) {
+      return {
+        period,
+        rentIncome,
+        recurringExpenses,
+        oneOffExpenses,
+        debtPayment,
+        debtInterest,
+        debtPrincipal,
+        noi,
+        netCashflow,
+      };
+    };
+
+    const computeYearCashflow = (year: number): CashflowRow => {
+      const period = `${year}`;
+      let rentIncome = 0;
+      let recurringExpenses = 0;
+      let oneOffExpenses = 0;
+      let debtPayment = 0;
+      let debtInterest = 0;
+      let debtPrincipal = 0;
+
+      const yearStart = dayjs(`${year}-01-01`);
+      const yearEnd = dayjs(`${year}-12-31`);
+
+      for (const prop of propsToProcess) {
+        const leases = leasesByProp[prop.id] || [];
+        if (!leases.length) continue;
+
+        const leaseFallback = leases[0];
+        const activeLease =
+          leases.find((l) => {
+            if (!l || !l.startDate) return false;
+            const ls = dayjs(l.startDate);
+            const le = l.endDate ? dayjs(l.endDate) : null;
+            const startsOnOrBeforeYearEnd =
+              ls.isSame(yearEnd, "day") || ls.isBefore(yearEnd, "day");
+            const endsOnOrAfterYearStart =
+              !le ||
+              le.isSame(yearStart, "day") ||
+              le.isAfter(yearStart, "day");
+            return startsOnOrBeforeYearEnd && endsOnOrAfterYearStart;
+          }) || leaseFallback;
+
+        // Annual rent
+        rentIncome +=
+          activeLease.monthlyRent * 12 * (1 - (activeLease.vacancyPct || 0));
+
+        // Recurring expenses
+        const recurring = recurringByProp[prop.id] || [];
+        for (const exp of recurring) {
+          if (exp.periodicity === "monthly") {
+            recurringExpenses += exp.amount * 12;
+          } else if (exp.periodicity === "quarterly") {
+            recurringExpenses += exp.amount * 4;
+          } else if (exp.periodicity === "yearly") {
+            recurringExpenses += exp.amount;
+          }
+        }
+
+        // One-off for this year
+        const capex = oneOffByProp[prop.id] || [];
+        for (const exp of capex) {
+          const expDate = dayjs(exp.date);
+          if (expDate.year() === year) {
+            oneOffExpenses += exp.amount;
+          }
+        }
+
+        // Debt (annual)
+        const loans = loansByProp[prop.id] || [];
+        const loan = loans.length > 0 ? loans[0] : null;
+
+        if (loan) {
           const closingCostsTotal = sumClosingCosts(prop.closingCosts);
           const metrics = computeLeveredMetrics({
             monthlyRent: activeLease.monthlyRent,
@@ -225,165 +401,97 @@ export function CashflowPage() {
             loan,
           });
 
-          debtPayment += metrics.ads / 12;
-          debtInterest += metrics.interestsAnnual / 12;
-          debtPrincipal += metrics.principalAnnual / 12;
+          debtPayment += metrics.ads;
+          debtInterest += metrics.interestsAnnual;
+          debtPrincipal += metrics.principalAnnual;
         }
       }
-    }
 
-    const noi = rentIncome - recurringExpenses - oneOffExpenses;
-    const netCashflow = noi - debtPayment;
+      const noi = rentIncome - recurringExpenses - oneOffExpenses;
+      const netCashflow = noi - debtPayment;
 
-    return {
-      period,
-      rentIncome,
-      recurringExpenses,
-      oneOffExpenses,
-      debtPayment,
-      debtInterest,
-      debtPrincipal,
-      noi,
-      netCashflow,
+      return {
+        period,
+        rentIncome,
+        recurringExpenses,
+        oneOffExpenses,
+        debtPayment,
+        debtInterest,
+        debtPrincipal,
+        noi,
+        netCashflow,
+      };
     };
-  };
 
-  const calculateYearCashflow = async (
-    year: number,
-    propertyId: string
-  ): Promise<CashflowRow> => {
-    const period = `${year}`;
-    let rentIncome = 0;
-    let recurringExpenses = 0;
-    let oneOffExpenses = 0;
-    let debtPayment = 0;
-    let debtInterest = 0;
-    let debtPrincipal = 0;
-
-    const propsToProcess =
-      propertyId === "all"
-        ? properties
-        : properties.filter((p) => p.id === propertyId);
-
-    for (const prop of propsToProcess) {
-      const leases = await getLeases(prop.id);
-      if (!leases || leases.length === 0) continue;
-
-      // Choose a lease that is active during this year if possible
-      const leaseFallback = leases[0];
-      const yearStart = dayjs(`${year}-01-01`);
-      const yearEnd = dayjs(`${year}-12-31`);
-      const activeLease =
-        leases.find((l) => {
-          if (!l || !l.startDate) return false;
-          const ls = dayjs(l.startDate);
-          const le = l.endDate ? dayjs(l.endDate) : null;
-          const startsOnOrBeforeYearEnd =
-            ls.isSame(yearEnd, "day") || ls.isBefore(yearEnd, "day");
-          const endsOnOrAfterYearStart =
-            !le || le.isSame(yearStart, "day") || le.isAfter(yearStart, "day");
-          return startsOnOrBeforeYearEnd && endsOnOrAfterYearStart;
-        }) || leaseFallback;
-
-      // Annual rent (assumes activeLease covers the year; if starts/ends mid-year this is a simplification)
-      rentIncome +=
-        activeLease.monthlyRent * 12 * (1 - (activeLease.vacancyPct || 0));
-
-      // Recurring expenses
-      const recurring = await getRecurringExpenses(prop.id);
-      for (const exp of recurring) {
-        if (exp.periodicity === "monthly") {
-          recurringExpenses += exp.amount * 12;
-        } else if (exp.periodicity === "quarterly") {
-          recurringExpenses += exp.amount * 4;
-        } else if (exp.periodicity === "yearly") {
-          recurringExpenses += exp.amount;
-        }
-      }
-
-      // One-off expenses for this year
-      const capex = await getOneOffExpenses(prop.id);
-      for (const exp of capex) {
-        const expDate = dayjs(exp.date);
-        if (expDate.year() === year) {
-          oneOffExpenses += exp.amount;
-        }
-      }
-
-      // Annual debt payment
-      const loans = await getLoans(prop.id);
-      const loan = loans && loans.length > 0 ? loans[0] : null;
-      if (loan) {
-        const closingCostsTotal = sumClosingCosts(prop.closingCosts);
-        const metrics = computeLeveredMetrics({
-          monthlyRent: activeLease.monthlyRent,
-          vacancyPct: activeLease.vacancyPct || 0,
-          recurring,
-          variableAnnualBudget: 0,
-          purchasePrice: prop.purchasePrice,
-          closingCostsTotal,
-          loan,
-        });
-
-        debtPayment += metrics.ads;
-        debtInterest += metrics.interestsAnnual;
-        debtPrincipal += metrics.principalAnnual;
-      }
+    // Build monthly + yearly arrays once
+    const monthly: CashflowRow[] = [];
+    for (let i = 0; i < 12; i++) {
+      const monthDate = dayjs().year(currentYear).month(i);
+      monthly.push(computeMonthCashflow(monthDate));
     }
 
-    const noi = rentIncome - recurringExpenses - oneOffExpenses;
-    const netCashflow = noi - debtPayment;
-
-    return {
-      period,
-      rentIncome,
-      recurringExpenses,
-      oneOffExpenses,
-      debtPayment,
-      debtInterest,
-      debtPrincipal,
-      noi,
-      netCashflow,
-    };
-  };
-
-  // Calculate totals
-  const totals = cashflowData.reduce(
-    (acc, row) => ({
-      rentIncome: acc.rentIncome + row.rentIncome,
-      recurringExpenses: acc.recurringExpenses + row.recurringExpenses,
-      oneOffExpenses: acc.oneOffExpenses + row.oneOffExpenses,
-      debtPayment: acc.debtPayment + row.debtPayment,
-      debtInterest: acc.debtInterest + row.debtInterest,
-      debtPrincipal: acc.debtPrincipal + row.debtPrincipal,
-      noi: acc.noi + row.noi,
-      netCashflow: acc.netCashflow + row.netCashflow,
-    }),
-    {
-      rentIncome: 0,
-      recurringExpenses: 0,
-      oneOffExpenses: 0,
-      debtPayment: 0,
-      debtInterest: 0,
-      debtPrincipal: 0,
-      noi: 0,
-      netCashflow: 0,
+    const yearly: CashflowRow[] = [];
+    for (let i = 0; i < 5; i++) {
+      const year = currentYear - 4 + i;
+      yearly.push(computeYearCashflow(year));
     }
+
+    setMonthlyData(monthly);
+    setYearlyData(yearly);
+    setLoading(false);
+  }, [
+    dataLoaded,
+    propsToProcess,
+    leasesByProp,
+    recurringByProp,
+    oneOffByProp,
+    loansByProp,
+  ]);
+
+  // 4) Derive which data to show from viewMode (no recompute, just select)
+  const cashflowData = viewMode === "monthly" ? monthlyData : yearlyData;
+
+  // Totals (sum of rows)
+  const totals = useMemo(
+    () =>
+      cashflowData.reduce(
+        (acc, row) => ({
+          rentIncome: acc.rentIncome + row.rentIncome,
+          recurringExpenses: acc.recurringExpenses + row.recurringExpenses,
+          oneOffExpenses: acc.oneOffExpenses + row.oneOffExpenses,
+          debtPayment: acc.debtPayment + row.debtPayment,
+          debtInterest: acc.debtInterest + row.debtInterest,
+          debtPrincipal: acc.debtPrincipal + row.debtPrincipal,
+          noi: acc.noi + row.noi,
+          netCashflow: acc.netCashflow + row.netCashflow,
+        }),
+        {
+          rentIncome: 0,
+          recurringExpenses: 0,
+          oneOffExpenses: 0,
+          debtPayment: 0,
+          debtInterest: 0,
+          debtPrincipal: 0,
+          noi: 0,
+          netCashflow: 0,
+        }
+      ),
+    [cashflowData]
   );
 
-  // Prepare chart data
-  const chartData = cashflowData.map((row) => ({
-    period: row.period,
-    ingresos: row.rentIncome,
-    gastos: row.recurringExpenses + row.oneOffExpenses,
-    deuda: row.debtPayment,
-    flujoNeto: row.netCashflow,
-  }));
+  const chartData = useMemo(
+    () =>
+      cashflowData.map((row) => ({
+        period: row.period,
+        ingresos: row.rentIncome,
+        gastos: row.recurringExpenses + row.oneOffExpenses,
+        deuda: row.debtPayment,
+        flujoNeto: row.netCashflow,
+      })),
+    [cashflowData]
+  );
 
-  // Compute display totals depending on viewMode:
-  // - monthly: show the most recent month (not sum of all months)
-  // - yearly: show the most recent year's numbers (not sum of all years)
-  const displayTotals = (() => {
+  const displayTotals = useMemo(() => {
     if (chartData.length === 0) {
       return {
         ingresos: 0,
@@ -406,7 +514,6 @@ export function CashflowPage() {
       };
     }
 
-    // yearly -> pick the last year shown (most recent)
     return {
       ingresos: last.ingresos,
       gastos: last.gastos,
@@ -414,7 +521,7 @@ export function CashflowPage() {
       flujoNeto: last.flujoNeto,
       label: `Año ${last.period}`,
     };
-  })();
+  }, [chartData, viewMode]);
 
   if (!userDoc?.orgId) {
     return <Typography variant="body1">Cargando organización...</Typography>;
@@ -467,7 +574,7 @@ export function CashflowPage() {
           Evolución del Cashflow
         </Typography>
 
-        {/* Summary stats - always visible */}
+        {/* Summary tiles */}
         {loading ? (
           <Box sx={{ display: "flex", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
             {[1, 2, 3, 4].map((i) => (
@@ -666,9 +773,7 @@ export function CashflowPage() {
                     labels: {
                       usePointStyle: true,
                       padding: 12,
-                      font: {
-                        size: 10,
-                      },
+                      font: { size: 10 },
                     },
                   },
                   tooltip: {
@@ -679,36 +784,24 @@ export function CashflowPage() {
                     borderColor: "#ddd",
                     borderWidth: 1,
                     padding: 12,
-                    displayColors: true,
                     callbacks: {
-                      label: (context) => {
-                        return `${context.dataset.label}: ${formatCurrency(
+                      label: (context) =>
+                        `${context.dataset.label}: ${formatCurrency(
                           context.parsed.y ?? 0
-                        )}`;
-                      },
+                        )}`,
                     },
                   },
                 },
                 scales: {
                   x: {
-                    grid: {
-                      display: false,
-                    },
-                    ticks: {
-                      font: {
-                        size: 9,
-                      },
-                    },
+                    grid: { display: false },
+                    ticks: { font: { size: 9 } },
                   },
                   y: {
-                    grid: {
-                      color: "rgba(0, 0, 0, 0.05)",
-                    },
+                    grid: { color: "rgba(0, 0, 0, 0.05)" },
                     ticks: {
                       callback: (value) => formatCurrency(value as number),
-                      font: {
-                        size: 9,
-                      },
+                      font: { size: 9 },
                     },
                   },
                 },

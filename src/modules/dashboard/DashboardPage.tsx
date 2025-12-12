@@ -12,6 +12,8 @@ import {
   CardContent,
   useTheme,
   alpha,
+  Skeleton,
+  CircularProgress,
 } from "@mui/material";
 import {
   Chart as ChartJS,
@@ -37,6 +39,7 @@ ChartJS.register(
   ChartTooltip,
   ChartLegend
 );
+
 import { useAuth } from "@/auth/authContext";
 import {
   getProperties,
@@ -52,170 +55,265 @@ import {
 } from "@/modules/properties/calculations";
 import { formatCurrency } from "@/utils/format";
 
+interface OneOffExpense {
+  date: string;
+  amount: number;
+  // other fields exist but we don't need them here
+}
+
 export function DashboardPage() {
   const { userDoc } = useAuth();
   const theme = useTheme();
+
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
+
   const [totalCFAF, setTotalCFAF] = useState(0);
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalRecurringExpenses, setTotalRecurringExpenses] = useState(0);
   const [totalOneOffExpenses, setTotalOneOffExpenses] = useState(0);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<
+    { month: string; ingresos: number; gastos: number; deuda: number }[]
+  >([]);
   const [avgCashOnCash, setAvgCashOnCash] = useState(0);
   const [avgCapRate, setAvgCapRate] = useState(0);
   const [totalEquity, setTotalEquity] = useState(0);
-  const [portfolioDebtRatio, setPortfolioDebtRatio] = useState<number>(0); // principal / current value
+  const [portfolioDebtRatio, setPortfolioDebtRatio] = useState<number>(0);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
-      if (!userDoc?.orgId) return;
-
-      const props = await getProperties(userDoc.orgId);
-      setProperties(props);
-
-      // Filter properties based on selection
-      const filteredProps =
-        selectedPropertyId === "all"
-          ? props
-          : props.filter((p) => p.id === selectedPropertyId);
-
-      let cfaf = 0;
-      let annualIncome = 0;
-      let annualRecurringExpenses = 0;
-      let annualOneOffExpenses = 0;
-      let totalEquitySum = 0;
-      let weightedCashOnCash = 0;
-      let weightedCapRate = 0;
-      let totalPrincipal = 0;
-      let totalCurrentValue = 0;
-
-      const monthlyData: Record<
-        number,
-        { ingresos: number; gastos: number; deuda: number }
-      > = {};
-      for (let i = 1; i <= 12; i++) {
-        monthlyData[i] = { ingresos: 0, gastos: 0, deuda: 0 };
+      if (!userDoc?.orgId) {
+        setProperties([]);
+        setChartData([]);
+        setTotalCFAF(0);
+        setTotalIncome(0);
+        setTotalRecurringExpenses(0);
+        setTotalOneOffExpenses(0);
+        setTotalEquity(0);
+        setAvgCapRate(0);
+        setAvgCashOnCash(0);
+        setPortfolioDebtRatio(0);
+        return;
       }
 
-      for (const prop of filteredProps) {
-        const lease = await getLeases(prop.id).then((leases) => leases[0]);
-        const loan = await getLoans(prop.id).then((loans) => loans[0]);
+      setLoading(true);
+      try {
+        const props = await getProperties(userDoc.orgId);
+        setProperties(props);
 
-        // Always accumulate debt ratio based on currentValue, regardless of lease
-        if (loan) {
-          totalPrincipal += loan.principal;
+        const filteredProps =
+          selectedPropertyId === "all"
+            ? props
+            : props.filter((p) => p.id === selectedPropertyId);
+
+        if (filteredProps.length === 0) {
+          setChartData([]);
+          setTotalCFAF(0);
+          setTotalIncome(0);
+          setTotalRecurringExpenses(0);
+          setTotalOneOffExpenses(0);
+          setTotalEquity(0);
+          setAvgCapRate(0);
+          setAvgCashOnCash(0);
+          setPortfolioDebtRatio(0);
+          return;
         }
-        // Use currentValue if available else purchasePrice as proxy
-        totalCurrentValue +=
-          typeof prop.currentValue === "number" && prop.currentValue > 0
-            ? prop.currentValue
-            : prop.purchasePrice;
 
-        // Skip rest of calculations if no lease
-        if (!lease) continue;
-        const recurring = await getRecurringExpenses(prop.id);
-        const oneOffExpenses = await getOneOffExpenses(prop.id);
+        // --- Fetch all per-property data in parallel ---
 
-        const closingCostsTotal = sumClosingCosts(prop.closingCosts);
-        const metrics = computeLeveredMetrics({
-          monthlyRent: lease.monthlyRent,
-          vacancyPct: lease.vacancyPct || 0,
-          recurring,
-          variableAnnualBudget: 0,
-          purchasePrice: prop.purchasePrice,
-          closingCostsTotal,
-          currentValue: prop.currentValue,
-          loan,
+        const leasesEntries = await Promise.all(
+          filteredProps.map(async (prop) => {
+            const leases = await getLeases(prop.id);
+            return [prop.id, leases || []] as const;
+          })
+        );
+
+        const loansEntries = await Promise.all(
+          filteredProps.map(async (prop) => {
+            const loans = await getLoans(prop.id);
+            return [prop.id, loans || []] as const;
+          })
+        );
+
+        const recurringEntries = await Promise.all(
+          filteredProps.map(async (prop) => {
+            const rec = await getRecurringExpenses(prop.id);
+            return [prop.id, rec || []] as const;
+          })
+        );
+
+        const oneOffEntries = await Promise.all(
+          filteredProps.map(async (prop) => {
+            const capex = await getOneOffExpenses(prop.id);
+            return [prop.id, (capex || []) as OneOffExpense[]] as const;
+          })
+        );
+
+        const leasesByProp: Record<string, any[]> = {};
+        leasesEntries.forEach(([id, leases]) => {
+          leasesByProp[id] = leases;
         });
 
-        cfaf += metrics.cfaf;
+        const loansByProp: Record<string, any[]> = {};
+        loansEntries.forEach(([id, loans]) => {
+          loansByProp[id] = loans;
+        });
 
-        // Calculate annual income (rent - vacancy)
-        const yearlyRent =
-          lease.monthlyRent * 12 * (1 - (lease.vacancyPct || 0));
-        annualIncome += yearlyRent;
+        const recurringByProp: Record<string, any[]> = {};
+        recurringEntries.forEach(([id, rec]) => {
+          recurringByProp[id] = rec;
+        });
 
-        // Calculate annual recurring expenses
-        annualRecurringExpenses +=
-          metrics.recurringAnnual + metrics.variableAnnual;
+        const oneOffByProp: Record<string, OneOffExpense[]> = {};
+        oneOffEntries.forEach(([id, capex]) => {
+          oneOffByProp[id] = capex;
+        });
 
-        // Accumulate profitability metrics
-        totalEquitySum += metrics.equity;
-        weightedCashOnCash += metrics.cashOnCash * metrics.equity;
-        weightedCapRate += metrics.capRateNet * metrics.equity;
+        // --- Aggregations ---
 
-        // Calculate one-off expenses for current year
-        const currentYear = new Date().getFullYear();
-        const yearOneOffExpenses = oneOffExpenses
-          .filter((exp) => new Date(exp.date).getFullYear() === currentYear)
-          .reduce((sum, exp) => sum + exp.amount, 0);
-        annualOneOffExpenses += yearOneOffExpenses;
+        let cfaf = 0;
+        let annualIncome = 0;
+        let annualRecurringExpenses = 0;
+        let annualOneOffExpenses = 0;
+        let totalEquitySum = 0;
+        let weightedCashOnCash = 0;
+        let weightedCapRate = 0;
+        let totalPrincipal = 0;
+        let totalCurrentValue = 0;
 
-        // Accumulate monthly data
-        const monthlyRent = lease.monthlyRent * (1 - (lease.vacancyPct || 0));
-        const monthlyExpenses =
-          (metrics.recurringAnnual + metrics.variableAnnual) / 12;
-        const monthlyDebt = loan ? metrics.ads / 12 : 0;
-
+        const monthlyData: Record<
+          number,
+          { ingresos: number; gastos: number; deuda: number }
+        > = {};
         for (let i = 1; i <= 12; i++) {
-          monthlyData[i].ingresos += monthlyRent;
-          monthlyData[i].gastos += monthlyExpenses;
-          monthlyData[i].deuda += monthlyDebt;
+          monthlyData[i] = { ingresos: 0, gastos: 0, deuda: 0 };
         }
 
-        // Add one-off expenses to their respective months
-        oneOffExpenses
-          .filter((exp) => new Date(exp.date).getFullYear() === currentYear)
-          .forEach((exp) => {
-            const expMonth = new Date(exp.date).getMonth() + 1; // 1-indexed
-            monthlyData[expMonth].gastos += exp.amount;
+        const currentYear = new Date().getFullYear();
+
+        for (const prop of filteredProps) {
+          const leases = leasesByProp[prop.id] || [];
+          const lease = leases[0];
+
+          const loans = loansByProp[prop.id] || [];
+          const loan = loans[0];
+
+          // Debt ratio: always based on loan + current value, even if no lease
+          if (loan) {
+            totalPrincipal += loan.principal;
+          }
+
+          totalCurrentValue +=
+            typeof prop.currentValue === "number" && prop.currentValue > 0
+              ? prop.currentValue
+              : prop.purchasePrice;
+
+          // If no lease, skip the rest of metrics for this property
+          if (!lease) continue;
+
+          const recurring = recurringByProp[prop.id] || [];
+          const oneOffExpenses = oneOffByProp[prop.id] || [];
+
+          const closingCostsTotal = sumClosingCosts(prop.closingCosts);
+          const metrics = computeLeveredMetrics({
+            monthlyRent: lease.monthlyRent,
+            vacancyPct: lease.vacancyPct || 0,
+            recurring,
+            variableAnnualBudget: 0,
+            purchasePrice: prop.purchasePrice,
+            closingCostsTotal,
+            currentValue: prop.currentValue,
+            loan,
           });
+
+          cfaf += metrics.cfaf;
+
+          const yearlyRent =
+            lease.monthlyRent * 12 * (1 - (lease.vacancyPct || 0));
+          annualIncome += yearlyRent;
+
+          annualRecurringExpenses +=
+            metrics.recurringAnnual + metrics.variableAnnual;
+
+          totalEquitySum += metrics.equity;
+          weightedCashOnCash += metrics.cashOnCash * metrics.equity;
+          weightedCapRate += metrics.capRateNet * metrics.equity;
+
+          const yearOneOffExpenses = oneOffExpenses
+            .filter((exp) => new Date(exp.date).getFullYear() === currentYear)
+            .reduce((sum, exp) => sum + exp.amount, 0);
+          annualOneOffExpenses += yearOneOffExpenses;
+
+          const monthlyRent = lease.monthlyRent * (1 - (lease.vacancyPct || 0));
+          const monthlyExpenses =
+            (metrics.recurringAnnual + metrics.variableAnnual) / 12;
+          const monthlyDebt = loan ? metrics.ads / 12 : 0;
+
+          for (let i = 1; i <= 12; i++) {
+            monthlyData[i].ingresos += monthlyRent;
+            monthlyData[i].gastos += monthlyExpenses;
+            monthlyData[i].deuda += monthlyDebt;
+          }
+
+          oneOffExpenses
+            .filter((exp) => new Date(exp.date).getFullYear() === currentYear)
+            .forEach((exp) => {
+              const expMonth = new Date(exp.date).getMonth() + 1;
+              monthlyData[expMonth].gastos += exp.amount;
+            });
+        }
+
+        setTotalCFAF(cfaf);
+        setTotalIncome(annualIncome);
+        setTotalRecurringExpenses(annualRecurringExpenses);
+        setTotalOneOffExpenses(annualOneOffExpenses);
+        setTotalEquity(totalEquitySum);
+
+        setPortfolioDebtRatio(
+          totalCurrentValue > 0 ? (totalPrincipal / totalCurrentValue) * 100 : 0
+        );
+
+        if (totalEquitySum > 0) {
+          setAvgCashOnCash(weightedCashOnCash / totalEquitySum);
+          setAvgCapRate(weightedCapRate / totalEquitySum);
+        } else {
+          setAvgCashOnCash(0);
+          setAvgCapRate(0);
+        }
+
+        const monthNames = [
+          "Ene",
+          "Feb",
+          "Mar",
+          "Abr",
+          "May",
+          "Jun",
+          "Jul",
+          "Ago",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dic",
+        ];
+
+        setChartData(
+          Object.keys(monthlyData).map((month) => ({
+            month: monthNames[parseInt(month) - 1],
+            ...monthlyData[parseInt(month)],
+          }))
+        );
+      } finally {
+        setLoading(false);
       }
-
-      setTotalCFAF(cfaf);
-      setTotalIncome(annualIncome);
-      setTotalRecurringExpenses(annualRecurringExpenses);
-      setTotalOneOffExpenses(annualOneOffExpenses);
-      setTotalEquity(totalEquitySum);
-      setPortfolioDebtRatio(
-        totalCurrentValue > 0 ? (totalPrincipal / totalCurrentValue) * 100 : 0
-      );
-
-      // Calculate weighted average profitability metrics
-      if (totalEquitySum > 0) {
-        setAvgCashOnCash(weightedCashOnCash / totalEquitySum);
-        setAvgCapRate(weightedCapRate / totalEquitySum);
-      } else {
-        setAvgCashOnCash(0);
-        setAvgCapRate(0);
-      }
-
-      const monthNames = [
-        "Ene",
-        "Feb",
-        "Mar",
-        "Abr",
-        "May",
-        "Jun",
-        "Jul",
-        "Ago",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dic",
-      ];
-
-      setChartData(
-        Object.keys(monthlyData).map((month) => ({
-          month: monthNames[parseInt(month) - 1],
-          ...monthlyData[parseInt(month)],
-        }))
-      );
     };
 
     loadData();
   }, [userDoc, selectedPropertyId]);
+
+  const ingresosTotales = chartData.reduce((sum, d) => sum + d.ingresos, 0);
+  const gastosTotales = chartData.reduce((sum, d) => sum + d.gastos, 0);
+  const deudaTotal = chartData.reduce((sum, d) => sum + d.deuda, 0);
 
   return (
     <Box>
@@ -237,6 +335,7 @@ export function DashboardPage() {
             label="Vivienda"
             onChange={(e) => setSelectedPropertyId(e.target.value)}
             size="medium"
+            disabled={loading}
           >
             <MenuItem value="all">Todas las viviendas</MenuItem>
             {properties.map((prop) => (
@@ -301,12 +400,19 @@ export function DashboardPage() {
                       ? "Total Viviendas"
                       : "Vivienda"}
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{ fontWeight: 700, color: theme.palette.primary.main }}
-                  >
-                    {selectedPropertyId === "all" ? properties.length : 1}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={60} height={30} />
+                  ) : (
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color: theme.palette.primary.main,
+                      }}
+                    >
+                      {selectedPropertyId === "all" ? properties.length : 1}
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={6} sm={3}>
                   <Typography
@@ -316,16 +422,20 @@ export function DashboardPage() {
                   >
                     Ingresos Anuales
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: 700,
-                      color: "#4caf50",
-                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
-                    }}
-                  >
-                    {formatCurrency(totalIncome)}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color: "#4caf50",
+                        fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                      }}
+                    >
+                      {formatCurrency(totalIncome)}
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={6} sm={3}>
                   <Typography
@@ -335,16 +445,20 @@ export function DashboardPage() {
                   >
                     Cash Flow Anual
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: 700,
-                      color: totalCFAF > 0 ? "#4caf50" : "#f44336",
-                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
-                    }}
-                  >
-                    {formatCurrency(totalCFAF)}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color: totalCFAF > 0 ? "#4caf50" : "#f44336",
+                        fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                      }}
+                    >
+                      {formatCurrency(totalCFAF)}
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={6} sm={3}>
                   <Typography
@@ -354,20 +468,24 @@ export function DashboardPage() {
                   >
                     Ratio Endeudamiento
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: 700,
-                      color:
-                        portfolioDebtRatio < 50
-                          ? "#4caf50"
-                          : portfolioDebtRatio < 70
-                          ? "#ff9800"
-                          : "#f44336",
-                    }}
-                  >
-                    {portfolioDebtRatio.toFixed(1)}%
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={80} height={30} />
+                  ) : (
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color:
+                          portfolioDebtRatio < 50
+                            ? "#4caf50"
+                            : portfolioDebtRatio < 70
+                            ? "#ff9800"
+                            : "#f44336",
+                      }}
+                    >
+                      {portfolioDebtRatio.toFixed(1)}%
+                    </Typography>
+                  )}
                 </Grid>
               </Grid>
             </CardContent>
@@ -423,18 +541,22 @@ export function DashboardPage() {
                   >
                     Total Gastos
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: 700,
-                      color: "#ff9800",
-                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
-                    }}
-                  >
-                    {formatCurrency(
-                      totalRecurringExpenses + totalOneOffExpenses
-                    )}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color: "#ff9800",
+                        fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                      }}
+                    >
+                      {formatCurrency(
+                        totalRecurringExpenses + totalOneOffExpenses
+                      )}
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={6} sm={4}>
                   <Typography
@@ -444,16 +566,20 @@ export function DashboardPage() {
                   >
                     Gastos Fijos
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: 700,
-                      color: alpha("#ff9800", 0.8),
-                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
-                    }}
-                  >
-                    {formatCurrency(totalRecurringExpenses)}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color: alpha("#ff9800", 0.8),
+                        fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                      }}
+                    >
+                      {formatCurrency(totalRecurringExpenses)}
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={6} sm={4}>
                   <Typography
@@ -463,16 +589,20 @@ export function DashboardPage() {
                   >
                     Mantenimiento
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: 700,
-                      color: alpha("#ff9800", 0.8),
-                      fontSize: { xs: "1.25rem", sm: "1.5rem" },
-                    }}
-                  >
-                    {formatCurrency(totalOneOffExpenses)}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color: alpha("#ff9800", 0.8),
+                        fontSize: { xs: "1.25rem", sm: "1.5rem" },
+                      }}
+                    >
+                      {formatCurrency(totalOneOffExpenses)}
+                    </Typography>
+                  )}
                 </Grid>
               </Grid>
             </CardContent>
@@ -491,7 +621,6 @@ export function DashboardPage() {
               Flujo de Caja Consolidado (12 meses)
             </Typography>
 
-            {/* Summary boxes - visible data without hover */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={4}>
                 <Box
@@ -509,11 +638,13 @@ export function DashboardPage() {
                   >
                     Ingresos Totales
                   </Typography>
-                  <Typography variant="h6" fontWeight="bold" color="#4caf50">
-                    {formatCurrency(
-                      chartData.reduce((sum, d) => sum + d.ingresos, 0)
-                    )}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography variant="h6" fontWeight="bold" color="#4caf50">
+                      {formatCurrency(ingresosTotales)}
+                    </Typography>
+                  )}
                 </Box>
               </Grid>
               <Grid item xs={4}>
@@ -532,11 +663,13 @@ export function DashboardPage() {
                   >
                     Gastos Totales
                   </Typography>
-                  <Typography variant="h6" fontWeight="bold" color="#ff9800">
-                    {formatCurrency(
-                      chartData.reduce((sum, d) => sum + d.gastos, 0)
-                    )}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography variant="h6" fontWeight="bold" color="#ff9800">
+                      {formatCurrency(gastosTotales)}
+                    </Typography>
+                  )}
                 </Box>
               </Grid>
               <Grid item xs={4}>
@@ -555,122 +688,137 @@ export function DashboardPage() {
                   >
                     Deuda Pagada
                   </Typography>
-                  <Typography variant="h6" fontWeight="bold" color="#f44336">
-                    {formatCurrency(
-                      chartData.reduce((sum, d) => sum + d.deuda, 0)
-                    )}
-                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography variant="h6" fontWeight="bold" color="#f44336">
+                      {formatCurrency(deudaTotal)}
+                    </Typography>
+                  )}
                 </Box>
               </Grid>
             </Grid>
 
             <Box sx={{ height: { xs: 200, sm: 280 } }}>
-              <Line
-                data={{
-                  labels: chartData.map((d) => d.month),
-                  datasets: [
-                    {
-                      label: "Ingresos",
-                      data: chartData.map((d) => d.ingresos),
-                      borderColor: "#4caf50",
-                      backgroundColor: "rgba(76, 175, 80, 0.1)",
-                      fill: true,
-                      tension: 0.4,
-                      borderWidth: 2,
-                      pointRadius: 4,
-                      pointHoverRadius: 6,
-                      pointBackgroundColor: "#4caf50",
+              {loading ? (
+                <Box
+                  sx={{
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Line
+                  data={{
+                    labels: chartData.map((d) => d.month),
+                    datasets: [
+                      {
+                        label: "Ingresos",
+                        data: chartData.map((d) => d.ingresos),
+                        borderColor: "#4caf50",
+                        backgroundColor: "rgba(76, 175, 80, 0.1)",
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: "#4caf50",
+                      },
+                      {
+                        label: "Gastos",
+                        data: chartData.map((d) => d.gastos),
+                        borderColor: "#ff9800",
+                        backgroundColor: "rgba(255, 152, 0, 0.1)",
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: "#ff9800",
+                      },
+                      {
+                        label: "Deuda",
+                        data: chartData.map((d) => d.deuda),
+                        borderColor: "#f44336",
+                        backgroundColor: "rgba(244, 67, 54, 0.1)",
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: "#f44336",
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                      mode: "index",
+                      intersect: false,
                     },
-                    {
-                      label: "Gastos",
-                      data: chartData.map((d) => d.gastos),
-                      borderColor: "#ff9800",
-                      backgroundColor: "rgba(255, 152, 0, 0.1)",
-                      fill: true,
-                      tension: 0.4,
-                      borderWidth: 2,
-                      pointRadius: 4,
-                      pointHoverRadius: 6,
-                      pointBackgroundColor: "#ff9800",
-                    },
-                    {
-                      label: "Deuda",
-                      data: chartData.map((d) => d.deuda),
-                      borderColor: "#f44336",
-                      backgroundColor: "rgba(244, 67, 54, 0.1)",
-                      fill: true,
-                      tension: 0.4,
-                      borderWidth: 2,
-                      pointRadius: 4,
-                      pointHoverRadius: 6,
-                      pointBackgroundColor: "#f44336",
-                    },
-                  ],
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  interaction: {
-                    mode: "index",
-                    intersect: false,
-                  },
-                  plugins: {
-                    legend: {
-                      display: true,
-                      position: "top",
-                      labels: {
-                        usePointStyle: true,
-                        padding: 15,
-                        font: {
-                          size: 11,
+                    plugins: {
+                      legend: {
+                        display: true,
+                        position: "top",
+                        labels: {
+                          usePointStyle: true,
+                          padding: 15,
+                          font: {
+                            size: 11,
+                          },
+                        },
+                      },
+                      tooltip: {
+                        enabled: true,
+                        backgroundColor: theme.palette.background.paper,
+                        titleColor: theme.palette.text.primary,
+                        bodyColor: theme.palette.text.secondary,
+                        borderColor: theme.palette.divider,
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
+                        callbacks: {
+                          label: (context) => {
+                            return `${context.dataset.label}: ${formatCurrency(
+                              context.parsed.y ?? 0
+                            )}`;
+                          },
                         },
                       },
                     },
-                    tooltip: {
-                      enabled: true,
-                      backgroundColor: theme.palette.background.paper,
-                      titleColor: theme.palette.text.primary,
-                      bodyColor: theme.palette.text.secondary,
-                      borderColor: theme.palette.divider,
-                      borderWidth: 1,
-                      padding: 12,
-                      displayColors: true,
-                      callbacks: {
-                        label: (context) => {
-                          return `${context.dataset.label}: ${formatCurrency(
-                            context.parsed.y ?? 0
-                          )}`;
+                    scales: {
+                      x: {
+                        grid: {
+                          display: false,
+                        },
+                        ticks: {
+                          color: theme.palette.text.secondary,
+                          font: {
+                            size: 10,
+                          },
+                        },
+                      },
+                      y: {
+                        grid: {
+                          color: alpha(theme.palette.divider, 0.2),
+                        },
+                        ticks: {
+                          color: theme.palette.text.secondary,
+                          callback: (value) => formatCurrency(value as number),
+                          font: {
+                            size: 10,
+                          },
                         },
                       },
                     },
-                  },
-                  scales: {
-                    x: {
-                      grid: {
-                        display: false,
-                      },
-                      ticks: {
-                        color: theme.palette.text.secondary,
-                        font: {
-                          size: 10,
-                        },
-                      },
-                    },
-                    y: {
-                      grid: {
-                        color: alpha(theme.palette.divider, 0.2),
-                      },
-                      ticks: {
-                        color: theme.palette.text.secondary,
-                        callback: (value) => formatCurrency(value as number),
-                        font: {
-                          size: 10,
-                        },
-                      },
-                    },
-                  },
-                }}
-              />
+                  }}
+                />
+              )}
             </Box>
           </Paper>
         </Grid>
@@ -692,12 +840,16 @@ export function DashboardPage() {
                 >
                   Ingreso Mensual Promedio
                 </Typography>
-                <Typography
-                  variant="h6"
-                  sx={{ fontWeight: 700, color: "#4caf50" }}
-                >
-                  {formatCurrency(totalIncome / 12)}
-                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={140} height={30} />
+                ) : (
+                  <Typography
+                    variant="h6"
+                    sx={{ fontWeight: 700, color: "#4caf50" }}
+                  >
+                    {formatCurrency(totalIncome / 12 || 0)}
+                  </Typography>
+                )}
               </Box>
               <Box>
                 <Typography
@@ -707,14 +859,18 @@ export function DashboardPage() {
                 >
                   Gasto Mensual Promedio
                 </Typography>
-                <Typography
-                  variant="h6"
-                  sx={{ fontWeight: 700, color: "#ff9800" }}
-                >
-                  {formatCurrency(
-                    (totalRecurringExpenses + totalOneOffExpenses) / 12
-                  )}
-                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={140} height={30} />
+                ) : (
+                  <Typography
+                    variant="h6"
+                    sx={{ fontWeight: 700, color: "#ff9800" }}
+                  >
+                    {formatCurrency(
+                      (totalRecurringExpenses + totalOneOffExpenses) / 12 || 0
+                    )}
+                  </Typography>
+                )}
               </Box>
               <Box>
                 <Typography
@@ -724,15 +880,19 @@ export function DashboardPage() {
                 >
                   Cash Flow Mensual
                 </Typography>
-                <Typography
-                  variant="h6"
-                  sx={{
-                    fontWeight: 700,
-                    color: totalCFAF > 0 ? "#4caf50" : "#f44336",
-                  }}
-                >
-                  {formatCurrency(totalCFAF / 12)}
-                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={140} height={30} />
+                ) : (
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontWeight: 700,
+                      color: totalCFAF > 0 ? "#4caf50" : "#f44336",
+                    }}
+                  >
+                    {formatCurrency(totalCFAF / 12 || 0)}
+                  </Typography>
+                )}
               </Box>
               <Box
                 sx={{
@@ -753,9 +913,13 @@ export function DashboardPage() {
                     >
                       Capital Invertido (Equity)
                     </Typography>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                      {formatCurrency(totalEquity)}
-                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={160} height={30} />
+                    ) : (
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                        {formatCurrency(totalEquity)}
+                      </Typography>
+                    )}
                   </Box>
                   <Box>
                     <Typography
@@ -765,12 +929,16 @@ export function DashboardPage() {
                     >
                       Cash-on-Cash Return
                     </Typography>
-                    <Typography
-                      variant="h6"
-                      sx={{ fontWeight: 700, color: "#00bcd4" }}
-                    >
-                      {avgCashOnCash.toFixed(2)}%
-                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={100} height={30} />
+                    ) : (
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 700, color: "#00bcd4" }}
+                      >
+                        {avgCashOnCash.toFixed(2)}%
+                      </Typography>
+                    )}
                   </Box>
                   <Box>
                     <Typography
@@ -780,12 +948,16 @@ export function DashboardPage() {
                     >
                       Cap Rate Neto
                     </Typography>
-                    <Typography
-                      variant="h6"
-                      sx={{ fontWeight: 700, color: "#3f51b5" }}
-                    >
-                      {avgCapRate.toFixed(2)}%
-                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={100} height={30} />
+                    ) : (
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 700, color: "#3f51b5" }}
+                      >
+                        {avgCapRate.toFixed(2)}%
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
               </Box>

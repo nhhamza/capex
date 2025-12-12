@@ -1,4 +1,5 @@
-import { Grid, Typography, Box, Alert } from "@mui/material";
+import React, { useState } from "react";
+import { Grid, Typography, Box, Alert, Button, Collapse } from "@mui/material";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -35,6 +36,8 @@ export function PropertySummaryTab({
   loan,
   recurring,
 }: PropertySummaryTabProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   if (!lease) {
     return (
       <Alert severity="info">
@@ -56,7 +59,7 @@ export function PropertySummaryTab({
     loan: loan || undefined,
   });
 
-  // Generate 12 months of data for chart
+  // Chart monthly data
   const chartData = Array.from({ length: 12 }, (_, i) => ({
     month: `M${i + 1}`,
     ingresos: lease.monthlyRent * (1 - (lease.vacancyPct || 0)),
@@ -66,121 +69,153 @@ export function PropertySummaryTab({
 
   return (
     <Box>
+      {/* --- QUICK KPIs --- */}
       <Typography variant="h6" gutterBottom>
-        KPIs Principales
+        Resumen rápido
       </Typography>
 
-      <Grid container spacing={2} sx={{ mb: 4 }}>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        {/* KPI 1 */}
         <Grid item xs={12} sm={6} md={3}>
           <KPI
             label="NOI Anual"
             value={formatCurrency(metrics.noi)}
             color={metrics.noi > 0 ? "success" : "error"}
-            description="Ingreso Neto Operativo: Ingresos anuales menos gastos operativos (sin incluir deuda). Mide la rentabilidad antes de financiación."
+            description="Ingreso Neto Operativo antes de deuda."
           />
         </Grid>
+
+        {/* KPI 2 */}
         <Grid item xs={12} sm={6} md={3}>
           <KPI
             label="Cap Rate Neto"
             value={formatPercent(metrics.capRateNet, 2)}
             color="primary"
-            description="Tasa de Capitalización: NOI dividido por el precio total de compra (precio + costes de cierre). Rentabilidad sin apalancamiento."
+            description="NOI dividido por el coste total de compra."
           />
         </Grid>
+
+        {/* KPI 3 */}
         <Grid item xs={12} sm={6} md={3}>
           <KPI
             label="Cash-on-Cash"
             value={formatPercent(metrics.cashOnCash, 2)}
             color={metrics.cashOnCash > 0 ? "success" : "error"}
-            description="Retorno en Efectivo: Cashflow anual después de deuda dividido por la inversión inicial en efectivo. Mide rentabilidad apalancada."
+            description="Cashflow anual dividido por inversión inicial."
           />
         </Grid>
+
+        {/* KPI 4 */}
         <Grid item xs={12} sm={6} md={3}>
           <KPI
-            label="DSCR"
-            value={metrics.dscr > 0 ? metrics.dscr.toFixed(2) : "N/A"}
-            color={metrics.dscr >= 1.25 ? "success" : "warning"}
-            description="Ratio de Cobertura de Deuda: NOI dividido por cuotas anuales de deuda. Valores >1.25 son buenos. Mide capacidad de pago del préstamo."
+            label="CFAF Anual"
+            value={formatCurrency(metrics.cfaf)}
+            color={metrics.cfaf > 0 ? "success" : "error"}
+            description="Cashflow después de pagar la hipoteca."
           />
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KPI
-            label="LTV Actual"
-            value={formatPercent(metrics.ltv, 1)}
-            color={
-              metrics.ltv < 65
-                ? "success"
-                : metrics.ltv < 80
-                ? "warning"
-                : "error"
-            }
-            description="Loan-to-Value: Deuda pendiente dividida por valor actual de la propiedad. Mide el nivel de apalancamiento. Menor es mejor."
-          />
-        </Grid>
-        {property.currentValue && (
-          <Grid item xs={12} sm={6} md={3}>
-            <KPI
-              label="Yield Actual"
-              value={formatPercent(
-                (metrics.rentAnnualGross / property.currentValue) * 100,
-                2
-              )}
-              color="primary"
-              description="Rentabilidad Bruta: Ingresos anuales divididos por el valor actual de la propiedad. Muestra el retorno antes de gastos."
-            />
-          </Grid>
-        )}
       </Grid>
 
-      {!loan && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          No has añadido financiación todavía. Usa la pestaña "Financiación"
-          para registrar el préstamo y ver KPIs apalancados (LTV, ADS, DSCR,
-          Cashflow apalancado).
-        </Alert>
-      )}
-      {loan && (
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <KPI
-              label="ADS Anual"
-              value={formatCurrency(metrics.ads)}
-              color="secondary"
-              description="Servicio Anual de Deuda: Total de cuotas de hipoteca pagadas al año (capital + intereses). Es el coste anual del préstamo."
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <KPI
-              label="LTV"
-              value={formatPercent(metrics.ltv, 1)}
-              color="secondary"
-              description="Loan-to-Value: Porcentaje del valor de la propiedad que está financiado con deuda. Indica el nivel de apalancamiento."
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <KPI
-              label="Equity"
-              value={formatCurrency(metrics.equity)}
-              color="primary"
-              description="Patrimonio: Diferencia entre el valor actual de la propiedad y la deuda pendiente. Es tu capital neto en la propiedad."
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <KPI
-              label="CFAF Anual"
-              value={formatCurrency(metrics.cfaf)}
-              color={metrics.cfaf > 0 ? "success" : "error"}
-              description="Cashflow Después de Financiación: NOI menos cuotas de deuda. Es el flujo de caja real disponible después de pagar la hipoteca."
-            />
-          </Grid>
-        </Grid>
-      )}
+      <Button
+        size="small"
+        variant="outlined"
+        sx={{ mb: 3 }}
+        onClick={() => setShowAdvanced((prev) => !prev)}
+      >
+        {showAdvanced ? "Ocultar métricas avanzadas" : "Ver métricas avanzadas"}
+      </Button>
 
+      {/* --- ADVANCED KPI SECTION --- */}
+      <Collapse in={showAdvanced}>
+        <Typography variant="subtitle1" gutterBottom sx={{ mt: 1 }}>
+          KPIs avanzados
+        </Typography>
+
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* DSCR */}
+          <Grid item xs={12} sm={6} md={3}>
+            <KPI
+              label="DSCR"
+              value={metrics.dscr > 0 ? metrics.dscr.toFixed(2) : "N/A"}
+              color={metrics.dscr >= 1.25 ? "success" : "warning"}
+              description="Capacidad para cubrir deuda con NOI."
+            />
+          </Grid>
+
+          {/* LTV Actual */}
+          <Grid item xs={12} sm={6} md={3}>
+            <KPI
+              label="LTV Actual"
+              value={formatPercent(metrics.ltv, 1)}
+              color={
+                metrics.ltv < 65
+                  ? "success"
+                  : metrics.ltv < 80
+                  ? "warning"
+                  : "error"
+              }
+              description="Porcentaje del valor que está financiado."
+            />
+          </Grid>
+
+          {/* Yield Actual */}
+          {property.currentValue && (
+            <Grid item xs={12} sm={6} md={3}>
+              <KPI
+                label="Yield Actual"
+                value={formatPercent(
+                  (metrics.rentAnnualGross / property.currentValue) * 100,
+                  2
+                )}
+                color="primary"
+                description="Ingresos brutos dividido por valor actual."
+              />
+            </Grid>
+          )}
+
+          {/* ADS Anual (solo si hay préstamo) */}
+          {loan && (
+            <Grid item xs={12} sm={6} md={3}>
+              <KPI
+                label="ADS Anual"
+                value={formatCurrency(metrics.ads)}
+                color="secondary"
+                description="Cuotas anuales de hipoteca (capital + intereses)."
+              />
+            </Grid>
+          )}
+
+          {/* LTV (detalle, solo si hay préstamo) */}
+          {loan && (
+            <Grid item xs={12} sm={6} md={3}>
+              <KPI
+                label="LTV"
+                value={formatPercent(metrics.ltv, 1)}
+                color="secondary"
+                description="Proporción de deuda sobre valor."
+              />
+            </Grid>
+          )}
+
+          {/* Equity (solo si hay préstamo) */}
+          {loan && (
+            <Grid item xs={12} sm={6} md={3}>
+              <KPI
+                label="Equity"
+                value={formatCurrency(metrics.equity)}
+                color="primary"
+                description="Patrimonio neto en la propiedad."
+              />
+            </Grid>
+          )}
+        </Grid>
+      </Collapse>
+
+      {/* --- CASHFLOW CHART --- */}
       <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
         Flujo de Caja (12 meses)
       </Typography>
 
-      {/* Monthly averages - always visible */}
       <Grid container spacing={1.5} sx={{ mb: 2 }}>
         <Grid item xs={loan ? 4 : 6}>
           <Box
@@ -195,20 +230,15 @@ export function PropertySummaryTab({
               variant="caption"
               color="text.secondary"
               display="block"
-              sx={{ fontSize: "0.7rem" }}
             >
               Ingreso Mensual
             </Typography>
-            <Typography
-              variant="body2"
-              fontWeight="bold"
-              color="#4caf50"
-              sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}
-            >
+            <Typography variant="body2" fontWeight="bold" color="#4caf50">
               {formatCurrency(chartData[0]?.ingresos ?? 0)}
             </Typography>
           </Box>
         </Grid>
+
         <Grid item xs={loan ? 4 : 6}>
           <Box
             sx={{
@@ -222,20 +252,15 @@ export function PropertySummaryTab({
               variant="caption"
               color="text.secondary"
               display="block"
-              sx={{ fontSize: "0.7rem" }}
             >
               Gastos Mensuales
             </Typography>
-            <Typography
-              variant="body2"
-              fontWeight="bold"
-              color="#ff9800"
-              sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}
-            >
+            <Typography variant="body2" fontWeight="bold" color="#ff9800">
               {formatCurrency(chartData[0]?.gastos ?? 0)}
             </Typography>
           </Box>
         </Grid>
+
         {loan && (
           <Grid item xs={4}>
             <Box
@@ -250,16 +275,10 @@ export function PropertySummaryTab({
                 variant="caption"
                 color="text.secondary"
                 display="block"
-                sx={{ fontSize: "0.7rem" }}
               >
                 Cuota Mensual
               </Typography>
-              <Typography
-                variant="body2"
-                fontWeight="bold"
-                color="#f44336"
-                sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}
-              >
+              <Typography variant="body2" fontWeight="bold" color="#f44336">
                 {formatCurrency(chartData[0]?.deuda ?? 0)}
               </Typography>
             </Box>
@@ -309,9 +328,7 @@ export function PropertySummaryTab({
                 labels: {
                   usePointStyle: true,
                   padding: 12,
-                  font: {
-                    size: 10,
-                  },
+                  font: { size: 10 },
                 },
               },
               tooltip: {
@@ -323,45 +340,35 @@ export function PropertySummaryTab({
                 borderWidth: 1,
                 padding: 12,
                 callbacks: {
-                  label: (context) => {
-                    return `${context.dataset.label}: ${formatCurrency(
+                  label: (context) =>
+                    `${context.dataset.label}: ${formatCurrency(
                       context.parsed.y ?? 0
-                    )}`;
-                  },
+                    )}`,
                 },
               },
             },
             scales: {
               x: {
-                grid: {
-                  display: false,
-                },
-                ticks: {
-                  font: {
-                    size: 9,
-                  },
-                },
+                grid: { display: false },
+                ticks: { font: { size: 9 } },
               },
               y: {
-                grid: {
-                  color: "rgba(0, 0, 0, 0.05)",
-                },
+                grid: { color: "rgba(0, 0, 0, 0.05)" },
                 ticks: {
                   callback: (value) => formatCurrency(value as number),
-                  font: {
-                    size: 9,
-                  },
+                  font: { size: 9 },
                 },
               },
             },
           }}
         />
       </Box>
+
       {!property.closingCosts && (
         <Alert severity="info" sx={{ mt: 3 }}>
           Aún no has detallado los costes de cierre (ITP, notaría, registro,
           etc.). Añádelos en la pestaña "Compra" para mejorar el cálculo de
-          inversión total y métricas (Cap Rate Neto, Cash-on-Cash, Equity).
+          inversión total y métricas.
         </Alert>
       )}
     </Box>
