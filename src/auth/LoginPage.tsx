@@ -101,16 +101,6 @@ export function LoginPage() {
             <strong>cuánto te está dejando cada piso al mes y al año</strong>.
           </Typography>
 
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={2}
-            sx={{ mt: 2, mb: 3 }}
-          >
-            <Chip label="Hasta X propiedades en plan gratis" />
-            <Chip label="Sin tarjeta de crédito" />
-            <Chip label="Pensado para propietarios reales" />
-          </Stack>
-
           <Box sx={{ mt: 3 }}>
             <Typography
               variant="h6"
