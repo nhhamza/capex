@@ -18,8 +18,8 @@ import {
   getLoan,
   getRecurringExpenses,
   getOneOffExpenses,
-  getLeases,       // 👈 NUEVO
-  getRooms,        // 👈 NUEVO
+  getLeases, // 👈 NUEVO
+  getRooms, // 👈 NUEVO
 } from "../api";
 import {
   Property,
@@ -27,7 +27,7 @@ import {
   Loan,
   RecurringExpense,
   OneOffExpense,
-  Room,             // 👈 NUEVO
+  Room, // 👈 NUEVO
 } from "../types";
 import { PropertySummaryTab } from "./PropertySummaryTab";
 import { PropertyPurchaseTab } from "./PropertyPurchaseTab";
@@ -77,8 +77,8 @@ export function PropertyDetail() {
         getLoan(id),
         getRecurringExpenses(id),
         getOneOffExpenses(id),
-        getLeases(id),    // 👈 lista completa de leases
-        getRooms(id),     // 👈 lista de habitaciones
+        getLeases(id), // 👈 lista completa de leases
+        getRooms(id), // 👈 lista de habitaciones
       ]);
 
       if (!prop) {
@@ -279,8 +279,8 @@ export function PropertyDetail() {
               lease={lease}
               loan={loan}
               recurring={recurring}
-              leases={leases}   // 👈 NUEVO
-              rooms={rooms}     // 👈 NUEVO
+              leases={leases} // 👈 NUEVO
+              rooms={rooms} // 👈 NUEVO
             />
           )}
           {currentTab === "compra" && (
@@ -289,12 +289,13 @@ export function PropertyDetail() {
               onSave={handleDataChanged}
             />
           )}
-          {currentTab === "habitaciones" && property.rentalMode === "PER_ROOM" && (
-            <PropertyRoomsTab
-              propertyId={property.id}
-              onDataChanged={handleDataChanged}
-            />
-          )}
+          {currentTab === "habitaciones" &&
+            property.rentalMode === "PER_ROOM" && (
+              <PropertyRoomsTab
+                propertyId={property.id}
+                onDataChanged={handleDataChanged}
+              />
+            )}
           {currentTab === "contrato" && (
             <PropertyLeaseTab
               property={property}

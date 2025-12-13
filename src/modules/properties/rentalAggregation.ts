@@ -3,11 +3,11 @@ import dayjs, { Dayjs } from "dayjs";
 import { Property, Lease, Room } from "./types";
 
 export interface AggregatedRentResult {
-  monthlyGross: number;          // suma de rentas brutas (sin vacancia)
-  monthlyNet: number;            // renta neta después de vacancias
-  effectiveVacancyPct: number;   // 0..1 -> (1 - net/gross) si gross > 0
-  occupiedRooms: number;         // nº de habitaciones con lease activo
-  totalRooms: number;            // nº total de habitaciones definidas
+  monthlyGross: number; // suma de rentas brutas (sin vacancia)
+  monthlyNet: number; // renta neta después de vacancias
+  effectiveVacancyPct: number; // 0..1 -> (1 - net/gross) si gross > 0
+  occupiedRooms: number; // nº de habitaciones con lease activo
+  totalRooms: number; // nº total de habitaciones definidas
 }
 
 interface AggregatedRentForMonthOptions {
@@ -35,14 +35,18 @@ export function getAggregatedRentForMonth(
     const startsOnOrBefore =
       monthDate.isSame(start, "month") || monthDate.isAfter(start, "month");
     const endsOnOrAfter =
-      !end || monthDate.isSame(end, "month") || monthDate.isBefore(end, "month");
+      !end ||
+      monthDate.isSame(end, "month") ||
+      monthDate.isBefore(end, "month");
 
     return startsOnOrBefore && endsOnOrAfter;
   };
 
   // Caso 1: vivienda completa (modo actual)
   if (property.rentalMode === "ENTIRE_UNIT" || !property.rentalMode) {
-    const activeLease = leases.find((l) => !l.roomId && isLeaseActiveInMonth(l));
+    const activeLease = leases.find(
+      (l) => !l.roomId && isLeaseActiveInMonth(l)
+    );
 
     if (!activeLease) {
       return {
@@ -70,9 +74,7 @@ export function getAggregatedRentForMonth(
   // Caso 2: alquiler por habitaciones
   const totalRooms = rooms.length || 0;
 
-  const roomLeases = leases.filter(
-    (l) => l.roomId && isLeaseActiveInMonth(l)
-  );
+  const roomLeases = leases.filter((l) => l.roomId && isLeaseActiveInMonth(l));
 
   let monthlyGross = 0;
   let monthlyNet = 0;

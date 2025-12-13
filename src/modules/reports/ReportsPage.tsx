@@ -108,15 +108,18 @@ export function ReportsPage() {
     const propertyReports: any[] = [];
 
     // Filter properties if specific property selected
-    const targetProperties = propertyId && propertyId !== "all"
-      ? properties.filter(p => p.id === propertyId)
-      : properties;
+    const targetProperties =
+      propertyId && propertyId !== "all"
+        ? properties.filter((p) => p.id === propertyId)
+        : properties;
 
     for (const property of targetProperties) {
       // Load property data once
       const [leases, rooms] = await Promise.all([
         getLeases(property.id),
-        property.rentalMode === "PER_ROOM" ? getRooms(property.id) : Promise.resolve([]),
+        property.rentalMode === "PER_ROOM"
+          ? getRooms(property.id)
+          : Promise.resolve([]),
       ]);
 
       let propertyIncome = 0;
@@ -136,15 +139,18 @@ export function ReportsPage() {
           propertyIncome += agg.monthlyNet;
         } else {
           // ENTIRE_UNIT: Find active unit lease
-          const activeLease = leases.find((lease: Lease) =>
-            !lease.roomId &&
-            lease.isActive !== false &&
-            dayjs(lease.startDate).isBefore(monthDate.endOf('month')) &&
-            (!lease.endDate || dayjs(lease.endDate).isAfter(monthDate.startOf('month')))
+          const activeLease = leases.find(
+            (lease: Lease) =>
+              !lease.roomId &&
+              lease.isActive !== false &&
+              dayjs(lease.startDate).isBefore(monthDate.endOf("month")) &&
+              (!lease.endDate ||
+                dayjs(lease.endDate).isAfter(monthDate.startOf("month")))
           );
 
           if (activeLease) {
-            const monthlyNet = activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
+            const monthlyNet =
+              activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
             propertyIncome += monthlyNet;
           }
         }
@@ -153,20 +159,35 @@ export function ReportsPage() {
       totalRentalIncome += propertyIncome;
 
       // Calculate deductions for this property
-      const propertyExpenses = expenses.filter(exp => exp.propertyId === property.id);
-      const propertyRecurring = recurringExpenses.filter(exp => exp.propertyId === property.id);
+      const propertyExpenses = expenses.filter(
+        (exp) => exp.propertyId === property.id
+      );
+      const propertyRecurring = recurringExpenses.filter(
+        (exp) => exp.propertyId === property.id
+      );
 
-      const deductibleExpenses = propertyExpenses.filter(exp => exp.isDeductible !== false);
-      const deductibleRecurring = propertyRecurring.filter(exp => exp.isDeductible !== false);
+      const deductibleExpenses = propertyExpenses.filter(
+        (exp) => exp.isDeductible !== false
+      );
+      const deductibleRecurring = propertyRecurring.filter(
+        (exp) => exp.isDeductible !== false
+      );
 
-      const oneOffDeductions = deductibleExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      const oneOffDeductions = deductibleExpenses.reduce(
+        (sum, exp) => sum + exp.amount,
+        0
+      );
       const recurringDeductions = deductibleRecurring.reduce((sum, exp) => {
         // Annualize recurring expenses
         switch (exp.periodicity) {
-          case 'monthly': return sum + (exp.amount * 12);
-          case 'quarterly': return sum + (exp.amount * 4);
-          case 'yearly': return sum + exp.amount;
-          default: return sum + exp.amount;
+          case "monthly":
+            return sum + exp.amount * 12;
+          case "quarterly":
+            return sum + exp.amount * 4;
+          case "yearly":
+            return sum + exp.amount;
+          default:
+            return sum + exp.amount;
         }
       }, 0);
 
@@ -192,7 +213,9 @@ export function ReportsPage() {
 
   const handleGenerateTaxReport = async () => {
     if (selectedYear === "all") {
-      alert("Por favor selecciona un año específico para el reporte de Hacienda");
+      alert(
+        "Por favor selecciona un año específico para el reporte de Hacienda"
+      );
       return;
     }
 
@@ -223,10 +246,14 @@ export function ReportsPage() {
   const availableYears: string[] = Array.from(
     new Set([
       ...expenses.map((exp) => new Date(exp.date).getFullYear().toString()),
-      ...leases.flatMap((lease) => [
-        new Date(lease.startDate).getFullYear().toString(),
-        lease.endDate ? new Date(lease.endDate).getFullYear().toString() : null,
-      ].filter((year): year is string => year !== null)),
+      ...leases.flatMap((lease) =>
+        [
+          new Date(lease.startDate).getFullYear().toString(),
+          lease.endDate
+            ? new Date(lease.endDate).getFullYear().toString()
+            : null,
+        ].filter((year): year is string => year !== null)
+      ),
     ])
   ).sort((a, b) => parseInt(b) - parseInt(a));
 
@@ -427,8 +454,9 @@ export function ReportsPage() {
           Reporte de Hacienda - Ingresos por Alquiler
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Genera reportes de ingresos por alquiler para tu declaración de impuestos.
-          Incluye cálculo correcto de rentas para propiedades PER_ROOM.
+          Genera reportes de ingresos por alquiler para tu declaración de
+          impuestos. Incluye cálculo correcto de rentas para propiedades
+          PER_ROOM.
         </Typography>
 
         <Grid container spacing={3}>
@@ -494,7 +522,7 @@ export function ReportsPage() {
 
             <Grid container spacing={3} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={4}>
-                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Paper sx={{ p: 2, textAlign: "center" }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Rendimiento Íntegro
                   </Typography>
@@ -504,7 +532,7 @@ export function ReportsPage() {
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={4}>
-                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Paper sx={{ p: 2, textAlign: "center" }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Gastos Deducibles
                   </Typography>
@@ -514,7 +542,7 @@ export function ReportsPage() {
                 </Paper>
               </Grid>
               <Grid item xs={12} sm={4}>
-                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Paper sx={{ p: 2, textAlign: "center" }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Base Imponible
                   </Typography>
@@ -539,27 +567,36 @@ export function ReportsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {taxReportData.propertyReports.map((report: any, index: number) => (
-                    <TableRow key={index}>
-                      <TableCell>{report.property}</TableCell>
-                      <TableCell align="right">{formatCurrency(report.rentalIncome)}</TableCell>
-                      <TableCell align="right">{formatCurrency(report.deductions)}</TableCell>
-                      <TableCell align="right">{formatCurrency(report.netIncome)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {taxReportData.propertyReports.map(
+                    (report: any, index: number) => (
+                      <TableRow key={index}>
+                        <TableCell>{report.property}</TableCell>
+                        <TableCell align="right">
+                          {formatCurrency(report.rentalIncome)}
+                        </TableCell>
+                        <TableCell align="right">
+                          {formatCurrency(report.deductions)}
+                        </TableCell>
+                        <TableCell align="right">
+                          {formatCurrency(report.netIncome)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
 
             <Alert severity="info" sx={{ mt: 3 }}>
               <Typography variant="body2">
-                <strong>Nota:</strong> Este reporte calcula los ingresos por alquiler considerando
-                todas las habitaciones ocupadas para propiedades PER_ROOM. Los cálculos respetan
-                períodos de alquiler parciales y tasas de vacancia.
+                <strong>Nota:</strong> Este reporte calcula los ingresos por
+                alquiler considerando todas las habitaciones ocupadas para
+                propiedades PER_ROOM. Los cálculos respetan períodos de alquiler
+                parciales y tasas de vacancia.
               </Typography>
             </Alert>
 
-            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+            <Box sx={{ mt: 3, display: "flex", gap: 2 }}>
               <Button
                 variant="contained"
                 startIcon={<FileDownloadIcon />}

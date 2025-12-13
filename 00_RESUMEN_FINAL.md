@@ -97,27 +97,27 @@ export async function getProperty(
 
 ```typescript
 // ✅ LECTURA
-export async function getRooms(propertyId: string): Promise<Room[]>
-export async function getRoom(id: string): Promise<Room | undefined>
+export async function getRooms(propertyId: string): Promise<Room[]>;
+export async function getRoom(id: string): Promise<Room | undefined>;
 
 // ✅ CREACIÓN
 export async function createRoom(
   propertyId: string,
   data: Omit<Room, "id" | "propertyId">
-): Promise<Room>
+): Promise<Room>;
 
 // ✅ ACTUALIZACIÓN
 export async function updateRoom(
   propertyId: string,
   roomId: string,
   data: Partial<Omit<Room, "id" | "propertyId">>
-): Promise<Room>
+): Promise<Room>;
 
 // ✅ ELIMINACIÓN
 export async function deleteRoom(
   propertyId: string,
   roomId: string
-): Promise<void>
+): Promise<void>;
 ```
 
 ---
@@ -171,11 +171,11 @@ const collections = [..., COL_ROOMS];  // Borra rooms al borrar property
 ```typescript
 // ANTES (sin normalizar)
 const property = await getProperty(id);
-console.log(property.rentalMode);  // undefined ❌
+console.log(property.rentalMode); // undefined ❌
 
 // AHORA (con normalización)
 const property = await getProperty(id);
-console.log(property.rentalMode);  // "ENTIRE_UNIT" ✅ GARANTIZADO
+console.log(property.rentalMode); // "ENTIRE_UNIT" ✅ GARANTIZADO
 ```
 
 **Beneficio**: Cero migraciones de datos necesarias
@@ -224,18 +224,23 @@ $ npm run build
 Seis documentos detallados creados:
 
 1. **RESUMEN_EJECUTIVO.md** (5.8 KB)
+
    - Visión general y checklist
 
 2. **CAMBIOS_RENTAL_MODE.md** (7.6 KB)
+
    - Diffs en formato readable
 
 3. **DIFFS_DETALLADOS.md** (10.2 KB)
+
    - Línea por línea cada cambio
 
 4. **VERIFICACION_FINAL.md** (4.7 KB)
+
    - Checklist de validación
 
 5. **ARQUITECTURA.md** (20 KB)
+
    - Diagramas y flujos
 
 6. **INDEX_CAMBIOS.md** (Este)
@@ -247,17 +252,17 @@ Seis documentos detallados creados:
 
 ## 🎯 GARANTÍAS
 
-| Garantía | Status |
-|----------|--------|
-| Property.rentalMode normalizado | ✅ |
-| Room CRUD completo | ✅ |
-| Validaciones de seguridad | ✅ |
-| Sin breaking changes | ✅ |
-| Propiedades antiguas funcionan | ✅ |
-| Leases antiguas funcionan | ✅ |
-| Cero migraciones necesarias | ✅ |
-| Build sin errores | ✅ |
-| Documentación completa | ✅ |
+| Garantía                        | Status |
+| ------------------------------- | ------ |
+| Property.rentalMode normalizado | ✅     |
+| Room CRUD completo              | ✅     |
+| Validaciones de seguridad       | ✅     |
+| Sin breaking changes            | ✅     |
+| Propiedades antiguas funcionan  | ✅     |
+| Leases antiguas funcionan       | ✅     |
+| Cero migraciones necesarias     | ✅     |
+| Build sin errores               | ✅     |
+| Documentación completa          | ✅     |
 
 ---
 
@@ -266,24 +271,24 @@ Seis documentos detallados creados:
 ```typescript
 // Cargar propiedad (normalización automática)
 const property = await getProperty(propertyId);
-console.log(property.rentalMode);  // ✅ "ENTIRE_UNIT"
+console.log(property.rentalMode); // ✅ "ENTIRE_UNIT"
 
 // Listar rooms
 const rooms = await getRooms(propertyId);
-rooms.forEach(r => console.log(r.name));
+rooms.forEach((r) => console.log(r.name));
 
 // Crear room
 const newRoom = await createRoom(propertyId, {
   name: "Master Bedroom",
   sizeM2: 30,
   floor: "1º",
-  isActive: true
+  isActive: true,
 });
 
 // Actualizar room
 await updateRoom(propertyId, newRoom.id, {
   name: "Master Suite",
-  sizeM2: 35
+  sizeM2: 35,
 });
 
 // Eliminar room

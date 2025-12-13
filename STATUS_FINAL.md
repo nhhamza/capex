@@ -57,15 +57,27 @@ Room {
 
 ```typescript
 // ✅ LECTURA (normaliza rentalMode)
-export async function getProperties(organizationId: string): Promise<Property[]>
-export async function getProperty(id: string): Promise<Property | undefined>
+export async function getProperties(
+  organizationId: string
+): Promise<Property[]>;
+export async function getProperty(id: string): Promise<Property | undefined>;
 
 // ✅ NUEVO: ROOM CRUD
-export async function getRooms(propertyId: string): Promise<Room[]>
-export async function getRoom(id: string): Promise<Room | undefined>
-export async function createRoom(propertyId: string, data: Omit<Room, "id" | "propertyId">): Promise<Room>
-export async function updateRoom(propertyId: string, roomId: string, data: Partial<Omit<Room, "id" | "propertyId">>): Promise<Room>
-export async function deleteRoom(propertyId: string, roomId: string): Promise<void>
+export async function getRooms(propertyId: string): Promise<Room[]>;
+export async function getRoom(id: string): Promise<Room | undefined>;
+export async function createRoom(
+  propertyId: string,
+  data: Omit<Room, "id" | "propertyId">
+): Promise<Room>;
+export async function updateRoom(
+  propertyId: string,
+  roomId: string,
+  data: Partial<Omit<Room, "id" | "propertyId">>
+): Promise<Room>;
+export async function deleteRoom(
+  propertyId: string,
+  roomId: string
+): Promise<void>;
 ```
 
 ---
@@ -73,22 +85,26 @@ export async function deleteRoom(propertyId: string, roomId: string): Promise<vo
 ## ✨ CARACTERÍSTICAS IMPLEMENTADAS
 
 ### 🔄 Normalización Automática
+
 - Toda Property cargada tiene `rentalMode` definido
 - Si no existe en Firestore, se establece a `"ENTIRE_UNIT"`
 - Ocurre en `getProperty()` y `getProperties()`
 - **Garantía**: Propiedades antiguas funcionan sin migración
 
 ### 🛡️ Validaciones de Seguridad
+
 - `createRoom()`: Automáticamente añade `propertyId`
 - `updateRoom()`: Verifica `room.propertyId === propertyId`
 - `deleteRoom()`: Verifica `room.propertyId === propertyId`
 - Guardias: `cleanUndefinedDeep()`, `hasInvalidNumbers()`
 
 ### 🧹 Cascada de Borrado
+
 - Al eliminar Property, se borran todos sus rooms automáticamente
 - Sin documentos huérfanos
 
 ### ⏰ Timestamps Automáticos
+
 - `createdAt` y `updatedAt` se añaden automáticamente
 - Se actualizan en cada modificación
 
@@ -184,7 +200,7 @@ const room = await createRoom(propertyId, {
   name: "Habitación Principal",
   sizeM2: 25,
   floor: "1º",
-  isActive: true
+  isActive: true,
 });
 
 // Listar rooms
@@ -193,7 +209,7 @@ const rooms = await getRooms(propertyId);
 // Actualizar room
 await updateRoom(propertyId, room.id, {
   name: "Master Suite",
-  sizeM2: 30
+  sizeM2: 30,
 });
 
 // Eliminar room
@@ -206,20 +222,20 @@ await deleteRoom(propertyId, room.id);
 
 Se generaron **12 documentos detallados** (95+ KB):
 
-| Documento | Para | Tamaño |
-|-----------|------|--------|
-| **QUICK_SUMMARY.md** | Resumen 2 minutos | 2 KB |
-| **RESUMEN_EJECUTIVO.md** | Visión general | 6 KB |
-| **CAMBIOS_VISUALES.md** | ANTES/DESPUÉS | 9 KB |
-| **DIFFS_DETALLADOS.md** | Línea por línea | 10 KB |
-| **GUIA_PRACTICA.md** | Ejemplos de código | 10 KB |
-| **ARQUITECTURA.md** | Diagramas y flujos | 20 KB |
-| **VERIFICACION_FINAL.md** | Validación | 5 KB |
-| **INDEX_CAMBIOS.md** | Índice navegable | 9 KB |
-| **00_RESUMEN_FINAL.md** | Estado final | 10 KB |
-| **CAMBIOS_RENTAL_MODE.md** | Diffs legibles | 7 KB |
-| **DOCUMENTACION_COMPLETA.md** | Mapa completo | 8 KB |
-| **IMPLEMENTACION_FINAL.md** | Este resumen | 5 KB |
+| Documento                     | Para               | Tamaño |
+| ----------------------------- | ------------------ | ------ |
+| **QUICK_SUMMARY.md**          | Resumen 2 minutos  | 2 KB   |
+| **RESUMEN_EJECUTIVO.md**      | Visión general     | 6 KB   |
+| **CAMBIOS_VISUALES.md**       | ANTES/DESPUÉS      | 9 KB   |
+| **DIFFS_DETALLADOS.md**       | Línea por línea    | 10 KB  |
+| **GUIA_PRACTICA.md**          | Ejemplos de código | 10 KB  |
+| **ARQUITECTURA.md**           | Diagramas y flujos | 20 KB  |
+| **VERIFICACION_FINAL.md**     | Validación         | 5 KB   |
+| **INDEX_CAMBIOS.md**          | Índice navegable   | 9 KB   |
+| **00_RESUMEN_FINAL.md**       | Estado final       | 10 KB  |
+| **CAMBIOS_RENTAL_MODE.md**    | Diffs legibles     | 7 KB   |
+| **DOCUMENTACION_COMPLETA.md** | Mapa completo      | 8 KB   |
+| **IMPLEMENTACION_FINAL.md**   | Este resumen       | 5 KB   |
 
 ---
 

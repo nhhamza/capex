@@ -3,6 +3,7 @@
 ## 📄 ARCHIVO 1: `src/modules/properties/types.ts`
 
 ### Estado ANTES
+
 ```typescript
 export type Periodicity = "monthly" | "quarterly" | "yearly";
 
@@ -41,6 +42,7 @@ export interface Loan { ... }
 ```
 
 ### Estado DESPUÉS
+
 ```typescript
 export type Periodicity = "monthly" | "quarterly" | "yearly";
 
@@ -92,13 +94,14 @@ export interface Room {
 ```
 
 ### Cambios Resumidos
+
 ```
 ADICIONES EN types.ts:
   +1 nuevo tipo:      RentalMode
   +1 nuevo field:     Property.rentalMode
   +1 nuevo field:     Lease.roomId
   +1 nueva interface: Room
-  
+
 TOTAL: +30 líneas
 ```
 
@@ -107,6 +110,7 @@ TOTAL: +30 líneas
 ## 📄 ARCHIVO 2: `src/modules/properties/api.ts`
 
 ### Cambio 1: Constante Nueva
+
 ```typescript
 // ANTES
 const COL_PROPERTIES = "properties";
@@ -122,11 +126,12 @@ const COL_LEASES = "leases";
 const COL_RECURRING = "recurringExpenses";
 const COL_ONEOFF = "oneOffExpenses";
 const COL_LOANS = "loans";
-const COL_ROOMS = "rooms";  // ✅ NUEVO
+const COL_ROOMS = "rooms"; // ✅ NUEVO
 const COL_PROPERTY_DOCS = "propertyDocs";
 ```
 
 ### Cambio 2: Función getProperties() Modificada
+
 ```typescript
 // ANTES
 export async function getProperties(
@@ -148,7 +153,7 @@ export async function getProperties(
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
     const raw = d.data() as Omit<Property, "id">;
-    const rentalMode = raw.rentalMode ?? "ENTIRE_UNIT";  // ✅ NORMALIZACIÓN
+    const rentalMode = raw.rentalMode ?? "ENTIRE_UNIT"; // ✅ NORMALIZACIÓN
     return {
       id: d.id,
       ...raw,
@@ -161,6 +166,7 @@ export async function getProperties(
 **Cambio**: +2 líneas netas de normalización
 
 ### Cambio 3: Función getProperty() Modificada
+
 ```typescript
 // ANTES
 export async function getProperty(id: string): Promise<Property | undefined> {
@@ -176,7 +182,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
   const snap = await getDoc(ref);
   if (!snap.exists()) return undefined;
   const raw = snap.data() as Omit<Property, "id">;
-  const rentalMode = raw.rentalMode ?? "ENTIRE_UNIT";  // ✅ NORMALIZACIÓN
+  const rentalMode = raw.rentalMode ?? "ENTIRE_UNIT"; // ✅ NORMALIZACIÓN
   return { id: snap.id, ...raw, rentalMode };
 }
 ```
@@ -184,6 +190,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 **Cambio**: +2 líneas netas de normalización
 
 ### Cambio 4-8: Cinco Nuevas Funciones CRUD
+
 ```typescript
 // ✅ NUEVA FUNCIÓN 1: getRooms
 export async function getRooms(propertyId: string): Promise<Room[]> {
@@ -267,6 +274,7 @@ export async function deleteRoom(
 **Cambios**: +95 líneas de nuevas funciones
 
 ### Cambio 9: Función cascadeDeleteByProperty() Modificada
+
 ```typescript
 // ANTES
 async function cascadeDeleteByProperty(propertyId: string) {
@@ -276,7 +284,13 @@ async function cascadeDeleteByProperty(propertyId: string) {
 
 // DESPUÉS
 async function cascadeDeleteByProperty(propertyId: string) {
-  const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS, COL_ROOMS];  // ✅ AGREGADO
+  const collections = [
+    COL_LEASES,
+    COL_RECURRING,
+    COL_ONEOFF,
+    COL_LOANS,
+    COL_ROOMS,
+  ]; // ✅ AGREGADO
   // ...
 }
 ```

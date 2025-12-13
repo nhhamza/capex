@@ -274,7 +274,8 @@ export function CashflowPage() {
 
         // Skip if no leases and not PER_ROOM with rooms
         const hasLease = leases.length > 0;
-        const hasRoomsForPerRoom = prop.rentalMode === "PER_ROOM" && rooms.length > 0;
+        const hasRoomsForPerRoom =
+          prop.rentalMode === "PER_ROOM" && rooms.length > 0;
         if (!hasLease && !hasRoomsForPerRoom) continue;
 
         // Calculate rent income
@@ -375,7 +376,8 @@ export function CashflowPage() {
                 const ls = dayjs(l.startDate);
                 const le = l.endDate ? dayjs(l.endDate) : null;
                 const startsOnOrBefore =
-                  monthDate.isSame(ls, "month") || monthDate.isAfter(ls, "month");
+                  monthDate.isSame(ls, "month") ||
+                  monthDate.isAfter(ls, "month");
                 const endsOnOrAfter =
                   !le ||
                   monthDate.isBefore(le, "month") ||
@@ -458,7 +460,9 @@ export function CashflowPage() {
         const rooms = roomsByProp[prop.id] || [];
         if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
           for (let month = 1; month <= 12; month++) {
-            const monthDate = dayjs(`${year}-${month.toString().padStart(2, "0")}-01`);
+            const monthDate = dayjs(
+              `${year}-${month.toString().padStart(2, "0")}-01`
+            );
             const agg = getAggregatedRentForMonth({
               property: prop,
               leases,
@@ -506,7 +510,9 @@ export function CashflowPage() {
             let totalGross = 0;
             let totalVacancyPct = 0;
             for (let month = 1; month <= 12; month++) {
-              const monthDate = dayjs(`${year}-${month.toString().padStart(2, "0")}-01`);
+              const monthDate = dayjs(
+                `${year}-${month.toString().padStart(2, "0")}-01`
+              );
               const agg = getAggregatedRentForMonth({
                 property: prop,
                 leases,
@@ -571,11 +577,11 @@ export function CashflowPage() {
 
     setMonthlyData(monthly);
     setYearlyData(yearly);
-    
+
     // Cache the computed data
     cacheRef.current[`${selectedPropertyId}:monthly`] = monthly;
     cacheRef.current[`${selectedPropertyId}:yearly`] = yearly;
-    
+
     setLoading(false);
   }, [
     dataLoaded,

@@ -9,11 +9,13 @@ Este documento muestra todos los cambios realizados para implementar el sistema 
 ## 1. `types.ts` - Tipos y Interfaces
 
 ### ✅ Nuevo tipo RentalMode
+
 ```diff
 + export type RentalMode = "ENTIRE_UNIT" | "PER_ROOM";
 ```
 
 ### ✅ Actualización de Property
+
 ```diff
 export interface Property {
   id: string;
@@ -32,6 +34,7 @@ export interface Property {
 ```
 
 ### ✅ Actualización de Lease
+
 ```diff
 export interface Lease {
   id: string;
@@ -54,6 +57,7 @@ export interface Lease {
 ```
 
 ### ✅ Nueva interfaz Room
+
 ```diff
 + export interface Room {
 +   id: string;
@@ -71,11 +75,13 @@ export interface Lease {
 ## 2. `api.ts` - Funciones de API
 
 ### ✅ Constante para colección de rooms
+
 ```diff
 + const COL_ROOMS = "rooms";
 ```
 
 ### ✅ Actualización de getProperties - Normalización de rentalMode
+
 ```diff
 export async function getProperties(
   organizationId: string
@@ -99,6 +105,7 @@ export async function getProperties(
 ```
 
 ### ✅ Actualización de getProperty - Normalización de rentalMode
+
 ```diff
 export async function getProperty(id: string): Promise<Property | undefined> {
   const ref = doc(firestore, COL_PROPERTIES, id);
@@ -112,6 +119,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 ```
 
 ### ✅ Nueva función: getRooms
+
 ```diff
 + /**
 +  * Get all rooms for a property
@@ -130,6 +138,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 ```
 
 ### ✅ Nueva función: getRoom
+
 ```diff
 + /**
 +  * Get a single room by ID
@@ -143,6 +152,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 ```
 
 ### ✅ Nueva función: createRoom
+
 ```diff
 + /**
 +  * Create a new room for a property
@@ -166,6 +176,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 ```
 
 ### ✅ Nueva función: updateRoom
+
 ```diff
 + /**
 +  * Update a room
@@ -195,6 +206,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 ```
 
 ### ✅ Nueva función: deleteRoom
+
 ```diff
 + /**
 +  * Delete a room
@@ -217,6 +229,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 ```
 
 ### ✅ Actualización de cascadeDeleteByProperty
+
 ```diff
 async function cascadeDeleteByProperty(propertyId: string) {
 - const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS];
@@ -243,6 +256,7 @@ async function cascadeDeleteByProperty(propertyId: string) {
 ✅ **Lease extensible**: Campo `roomId` opcional permite asociar leases a habitaciones en el futuro.
 
 ✅ **Sin cambios en pantallas**: La UI actual sigue funcionando exactamente igual:
+
 - Las propiedades antiguas cargan con `rentalMode: "ENTIRE_UNIT"`
 - No hay cambios en lógica de cálculos
 - No hay cambios en componentes existentes
@@ -250,6 +264,7 @@ async function cascadeDeleteByProperty(propertyId: string) {
 ✅ **Build verifica**: TypeScript sin errores, Vite compila exitosamente.
 
 ✅ **Seguimiento de patrones**: Todo el código sigue los patrones existentes:
+
 - Guardias: `cleanUndefinedDeep()`, `hasInvalidNumbers()`
 - Validaciones de seguridad: verificación de `propertyId`
 - Manejo de errores consistente

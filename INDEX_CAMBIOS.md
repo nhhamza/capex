@@ -13,14 +13,14 @@ Se ha implementado exitosamente un sistema escalable de **dual rental modes** qu
 
 ## 📚 Documentación Generada
 
-| Documento | Propósito | Tamaño |
-|-----------|----------|--------|
-| **RESUMEN_EJECUTIVO.md** | Visión general con checklist | 5.8 KB |
-| **CAMBIOS_RENTAL_MODE.md** | Diffs de cambios en formato readable | 7.6 KB |
-| **DIFFS_DETALLADOS.md** | Línea por línea de cada cambio | 10.2 KB |
-| **VERIFICACION_FINAL.md** | Validación de implementación | 4.7 KB |
-| **ARQUITECTURA.md** | Diagramas y flujos de datos | 20 KB |
-| **README.md** (Este archivo) | Índice general | 📄 |
+| Documento                    | Propósito                            | Tamaño  |
+| ---------------------------- | ------------------------------------ | ------- |
+| **RESUMEN_EJECUTIVO.md**     | Visión general con checklist         | 5.8 KB  |
+| **CAMBIOS_RENTAL_MODE.md**   | Diffs de cambios en formato readable | 7.6 KB  |
+| **DIFFS_DETALLADOS.md**      | Línea por línea de cada cambio       | 10.2 KB |
+| **VERIFICACION_FINAL.md**    | Validación de implementación         | 4.7 KB  |
+| **ARQUITECTURA.md**          | Diagramas y flujos de datos          | 20 KB   |
+| **README.md** (Este archivo) | Índice general                       | 📄      |
 
 **Total**: 48+ KB de documentación detallada
 
@@ -102,21 +102,25 @@ const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS, COL_ROOMS
 ## ✅ Características Implementadas
 
 ### 🛡️ Validaciones de Seguridad
+
 - ✅ `createRoom`: Automáticamente añade `propertyId` al payload
 - ✅ `updateRoom`: Verifica que `room.propertyId === propertyId` (security check)
 - ✅ `deleteRoom`: Verifica que `room.propertyId === propertyId` antes de eliminar
 - ✅ Guardias: `cleanUndefinedDeep()` y `hasInvalidNumbers()` aplicados
 
 ### 🔄 Normalización Automática
+
 - ✅ `getProperties()`: Normaliza `rentalMode` a `"ENTIRE_UNIT"` si no existe
 - ✅ `getProperty()`: Normaliza `rentalMode` a `"ENTIRE_UNIT"` si no existe
 - ✅ **Garantía**: Toda Property cargada tiene `rentalMode` definido
 
 ### 🧹 Cascada de Borrado
+
 - ✅ Al eliminar una Property, se borran todos sus rooms automáticamente
 - ✅ No quedan documentos huérfanos
 
 ### 📊 API REST Completo
+
 - ✅ **READ**: `getRooms(propertyId)` - lista de habitaciones
 - ✅ **READ**: `getRoom(id)` - habitación individual
 - ✅ **CREATE**: `createRoom(propertyId, data)` - crear habitación
@@ -127,17 +131,17 @@ const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS, COL_ROOMS
 
 ## 🚀 Garantías de No Regresión
 
-| Aspecto | Status | Garantía |
-|---------|--------|----------|
-| **Pantallas Existentes** | ✅ | Sin cambios, mismo comportamiento |
-| **PropertiesList** | ✅ | No modificada |
-| **PropertyDetail** | ✅ | No modificada |
-| **Dashboard** | ✅ | Sin cambios en KPIs |
-| **Cashflow** | ✅ | Lógica de leases intacta |
-| **Calculations** | ✅ | Fórmulas sin cambios |
-| **Propiedades Antiguas** | ✅ | Cargan con `rentalMode: "ENTIRE_UNIT"` |
-| **Leases Existentes** | ✅ | `roomId: undefined` (vivienda completa) |
-| **Build** | ✅ | TypeScript sin errores, Vite OK |
+| Aspecto                  | Status | Garantía                                |
+| ------------------------ | ------ | --------------------------------------- |
+| **Pantallas Existentes** | ✅     | Sin cambios, mismo comportamiento       |
+| **PropertiesList**       | ✅     | No modificada                           |
+| **PropertyDetail**       | ✅     | No modificada                           |
+| **Dashboard**            | ✅     | Sin cambios en KPIs                     |
+| **Cashflow**             | ✅     | Lógica de leases intacta                |
+| **Calculations**         | ✅     | Fórmulas sin cambios                    |
+| **Propiedades Antiguas** | ✅     | Cargan con `rentalMode: "ENTIRE_UNIT"`  |
+| **Leases Existentes**    | ✅     | `roomId: undefined` (vivienda completa) |
+| **Build**                | ✅     | TypeScript sin errores, Vite OK         |
 
 ---
 
@@ -162,29 +166,34 @@ $ npm run build
 ## 📋 Checklist de Implementación
 
 ### Tipos y Interfaces
+
 - ✅ `RentalMode` type creado
 - ✅ `Room` interface creada
 - ✅ `Property.rentalMode` agregado
 - ✅ `Lease.roomId` agregado
 
 ### APIs de Lectura
+
 - ✅ `getProperties()` normaliza rentalMode
 - ✅ `getProperty()` normaliza rentalMode
 - ✅ `getRooms(propertyId)` implementada
 - ✅ `getRoom(id)` implementada
 
 ### APIs de Escritura
+
 - ✅ `createRoom()` con validaciones
 - ✅ `updateRoom()` con verificación de seguridad
 - ✅ `deleteRoom()` con verificación de seguridad
 
 ### Integridad de Datos
+
 - ✅ Timestamps (createdAt, updatedAt) en rooms
 - ✅ Cascada de borrado en cascadeDeleteByProperty()
 - ✅ Validaciones de NaN/Infinity
 - ✅ Limpieza de undefined
 
 ### Compatibilidad
+
 - ✅ Sin breaking changes
 - ✅ Propiedades antiguas funcionan
 - ✅ Leases antiguas funciona
@@ -195,6 +204,7 @@ $ npm run build
 ## 🔮 Próximos Pasos Recomendados
 
 ### Fase 2: UI de Gestión de Rooms
+
 ```
 [ ] Crear componente RoomManager (modal/drawer)
 [ ] Extender PropertyDetail para listar rooms
@@ -205,6 +215,7 @@ $ npm run build
 ```
 
 ### Fase 3: Leases con Rooms
+
 ```
 [ ] OnboardingWizard: selector de room
 [ ] Lease creation: agregar roomId opcional
@@ -213,6 +224,7 @@ $ npm run build
 ```
 
 ### Fase 4: Cálculos Multi-Modo
+
 ```
 [ ] Dashboard: distinguir ENTIRE_UNIT vs PER_ROOM
 [ ] Cashflow: agregar ingresos por room
@@ -221,6 +233,7 @@ $ npm run build
 ```
 
 ### Fase 5: Analytics
+
 ```
 [ ] Ocupación por habitación
 [ ] Profitability por room
@@ -265,7 +278,7 @@ src/modules/properties/
 ```typescript
 // LEER PROPIEDADES (normalización automática)
 const properties = await getProperties(organizationId);
-properties.forEach(prop => {
+properties.forEach((prop) => {
   console.log(prop.rentalMode); // ✅ Garantizado: "ENTIRE_UNIT" | "PER_ROOM"
 });
 
@@ -276,12 +289,12 @@ const newRoom = await createRoom(propertyId, {
   name: "Habitación Principal",
   sizeM2: 30,
   floor: "1º",
-  isActive: true
+  isActive: true,
 });
 
 const updated = await updateRoom(propertyId, newRoom.id, {
   name: "Master Suite",
-  sizeM2: 35
+  sizeM2: 35,
 });
 
 await deleteRoom(propertyId, newRoom.id);
@@ -291,18 +304,18 @@ await deleteRoom(propertyId, newRoom.id);
 
 ## 📊 Estadísticas de Cambio
 
-| Métrica | Valor |
-|---------|-------|
-| Archivos Modificados | 2 |
-| Líneas Agregadas | ~155 |
-| Líneas Eliminadas | ~5 |
-| Líneas Netas | ~150 |
-| Nuevas Funciones | 5 |
-| Funciones Modificadas | 3 |
-| Nuevos Tipos | 2 |
-| Nuevos Campos | 2 |
-| Documentos Generados | 6 |
-| KB de Documentación | 48+ |
+| Métrica               | Valor |
+| --------------------- | ----- |
+| Archivos Modificados  | 2     |
+| Líneas Agregadas      | ~155  |
+| Líneas Eliminadas     | ~5    |
+| Líneas Netas          | ~150  |
+| Nuevas Funciones      | 5     |
+| Funciones Modificadas | 3     |
+| Nuevos Tipos          | 2     |
+| Nuevos Campos         | 2     |
+| Documentos Generados  | 6     |
+| KB de Documentación   | 48+   |
 
 ---
 

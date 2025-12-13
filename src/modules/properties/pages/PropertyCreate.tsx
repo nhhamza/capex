@@ -123,7 +123,7 @@ export function PropertyCreate() {
         organizationId: userDoc.orgId,
         purchaseDate: toISOString(data.purchaseDate),
       });
-      
+
       // Navigate based on rental mode
       const tab = data.rentalMode === "PER_ROOM" ? "habitaciones" : "contrato";
       navigate(`/properties/${property.id}?tab=${tab}`);

@@ -160,7 +160,10 @@ export function PropertiesList() {
         properties.map(async (property) => {
           // Load all required data for the property
           const leases = await getLeases(property.id);
-          const rooms = property.rentalMode === "PER_ROOM" ? await getRooms(property.id) : [];
+          const rooms =
+            property.rentalMode === "PER_ROOM"
+              ? await getRooms(property.id)
+              : [];
           const loan = await getLoan(property.id);
           const recurring = await getRecurringExpenses(property.id);
 
@@ -187,16 +190,23 @@ export function PropertiesList() {
           if (property.rentalMode === "PER_ROOM") {
             monthlyRentNet = agg.monthlyNet;
             monthlyRentGross = agg.monthlyGross;
-            occupancy = agg.totalRooms > 0 ? (agg.occupiedRooms / agg.totalRooms) * 100 : 0;
+            occupancy =
+              agg.totalRooms > 0
+                ? (agg.occupiedRooms / agg.totalRooms) * 100
+                : 0;
           } else {
             // ENTIRE_UNIT: find active unit lease (no roomId)
-            const activeUnitLease = leases.find(lease => !lease.roomId && lease.isActive !== false);
+            const activeUnitLease = leases.find(
+              (lease) => !lease.roomId && lease.isActive !== false
+            );
             if (!activeUnitLease) {
               monthlyRentNet = 0;
               monthlyRentGross = 0;
               occupancy = 0;
             } else {
-              monthlyRentNet = activeUnitLease.monthlyRent * (1 - (activeUnitLease.vacancyPct || 0));
+              monthlyRentNet =
+                activeUnitLease.monthlyRent *
+                (1 - (activeUnitLease.vacancyPct || 0));
               monthlyRentGross = activeUnitLease.monthlyRent;
               occupancy = (1 - (activeUnitLease.vacancyPct || 0)) * 100;
             }

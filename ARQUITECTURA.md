@@ -14,7 +14,7 @@
       rentalMode: ?           rentalMode: ?
       (normalized →           (normalized →
        "ENTIRE_UNIT")          "ENTIRE_UNIT")
-      
+
       ┌─────────────┬────────────────┬──────────────┐
       ▼             ▼                ▼              ▼
     LEASE        ROOM            EXPENSE         LOAN
@@ -22,7 +22,7 @@
   (entire)    (name:"Hab1")    (ibi, comunidad) (amort)
               (floor:"1º")
               (sizeM2:25)
-              
+
               ┌──────────────┐
               ▼              ▼
             LEASE          LEASE
@@ -257,7 +257,9 @@ Firestore Database
 ```typescript
 // ANTES: Podía ser undefined
 const props = await getProperties(orgId);
-if (props[0].rentalMode) { /* algo */ }
+if (props[0].rentalMode) {
+  /* algo */
+}
 
 // AHORA: Garantizado
 const props = await getProperties(orgId);
@@ -271,17 +273,17 @@ console.log(props[0].rentalMode); // ✅ "ENTIRE_UNIT" | "PER_ROOM"
 const newRoom = await createRoom(propertyId, {
   name: "Master Bedroom",
   sizeM2: 30,
-  isActive: true
+  isActive: true,
 });
 
 // Listar rooms
 const rooms = await getRooms(propertyId);
-rooms.forEach(r => console.log(r.name));
+rooms.forEach((r) => console.log(r.name));
 
 // Actualizar room
 await updateRoom(propertyId, roomId, {
   name: "Master Suite",
-  sizeM2: 35
+  sizeM2: 35,
 });
 
 // Eliminar room
@@ -296,7 +298,7 @@ const wholeLease = await createLease({
   propertyId: "p1",
   // roomId: undefined (vivienda completa)
   tenantName: "Juan",
-  monthlyRent: 1200
+  monthlyRent: 1200,
 });
 
 // FUTURO: Lease de habitación específica

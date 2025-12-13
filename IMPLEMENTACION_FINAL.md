@@ -3,6 +3,7 @@
 ## ✅ Todo lo que se implementó
 
 ### 1️⃣ Tipos e Interfaces
+
 ```typescript
 ✅ RentalMode = "ENTIRE_UNIT" | "PER_ROOM"
 ✅ Property.rentalMode?: RentalMode
@@ -11,6 +12,7 @@
 ```
 
 ### 2️⃣ APIs CRUD de Rooms
+
 ```typescript
 ✅ getRooms(propertyId): Promise<Room[]>
 ✅ getRoom(id): Promise<Room | undefined>
@@ -20,6 +22,7 @@
 ```
 
 ### 3️⃣ Normalización de Datos
+
 ```typescript
 ✅ getProperties() normaliza rentalMode → "ENTIRE_UNIT"
 ✅ getProperty() normaliza rentalMode → "ENTIRE_UNIT"
@@ -27,6 +30,7 @@
 ```
 
 ### 4️⃣ Validaciones de Seguridad
+
 ```typescript
 ✅ propertyId automático en createRoom()
 ✅ propertyId verificado en updateRoom()
@@ -109,6 +113,7 @@ OnboardingWizard   ✅ Sin cambios
 ## 🚀 Próximos Pasos
 
 ### Fase 2: UI Components (cuando sea necesario)
+
 ```
 [ ] Crear RoomManager component
 [ ] Extender PropertyDetail
@@ -117,6 +122,7 @@ OnboardingWizard   ✅ Sin cambios
 ```
 
 ### Fase 3: Lease Integration
+
 ```
 [ ] OnboardingWizard: room selector
 [ ] Lease creation con roomId
@@ -124,6 +130,7 @@ OnboardingWizard   ✅ Sin cambios
 ```
 
 ### Fase 4: Multi-Mode Calculations
+
 ```
 [ ] Dashboard: ENTIRE_UNIT vs PER_ROOM
 [ ] Cashflow: income por room
@@ -131,6 +138,7 @@ OnboardingWizard   ✅ Sin cambios
 ```
 
 ### Fase 5: Analytics
+
 ```
 [ ] Room occupancy rates
 [ ] Per-room profitability
@@ -142,12 +150,14 @@ OnboardingWizard   ✅ Sin cambios
 ## 🎓 Cómo Usar
 
 ### Cargar Propiedad (normalización automática)
+
 ```typescript
 const property = await getProperty(propertyId);
 console.log(property.rentalMode); // ✅ "ENTIRE_UNIT" garantizado
 ```
 
 ### Gestionar Rooms
+
 ```typescript
 const rooms = await getRooms(propertyId);
 const newRoom = await createRoom(propertyId, {...});
@@ -196,18 +206,18 @@ await deleteRoom(propertyId, roomId);
 
 ## 📞 Documentación por Necesidad
 
-| Necesidad | Documento |
-|-----------|-----------|
-| "Dame todo en 2 minutos" | QUICK_SUMMARY.md |
-| "Quiero visión general" | RESUMEN_EJECUTIVO.md |
-| "Muéstrame los cambios" | CAMBIOS_VISUALES.md |
-| "Línea por línea" | DIFFS_DETALLADOS.md |
-| "Cómo lo uso" | GUIA_PRACTICA.md |
-| "Arquitectura técnica" | ARQUITECTURA.md |
-| "Validación" | VERIFICACION_FINAL.md |
-| "Índice navegable" | INDEX_CAMBIOS.md |
-| "Todo consolidado" | DOCUMENTACION_COMPLETA.md |
-| "Estado final" | 00_RESUMEN_FINAL.md |
+| Necesidad                | Documento                 |
+| ------------------------ | ------------------------- |
+| "Dame todo en 2 minutos" | QUICK_SUMMARY.md          |
+| "Quiero visión general"  | RESUMEN_EJECUTIVO.md      |
+| "Muéstrame los cambios"  | CAMBIOS_VISUALES.md       |
+| "Línea por línea"        | DIFFS_DETALLADOS.md       |
+| "Cómo lo uso"            | GUIA_PRACTICA.md          |
+| "Arquitectura técnica"   | ARQUITECTURA.md           |
+| "Validación"             | VERIFICACION_FINAL.md     |
+| "Índice navegable"       | INDEX_CAMBIOS.md          |
+| "Todo consolidado"       | DOCUMENTACION_COMPLETA.md |
+| "Estado final"           | 00_RESUMEN_FINAL.md       |
 
 ---
 

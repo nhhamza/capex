@@ -117,8 +117,7 @@ export function PropertyRoomsTab({
   // Obtener el inquilino de una habitación
   const getRoomTenant = (roomId: string): string | null => {
     const lease = leases.find(
-      (l) =>
-        l.roomId === roomId && isLeaseActiveToday(l.startDate, l.endDate)
+      (l) => l.roomId === roomId && isLeaseActiveToday(l.startDate, l.endDate)
     );
     return lease?.tenantName || null;
   };
@@ -168,7 +167,9 @@ export function PropertyRoomsTab({
   const handleCreateContractClick = (room: Room) => {
     const activeLease = getActiveRoomLease(leases, room.id);
     if (activeLease) {
-      alert("Esta habitación ya tiene un contrato activo. Finaliza el contrato actual antes de crear uno nuevo.");
+      alert(
+        "Esta habitación ya tiene un contrato activo. Finaliza el contrato actual antes de crear uno nuevo."
+      );
       return;
     }
     // Navigate to contrato tab with roomId
@@ -260,10 +261,12 @@ export function PropertyRoomsTab({
       {rooms.length === 0 ? (
         <Alert severity="info">
           <Typography variant="body2" gutterBottom>
-            No hay habitaciones registradas. Crea la primera presionando el botón "Nueva Habitación".
+            No hay habitaciones registradas. Crea la primera presionando el
+            botón "Nueva Habitación".
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Solo puede haber 1 contrato activo por habitación. Para crear uno nuevo en una habitación, primero finaliza el actual.
+            Solo puede haber 1 contrato activo por habitación. Para crear uno
+            nuevo en una habitación, primero finaliza el actual.
           </Typography>
         </Alert>
       ) : (
@@ -298,7 +301,11 @@ export function PropertyRoomsTab({
                         <MeetingRoomIcon fontSize="small" color="primary" />
                         <Typography variant="body2">{room.name}</Typography>
                         {!room.isActive && (
-                          <Chip label="Inactiva" size="small" variant="outlined" />
+                          <Chip
+                            label="Inactiva"
+                            size="small"
+                            variant="outlined"
+                          />
                         )}
                       </Stack>
                     </TableCell>
@@ -308,7 +315,9 @@ export function PropertyRoomsTab({
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{room.floor || "-"}</Typography>
+                      <Typography variant="body2">
+                        {room.floor || "-"}
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       {occupied ? (
@@ -328,7 +337,11 @@ export function PropertyRoomsTab({
                       )}
                     </TableCell>
                     <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        justifyContent="flex-end"
+                      >
                         {occupied ? (
                           <Button
                             size="small"
@@ -382,11 +395,18 @@ export function PropertyRoomsTab({
       )}
 
       {/* Dialog para crear/editar */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog
+        open={dialogOpen}
+        onClose={handleCloseDialog}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>
           {editingRoom ? "Editar Habitación" : "Nueva Habitación"}
         </DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}>
+        <DialogContent
+          sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 2 }}
+        >
           <Controller
             name="name"
             control={control}
@@ -479,9 +499,7 @@ export function PropertyRoomsTab({
             variant="contained"
             disabled={loading}
           >
-            {loading ? (
-              <CircularProgress size={20} sx={{ mr: 1 }} />
-            ) : null}
+            {loading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
             {editingRoom ? "Guardar Cambios" : "Crear Habitación"}
           </Button>
         </DialogActions>

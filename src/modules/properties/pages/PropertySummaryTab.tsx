@@ -48,7 +48,8 @@ export function PropertySummaryTab({
 
   // Si no hay lease y tampoco leases de habitaciones, mostramos aviso
   const hasAnyLease =
-    !!lease || (leases && leases.length > 0 && property.rentalMode === "PER_ROOM");
+    !!lease ||
+    (leases && leases.length > 0 && property.rentalMode === "PER_ROOM");
 
   if (!hasAnyLease) {
     return (
@@ -291,12 +292,14 @@ export function PropertySummaryTab({
               <Grid item xs={12} sm={6} md={3}>
                 <KPI
                   label="Habitaciones ocupadas"
-                  value={`${getAggregatedRentForMonth({
-                    property,
-                    leases,
-                    rooms,
-                    monthDate: dayjs(),
-                  }).occupiedRooms} / ${rooms.length || 0}`}
+                  value={`${
+                    getAggregatedRentForMonth({
+                      property,
+                      leases,
+                      rooms,
+                      monthDate: dayjs(),
+                    }).occupiedRooms
+                  } / ${rooms.length || 0}`}
                   color="primary"
                   description="Número de habitaciones que tienen un contrato activo este mes."
                 />

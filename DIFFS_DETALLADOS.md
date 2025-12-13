@@ -3,11 +3,12 @@
 ## Archivo 1: `src/modules/properties/types.ts`
 
 ### Cambio 1.1: Nuevo tipo RentalMode
+
 ```diff
   export type Periodicity = "monthly" | "quarterly" | "yearly";
-  
+
 + export type RentalMode = "ENTIRE_UNIT" | "PER_ROOM";
-  
+
   export interface AcquisitionCosts {
 ```
 
@@ -18,6 +19,7 @@
 ---
 
 ### Cambio 1.2: Extensión de Property
+
 ```diff
   export interface Property {
     id: string;
@@ -43,6 +45,7 @@
 ---
 
 ### Cambio 1.3: Extensión de Lease
+
 ```diff
   export interface Lease {
     id: string;
@@ -59,6 +62,7 @@
 ---
 
 ### Cambio 1.4: Nueva interfaz Room
+
 ```diff
   export interface Loan {
     id: string;
@@ -71,7 +75,7 @@
     upFrontFees?: number;
     notes?: string;
   }
-  
+
 + export interface Room {
 +   id: string;
 +   propertyId: string;
@@ -93,6 +97,7 @@
 ## Archivo 2: `src/modules/properties/api.ts`
 
 ### Cambio 2.1: Adición de constante COL_ROOMS
+
 ```diff
   const COL_PROPERTIES = "properties";
   const COL_LEASES = "leases";
@@ -110,6 +115,7 @@
 ---
 
 ### Cambio 2.2: Modificación de getProperties()
+
 ```diff
   export async function getProperties(
     organizationId: string
@@ -140,6 +146,7 @@
 ---
 
 ### Cambio 2.3: Modificación de getProperty()
+
 ```diff
   export async function getProperty(id: string): Promise<Property | undefined> {
     const ref = doc(firestore, COL_PROPERTIES, id);
@@ -160,6 +167,7 @@
 ---
 
 ### Cambio 2.4: Adición de getRooms()
+
 ```diff
 + /**
 +  * Get all rooms for a property
@@ -185,6 +193,7 @@
 ---
 
 ### Cambio 2.5: Adición de getRoom()
+
 ```diff
 + /**
 +  * Get a single room by ID
@@ -205,6 +214,7 @@
 ---
 
 ### Cambio 2.6: Adición de createRoom()
+
 ```diff
 + /**
 +  * Create a new room for a property
@@ -236,6 +246,7 @@
 ---
 
 ### Cambio 2.7: Adición de updateRoom()
+
 ```diff
 + /**
 +  * Update a room
@@ -273,6 +284,7 @@
 ---
 
 ### Cambio 2.8: Adición de deleteRoom()
+
 ```diff
 + /**
 +  * Delete a room
@@ -303,6 +315,7 @@
 ---
 
 ### Cambio 2.9: Modificación de cascadeDeleteByProperty()
+
 ```diff
   async function cascadeDeleteByProperty(propertyId: string) {
 -   const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS];
@@ -327,33 +340,36 @@
 
 ## Resumen Estadístico
 
-| Métrica | Valor |
-|---------|-------|
-| **Archivos Modificados** | 2 |
-| **Líneas Agregadas** | ~130 |
-| **Líneas Eliminadas** | ~5 |
-| **Líneas Netas** | ~125 |
-| **Nuevas Funciones** | 5 (getRooms, getRoom, createRoom, updateRoom, deleteRoom) |
-| **Funciones Modificadas** | 3 (getProperties, getProperty, cascadeDeleteByProperty) |
-| **Nuevos Tipos** | 2 (RentalMode, Room) |
-| **Campos Agregados** | 2 (Property.rentalMode, Lease.roomId) |
+| Métrica                   | Valor                                                     |
+| ------------------------- | --------------------------------------------------------- |
+| **Archivos Modificados**  | 2                                                         |
+| **Líneas Agregadas**      | ~130                                                      |
+| **Líneas Eliminadas**     | ~5                                                        |
+| **Líneas Netas**          | ~125                                                      |
+| **Nuevas Funciones**      | 5 (getRooms, getRoom, createRoom, updateRoom, deleteRoom) |
+| **Funciones Modificadas** | 3 (getProperties, getProperty, cascadeDeleteByProperty)   |
+| **Nuevos Tipos**          | 2 (RentalMode, Room)                                      |
+| **Campos Agregados**      | 2 (Property.rentalMode, Lease.roomId)                     |
 
 ---
 
 ## Impacto en el Código
 
 ### Adiciones (+)
+
 - ✅ Type system completo para multi-rental
 - ✅ APIs CRUD para rooms
 - ✅ Normalización automática de legacy data
 - ✅ Validaciones de seguridad
 
 ### Modificaciones (Δ)
+
 - ✅ getProperties: Normalización de rentalMode
 - ✅ getProperty: Normalización de rentalMode
 - ✅ cascadeDeleteByProperty: Inclusión de rooms
 
 ### Eliminaciones (-)
+
 - ❌ Ningún código eliminado
 - ✅ Solo mejoras y extensiones
 

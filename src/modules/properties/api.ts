@@ -462,7 +462,13 @@ export async function deletePropertyDoc(id: string): Promise<void> {
 }
 // Cascade delete helper: remove related docs by propertyId (client-side)
 async function cascadeDeleteByProperty(propertyId: string) {
-  const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS, COL_ROOMS];
+  const collections = [
+    COL_LEASES,
+    COL_RECURRING,
+    COL_ONEOFF,
+    COL_LOANS,
+    COL_ROOMS,
+  ];
   for (const col of collections) {
     const q = query(
       collection(firestore, col),

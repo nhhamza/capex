@@ -3,6 +3,7 @@
 ## 🎯 Objetivo Completado
 
 Se ha implementado un sistema escalable de dual rental modes que permite gestionar propiedades como:
+
 - **ENTIRE_UNIT**: Alquiler de vivienda completa (actual)
 - **PER_ROOM**: Alquiler de habitaciones individuales (próximo)
 
@@ -46,21 +47,21 @@ interface Room {
 
 #### 🔧 Modificaciones Existentes
 
-| Función | Cambio |
-|---------|--------|
-| `getProperties()` | Normaliza `rentalMode ?? "ENTIRE_UNIT"` |
-| `getProperty()` | Normaliza `rentalMode ?? "ENTIRE_UNIT"` |
+| Función                     | Cambio                                      |
+| --------------------------- | ------------------------------------------- |
+| `getProperties()`           | Normaliza `rentalMode ?? "ENTIRE_UNIT"`     |
+| `getProperty()`             | Normaliza `rentalMode ?? "ENTIRE_UNIT"`     |
 | `cascadeDeleteByProperty()` | Añade `COL_ROOMS` a la lista de colecciones |
 
 #### ➕ Nuevas Funciones
 
-| Función | Parámetros | Retorna |
-|---------|-----------|---------|
-| `getRooms(propertyId)` | propertyId: string | Room[] |
-| `getRoom(id)` | roomId: string | Room \| undefined |
-| `createRoom(propertyId, data)` | propertyId, Omit<Room, "id", "propertyId"> | Room |
-| `updateRoom(propertyId, roomId, data)` | propertyId, roomId, Partial<Room> | Room |
-| `deleteRoom(propertyId, roomId)` | propertyId, roomId | void |
+| Función                                | Parámetros                                 | Retorna           |
+| -------------------------------------- | ------------------------------------------ | ----------------- |
+| `getRooms(propertyId)`                 | propertyId: string                         | Room[]            |
+| `getRoom(id)`                          | roomId: string                             | Room \| undefined |
+| `createRoom(propertyId, data)`         | propertyId, Omit<Room, "id", "propertyId"> | Room              |
+| `updateRoom(propertyId, roomId, data)` | propertyId, roomId, Partial<Room>          | Room              |
+| `deleteRoom(propertyId, roomId)`       | propertyId, roomId                         | void              |
 
 ---
 
@@ -95,22 +96,28 @@ return { id: d.id, ...raw, rentalMode };
 
 ```typescript
 // Al borrar una propiedad, también se borran sus rooms
-const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS, COL_ROOMS];
+const collections = [
+  COL_LEASES,
+  COL_RECURRING,
+  COL_ONEOFF,
+  COL_LOANS,
+  COL_ROOMS,
+];
 ```
 
 ---
 
 ## 📈 Impacto en Pantallas
 
-| Pantalla | Estado | Razón |
-|----------|--------|-------|
-| PropertiesList | ✅ Sin cambios | No se modificó |
-| PropertyDetail | ✅ Sin cambios | No se modificó |
-| Dashboard | ✅ Sin cambios | Cálculos intactos |
-| Cashflow | ✅ Sin cambios | Lease logic intacta |
-| Leases | ✅ Sin cambios | `roomId` es opcional |
-| **Expenses** | ✅ Sin cambios | No modificado |
-| **Loans** | ✅ Sin cambios | No modificado |
+| Pantalla       | Estado         | Razón                |
+| -------------- | -------------- | -------------------- |
+| PropertiesList | ✅ Sin cambios | No se modificó       |
+| PropertyDetail | ✅ Sin cambios | No se modificó       |
+| Dashboard      | ✅ Sin cambios | Cálculos intactos    |
+| Cashflow       | ✅ Sin cambios | Lease logic intacta  |
+| Leases         | ✅ Sin cambios | `roomId` es opcional |
+| **Expenses**   | ✅ Sin cambios | No modificado        |
+| **Loans**      | ✅ Sin cambios | No modificado        |
 
 ---
 
@@ -163,6 +170,7 @@ if (!document) throw new Error("Not found");
 ## 📚 Documentación
 
 Se generó documentación completa:
+
 - `CAMBIOS_RENTAL_MODE.md` - Diffs detallados de cada cambio
 - `VERIFICACION_FINAL.md` - Checklist de validación
 
@@ -171,21 +179,25 @@ Se generó documentación completa:
 ## ⏭️ Próximos Pasos
 
 ### Fase 2: UI de Rooms (cuando sea necesario)
+
 - [ ] Componente `RoomManager` (CRUD modal)
 - [ ] Extensión de `PropertyDetail`
 - [ ] Botones add/edit/delete rooms
 
 ### Fase 3: Leases con Rooms
+
 - [ ] Selector de room en creación de lease
 - [ ] Validar room activo
 - [ ] UI de lease por room
 
 ### Fase 4: Cálculos Multi-Modo
+
 - [ ] Dashboard: distinguir ENTIRE_UNIT vs PER_ROOM
 - [ ] Cashflow: agregar ingresos por room
 - [ ] KPIs: rendimiento por modo
 
 ### Fase 5: Reporting
+
 - [ ] Ocupación por habitación
 - [ ] Analítica por room
 - [ ] Comparativas ENTIRE_UNIT vs PER_ROOM

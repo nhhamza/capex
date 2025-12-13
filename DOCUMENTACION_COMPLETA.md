@@ -45,40 +45,52 @@
 ## 🎯 Qué Documento Leer según tu Necesidad
 
 ### 📖 "Quiero una visión rápida"
+
 → **RESUMEN_EJECUTIVO.md**
+
 - 5 minutos de lectura
 - Checklist visual
 - Estado final del sistema
 
 ### 🔍 "Quiero ver exactamente qué cambió"
+
 → **CAMBIOS_VISUALES.md** + **DIFFS_DETALLADOS.md**
+
 - Antes/Después lado a lado
 - Línea por línea cada cambio
 - Estadísticas de impacto
 
 ### 🏗️ "Necesito entender la arquitectura"
+
 → **ARQUITECTURA.md**
+
 - Diagramas de relaciones
 - Flujos de datos
 - Patrones de seguridad
 - Roadmap visual
 
 ### 💻 "Quiero usar el sistema"
+
 → **GUIA_PRACTICA.md**
+
 - Ejemplos de código
 - Scenarios reales
 - Integración con leases
 - Manejo de errores
 
 ### ✅ "Necesito verificación de garantías"
+
 → **VERIFICACION_FINAL.md**
+
 - No hay regresiones
 - Backward compatibility
 - Build status
 - Checklist completo
 
 ### 📚 "Quiero índice general"
+
 → **INDEX_CAMBIOS.md**
+
 - Resumen por archivo
 - Estadísticas
 - Próximos pasos
@@ -111,12 +123,14 @@ TypeScript Errors:           0
 ### Cambios por Archivo
 
 **`src/modules/properties/types.ts`** (+30 líneas)
+
 - ✅ `RentalMode` type
 - ✅ `Property.rentalMode` field
 - ✅ `Lease.roomId` field
 - ✅ `Room` interface completa
 
 **`src/modules/properties/api.ts`** (+125 líneas)
+
 - ✅ `COL_ROOMS` constante
 - ✅ `getProperties()` normaliza rentalMode
 - ✅ `getProperty()` normaliza rentalMode
@@ -268,14 +282,14 @@ Si quieres continuar con la implementación, la próxima fase es crear los compo
 
 Para cualquier pregunta sobre la implementación:
 
-| Pregunta | Documento |
-|----------|-----------|
-| "¿Qué cambió?" | CAMBIOS_VISUALES.md |
-| "¿Cómo funciona?" | ARQUITECTURA.md |
-| "¿Cómo lo uso?" | GUIA_PRACTICA.md |
-| "¿Es seguro?" | VERIFICACION_FINAL.md |
-| "¿Qué hay de margen?" | INDEX_CAMBIOS.md |
-| "Dime todo" | 00_RESUMEN_FINAL.md |
+| Pregunta              | Documento             |
+| --------------------- | --------------------- |
+| "¿Qué cambió?"        | CAMBIOS_VISUALES.md   |
+| "¿Cómo funciona?"     | ARQUITECTURA.md       |
+| "¿Cómo lo uso?"       | GUIA_PRACTICA.md      |
+| "¿Es seguro?"         | VERIFICACION_FINAL.md |
+| "¿Qué hay de margen?" | INDEX_CAMBIOS.md      |
+| "Dime todo"           | 00_RESUMEN_FINAL.md   |
 
 ---
 

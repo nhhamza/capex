@@ -230,7 +230,8 @@ export function DashboardPage() {
 
           // If no lease and not PER_ROOM with rooms, skip the rest of metrics for this property
           const hasLease = !!lease;
-          const hasRoomsForPerRoom = prop.rentalMode === "PER_ROOM" && rooms.length > 0;
+          const hasRoomsForPerRoom =
+            prop.rentalMode === "PER_ROOM" && rooms.length > 0;
           if (!hasLease && !hasRoomsForPerRoom) continue;
 
           const recurring = recurringByProp[prop.id] || [];
@@ -300,7 +301,9 @@ export function DashboardPage() {
 
           // Calculate monthly data
           for (let i = 1; i <= 12; i++) {
-            const monthDate = dayjs().year(currentYear).month(i - 1);
+            const monthDate = dayjs()
+              .year(currentYear)
+              .month(i - 1);
             let monthlyRent = 0;
 
             if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {

@@ -16,7 +16,7 @@ const lease = await createLease({
   tenantName: "Juan Pérez",
   monthlyRent: 1200,
   startDate: "2025-01-01",
-  endDate: "2026-12-31"
+  endDate: "2026-12-31",
 });
 
 console.log(lease);
@@ -31,6 +31,7 @@ console.log(lease);
 ```
 
 **¿Cómo afecta a cálculos?**
+
 - Dashboard: Muestra 1200€/mes de ingresos por esta propiedad
 - Cashflow: Incluye 1200€/mes en ingresos totales
 - Yield: Calcula basado en 1200€/mes
@@ -42,7 +43,7 @@ console.log(lease);
 ```typescript
 // 1. Cambiar modo de la propiedad
 const updated = await updateProperty("prop_456", {
-  rentalMode: "PER_ROOM"
+  rentalMode: "PER_ROOM",
 });
 console.log(updated.rentalMode); // "PER_ROOM"
 
@@ -52,29 +53,29 @@ const rooms = await Promise.all([
     name: "Master Bedroom",
     sizeM2: 30,
     floor: "1º",
-    isActive: true
+    isActive: true,
   }),
   createRoom("prop_456", {
     name: "Habitación 2",
     sizeM2: 20,
     floor: "1º",
-    isActive: true
+    isActive: true,
   }),
   createRoom("prop_456", {
     name: "Habitación 3",
     sizeM2: 18,
     floor: "2º",
-    isActive: false  // Actualmente no disponible
-  })
+    isActive: false, // Actualmente no disponible
+  }),
 ]);
 
 // 3. Crear leases por habitación
 const lease1 = await createLease({
   propertyId: "prop_456",
-  roomId: rooms[0].id,  // AQUÍ está la diferencia
+  roomId: rooms[0].id, // AQUÍ está la diferencia
   tenantName: "María García",
   monthlyRent: 500,
-  startDate: "2025-01-01"
+  startDate: "2025-01-01",
 });
 
 const lease2 = await createLease({
@@ -82,7 +83,7 @@ const lease2 = await createLease({
   roomId: rooms[1].id,
   tenantName: "Pedro López",
   monthlyRent: 400,
-  startDate: "2025-01-15"
+  startDate: "2025-01-15",
 });
 
 console.log(lease1.roomId); // rooms[0].id ✅
@@ -90,6 +91,7 @@ console.log(lease2.roomId); // rooms[1].id ✅
 ```
 
 **¿Cómo afecta a cálculos?**
+
 - Dashboard: Muestra 500€ + 400€ = 900€/mes (de 3 habitaciones)
 - Cashflow: Suma ingresos por room (no por propiedad completa)
 - Yield: Calcula basado en ocupación de rooms
@@ -104,7 +106,7 @@ console.log(lease2.roomId); // rooms[1].id ✅
 ```typescript
 // Obtener todas las propiedades (con normalización automática)
 const allProps = await getProperties(organizationId);
-allProps.forEach(prop => {
+allProps.forEach((prop) => {
   console.log(prop.rentalMode); // ✅ Garantizado
 });
 
@@ -117,7 +119,7 @@ if (prop.rentalMode === "PER_ROOM") {
 
 // Obtener todas las habitaciones de una propiedad
 const rooms = await getRooms(propertyId);
-rooms.forEach(room => {
+rooms.forEach((room) => {
   console.log(`${room.name}: ${room.sizeM2}m²`);
 });
 
@@ -139,7 +141,7 @@ const newRoom = await createRoom(propertyId, {
   sizeM2: 25,
   floor: "Planta Baja",
   notes: "Baño ensuite",
-  isActive: true
+  isActive: true,
 });
 
 // La función automáticamente:
@@ -169,7 +171,7 @@ console.log(newRoom);
 const updated = await updateRoom(propertyId, roomId, {
   name: "Master Suite",
   sizeM2: 30,
-  notes: "Recientemente reformada"
+  notes: "Recientemente reformada",
 });
 
 // La función:
@@ -231,7 +233,7 @@ try {
 
 // Habitación no pertenece a propiedad
 try {
-  await updateRoom("property_A", "room_from_property_B", {name: "Test"});
+  await updateRoom("property_A", "room_from_property_B", { name: "Test" });
 } catch (e) {
   // Error: "Room does not belong to this property"
 }
@@ -240,8 +242,8 @@ try {
 try {
   await createRoom(propertyId, {
     name: "Test",
-    sizeM2: NaN,  // ❌ Inválido
-    isActive: true
+    sizeM2: NaN, // ❌ Inválido
+    isActive: true,
   });
 } catch (e) {
   // Error: "Payload contains NaN/Infinity"
@@ -261,7 +263,7 @@ const lease = await createLease({
   // roomId: undefined ← No especificado
   tenantName: "Juan",
   monthlyRent: 1200,
-  startDate: "2025-01-01"
+  startDate: "2025-01-01",
 });
 
 // Cálculos:
@@ -276,10 +278,10 @@ const lease = await createLease({
 // Lease con roomId = habitación específica
 const lease = await createLease({
   propertyId: "prop_B",
-  roomId: "room_1",  // ← Especificado
+  roomId: "room_1", // ← Especificado
   tenantName: "María",
   monthlyRent: 500,
-  startDate: "2025-01-01"
+  startDate: "2025-01-01",
 });
 
 // Cálculos:
@@ -321,10 +323,10 @@ console.log(prop.rentalMode);  // ✅ "ENTIRE_UNIT" (normalizado)
 ```typescript
 // Cuando quieras cambiar a PER_ROOM:
 const updated = await updateProperty("old_prop", {
-  rentalMode: "PER_ROOM"
+  rentalMode: "PER_ROOM",
 });
 
-console.log(updated.rentalMode);  // "PER_ROOM"
+console.log(updated.rentalMode); // "PER_ROOM"
 
 // Ahora puedes:
 // 1. Crear habitaciones
@@ -389,7 +391,7 @@ const leases = await getLeases(id);
 
 ```typescript
 // FUTURO: Filter de leases por room
-const roomLeases = leases.filter(l => l.roomId === roomId);
+const roomLeases = leases.filter((l) => l.roomId === roomId);
 
 // FUTURO: Ocupación por room
 const occupancy = (activeLeases.length / totalRooms.length) * 100;
