@@ -12,7 +12,7 @@ describe("calculations", () => {
   describe("monthlyPaymentFrancesa", () => {
     it("should calculate correct monthly payment", () => {
       const payment = monthlyPaymentFrancesa(200000, 3.5, 300);
-      expect(payment).toBeCloseTo(1011.31, 1);
+      expect(payment).toBeCloseTo(1001.25, 1);
     });
 
     it("should handle zero interest rate", () => {

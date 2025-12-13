@@ -17,20 +17,24 @@ import BuildIcon from "@mui/icons-material/Build";
 import FolderIcon from "@mui/icons-material/Folder";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import NotesIcon from "@mui/icons-material/Notes";
+import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
 import { ReactElement } from "react";
+import { RentalMode } from "../types";
 
 export interface PropertyTabConfig {
   value: string;
   label: string;
   icon: ReactElement;
+  hidden?: boolean;
 }
 
 interface ResponsivePropertyTabsProps {
   value: string;
   onChange: (newValue: string) => void;
+  rentalMode?: RentalMode;
 }
 
-const TABS: PropertyTabConfig[] = [
+const getTabs = (rentalMode?: RentalMode): PropertyTabConfig[] => [
   {
     value: "resumen",
     label: "Resumen",
@@ -40,6 +44,12 @@ const TABS: PropertyTabConfig[] = [
     value: "compra",
     label: "Compra",
     icon: <ShoppingCartIcon fontSize="small" />,
+  },
+  {
+    value: "habitaciones",
+    label: "Habitaciones",
+    icon: <MeetingRoomIcon fontSize="small" />,
+    hidden: rentalMode !== "PER_ROOM",
   },
   {
     value: "contrato",
@@ -68,10 +78,13 @@ const TABS: PropertyTabConfig[] = [
 export function ResponsivePropertyTabs({
   value,
   onChange,
+  rentalMode,
 }: ResponsivePropertyTabsProps) {
   const isMobile = useMediaQuery((theme: Theme) =>
     theme.breakpoints.down("sm")
   );
+
+  const tabs = getTabs(rentalMode).filter((t) => !t.hidden);
 
   if (isMobile) {
     return (
@@ -94,7 +107,7 @@ export function ResponsivePropertyTabs({
             onChange={(e) => onChange(e.target.value)}
             sx={{ minHeight: 48 }}
           >
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <MenuItem key={t.value} value={t.value}>
                 {t.label}
               </MenuItem>
@@ -120,7 +133,7 @@ export function ResponsivePropertyTabs({
         },
       }}
     >
-      {TABS.map((t) => (
+      {tabs.map((t) => (
         <Tab
           key={t.value}
           value={t.value}

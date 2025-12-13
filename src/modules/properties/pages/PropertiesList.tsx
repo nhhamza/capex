@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import dayjs from "dayjs";
 import {
   Box,
   Button,
@@ -30,6 +31,7 @@ import {
   getLeases,
   getLoan,
   getRecurringExpenses,
+  getRooms,
 } from "../api";
 import { Property } from "../types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -38,6 +40,7 @@ import {
   sumClosingCosts,
   buildAmortizationSchedule,
 } from "../calculations";
+import { getAggregatedRentForMonth } from "../rentalAggregation";
 import { formatPercent, formatCurrency } from "@/utils/format";
 
 /**
@@ -155,8 +158,9 @@ export function PropertiesList() {
     const enrichRows = async () => {
       const enriched = await Promise.all(
         properties.map(async (property) => {
+          // Load all required data for the property
           const leases = await getLeases(property.id);
-          const lease = leases[0];
+          const rooms = property.rentalMode === "PER_ROOM" ? await getRooms(property.id) : [];
           const loan = await getLoan(property.id);
           const recurring = await getRecurringExpenses(property.id);
 
@@ -166,25 +170,42 @@ export function PropertiesList() {
           // Calculate remaining loan balance
           const remainingBalance = getRemainingLoanBalance(loan);
 
-          if (!lease) {
-            return {
-              id: property.id,
-              address: property.address,
-              purchasePrice: property.purchasePrice,
-              currentValue: property.currentValue || property.purchasePrice,
-              totalInvestment,
-              monthlyRent: 0,
-              capRate: 0,
-              cashOnCash: 0,
-              occupancy: 0,
-              loanBalance: remainingBalance,
-              loan,
-            };
+          // Compute aggregated rent metrics
+          const agg = getAggregatedRentForMonth({
+            property,
+            leases,
+            rooms,
+            monthDate: dayjs(),
+          });
+
+          // For ENTIRE_UNIT: keep existing logic (find active unit lease)
+          // For PER_ROOM: use aggregated values
+          let monthlyRentNet: number;
+          let monthlyRentGross: number;
+          let occupancy: number;
+
+          if (property.rentalMode === "PER_ROOM") {
+            monthlyRentNet = agg.monthlyNet;
+            monthlyRentGross = agg.monthlyGross;
+            occupancy = agg.totalRooms > 0 ? (agg.occupiedRooms / agg.totalRooms) * 100 : 0;
+          } else {
+            // ENTIRE_UNIT: find active unit lease (no roomId)
+            const activeUnitLease = leases.find(lease => !lease.roomId && lease.isActive !== false);
+            if (!activeUnitLease) {
+              monthlyRentNet = 0;
+              monthlyRentGross = 0;
+              occupancy = 0;
+            } else {
+              monthlyRentNet = activeUnitLease.monthlyRent * (1 - (activeUnitLease.vacancyPct || 0));
+              monthlyRentGross = activeUnitLease.monthlyRent;
+              occupancy = (1 - (activeUnitLease.vacancyPct || 0)) * 100;
+            }
           }
 
+          // Compute profitability metrics using aggregated data
           const metrics = computeLeveredMetrics({
-            monthlyRent: lease.monthlyRent,
-            vacancyPct: lease.vacancyPct || 0,
+            monthlyRent: monthlyRentGross,
+            vacancyPct: agg.effectiveVacancyPct,
             recurring,
             variableAnnualBudget: 0,
             purchasePrice: property.purchasePrice,
@@ -198,12 +219,21 @@ export function PropertiesList() {
             purchasePrice: property.purchasePrice,
             currentValue: property.currentValue || property.purchasePrice,
             totalInvestment,
-            monthlyRent: lease.monthlyRent,
+            monthlyRent: monthlyRentNet,
             capRate: metrics.capRateNet,
             cashOnCash: metrics.cashOnCash,
-            occupancy: (1 - (lease.vacancyPct || 0)) * 100,
+            occupancy,
             loanBalance: remainingBalance,
             loan,
+            // Store computed metrics for debugging/transparency
+            computed: {
+              monthlyRentNet,
+              monthlyRentGross,
+              effectiveVacancyPct: agg.effectiveVacancyPct,
+              occupiedRooms: agg.occupiedRooms,
+              totalRooms: agg.totalRooms,
+              rentalMode: property.rentalMode,
+            },
           };
         })
       );
@@ -212,6 +242,8 @@ export function PropertiesList() {
 
     if (properties.length > 0) {
       enrichRows();
+    } else {
+      setRows([]);
     }
   }, [properties]);
 

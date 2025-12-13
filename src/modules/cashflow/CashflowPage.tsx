@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Box,
   Typography,
@@ -16,6 +16,7 @@ import {
   Divider,
   Skeleton,
   CircularProgress,
+  Button,
 } from "@mui/material";
 import {
   Chart as ChartJS,
@@ -46,17 +47,20 @@ import {
   getLoans,
   getRecurringExpenses,
   getOneOffExpenses,
+  getRooms,
 } from "@/modules/properties/api";
 import {
   Property,
   Lease,
   Loan,
   RecurringExpense,
+  Room,
 } from "@/modules/properties/types";
 import {
   computeLeveredMetrics,
   sumClosingCosts,
 } from "@/modules/properties/calculations";
+import { getAggregatedRentForMonth } from "@/modules/properties/rentalAggregation";
 import { Money } from "@/components/Money";
 import { formatCurrency } from "@/utils/format";
 
@@ -97,11 +101,18 @@ export function CashflowPage() {
   const [recurringByProp, setRecurringByProp] = useState<RecurringByProp>({});
   const [oneOffByProp, setOneOffByProp] = useState<OneOffByProp>({});
   const [loansByProp, setLoansByProp] = useState<LoansByProp>({});
+  const [roomsByProp, setRoomsByProp] = useState<Record<string, Room[]>>({});
   const [dataLoaded, setDataLoaded] = useState(false);
 
   const [monthlyData, setMonthlyData] = useState<CashflowRow[]>([]);
   const [yearlyData, setYearlyData] = useState<CashflowRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Cache for computed data: key = `${selectedPropertyId}:${viewMode}`
+  const cacheRef = useRef<Record<string, CashflowRow[]>>({});
+
+  // Incremental rendering for performance
+  const [visibleCount, setVisibleCount] = useState(6);
 
   // 1) Load properties
   useEffect(() => {
@@ -111,6 +122,8 @@ export function CashflowPage() {
       try {
         const props = await getProperties(userDoc.orgId);
         setProperties(props);
+        // Clear cache when properties change
+        cacheRef.current = {};
       } finally {
         setLoading(false);
       }
@@ -162,6 +175,15 @@ export function CashflowPage() {
           })
         );
 
+        const roomEntries = await Promise.all(
+          properties
+            .filter((prop) => prop.rentalMode === "PER_ROOM")
+            .map(async (prop) => {
+              const rooms = await getRooms(prop.id);
+              return [prop.id, rooms || []] as const;
+            })
+        );
+
         const leasesMap: LeasesByProp = {};
         leaseEntries.forEach(([id, leases]) => {
           leasesMap[id] = leases;
@@ -182,10 +204,16 @@ export function CashflowPage() {
           loansMap[id] = loans;
         });
 
+        const roomsMap: Record<string, Room[]> = {};
+        roomEntries.forEach(([id, rooms]) => {
+          roomsMap[id] = rooms;
+        });
+
         setLeasesByProp(leasesMap);
         setRecurringByProp(recurringMap);
         setOneOffByProp(oneOffMap);
         setLoansByProp(loansMap);
+        setRoomsByProp(roomsMap);
         setDataLoaded(true);
       } finally {
         setLoading(false);
@@ -204,11 +232,27 @@ export function CashflowPage() {
     [properties, selectedPropertyId]
   );
 
-  // 3) Compute monthly & yearly data purely in memory (no more API calls)
+  // 3) Compute monthly & yearly data with caching
   useEffect(() => {
     if (!dataLoaded || propsToProcess.length === 0) {
       setMonthlyData([]);
       setYearlyData([]);
+      setVisibleCount(6); // Reset incremental rendering
+      return;
+    }
+
+    const cacheKey = `${selectedPropertyId}:${viewMode}`;
+    const cachedData = cacheRef.current[cacheKey];
+
+    if (cachedData) {
+      // Use cached data
+      if (viewMode === "monthly") {
+        setMonthlyData(cachedData);
+      } else {
+        setYearlyData(cachedData);
+      }
+      setLoading(false);
+      setVisibleCount(6); // Reset for new data
       return;
     }
 
@@ -226,29 +270,44 @@ export function CashflowPage() {
 
       for (const prop of propsToProcess) {
         const leases = leasesByProp[prop.id] || [];
-        if (!leases.length) continue;
+        const rooms = roomsByProp[prop.id] || [];
 
-        // Lease active this month
-        const activeLease = leases.find((l) => {
-          if (!l || !l.startDate) return false;
-          const ls = dayjs(l.startDate);
-          const le = l.endDate ? dayjs(l.endDate) : null;
+        // Skip if no leases and not PER_ROOM with rooms
+        const hasLease = leases.length > 0;
+        const hasRoomsForPerRoom = prop.rentalMode === "PER_ROOM" && rooms.length > 0;
+        if (!hasLease && !hasRoomsForPerRoom) continue;
 
-          const startsOnOrBefore =
-            monthDate.isSame(ls, "month") || monthDate.isAfter(ls, "month");
-          const endsOnOrAfter =
-            !le ||
-            monthDate.isBefore(le, "month") ||
-            monthDate.isSame(le, "month");
+        // Calculate rent income
+        if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+          const agg = getAggregatedRentForMonth({
+            property: prop,
+            leases,
+            rooms,
+            monthDate,
+          });
+          rentIncome += agg.monthlyNet;
+        } else if (hasLease) {
+          // ENTIRE_UNIT logic
+          const activeLease = leases.find((l) => {
+            if (!l || !l.startDate) return false;
+            const ls = dayjs(l.startDate);
+            const le = l.endDate ? dayjs(l.endDate) : null;
 
-          return startsOnOrBefore && endsOnOrAfter;
-        });
+            const startsOnOrBefore =
+              monthDate.isSame(ls, "month") || monthDate.isAfter(ls, "month");
+            const endsOnOrAfter =
+              !le ||
+              monthDate.isBefore(le, "month") ||
+              monthDate.isSame(le, "month");
 
-        if (!activeLease) continue;
+            return startsOnOrBefore && endsOnOrAfter;
+          });
 
-        // Rent income (with vacancy)
-        rentIncome +=
-          activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
+          if (activeLease) {
+            rentIncome +=
+              activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
+          }
+        }
 
         // Recurring expenses
         const recurring = recurringByProp[prop.id] || [];
@@ -288,21 +347,56 @@ export function CashflowPage() {
         if (loan) {
           const loanStart = loan.startDate
             ? dayjs(loan.startDate)
-            : dayjs(activeLease.startDate);
+            : dayjs(monthDate);
           const monthsSinceLoanStart = monthDate.diff(loanStart, "month");
 
           if (
             monthsSinceLoanStart >= 0 &&
             monthsSinceLoanStart < loan.termMonths
           ) {
+            const recurring = recurringByProp[prop.id] || [];
+
+            // Calculate monthly rent for metrics
+            let monthlyRentForMetrics = 0;
+            let vacancyPctForMetrics = 0;
+
+            if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+              const agg = getAggregatedRentForMonth({
+                property: prop,
+                leases,
+                rooms,
+                monthDate,
+              });
+              monthlyRentForMetrics = agg.monthlyGross;
+              vacancyPctForMetrics = agg.effectiveVacancyPct;
+            } else {
+              const activeLease = leases.find((l) => {
+                if (!l || !l.startDate) return false;
+                const ls = dayjs(l.startDate);
+                const le = l.endDate ? dayjs(l.endDate) : null;
+                const startsOnOrBefore =
+                  monthDate.isSame(ls, "month") || monthDate.isAfter(ls, "month");
+                const endsOnOrAfter =
+                  !le ||
+                  monthDate.isBefore(le, "month") ||
+                  monthDate.isSame(le, "month");
+                return startsOnOrBefore && endsOnOrAfter;
+              });
+              if (activeLease) {
+                monthlyRentForMetrics = activeLease.monthlyRent;
+                vacancyPctForMetrics = activeLease.vacancyPct || 0;
+              }
+            }
+
             const closingCostsTotal = sumClosingCosts(prop.closingCosts);
             const metrics = computeLeveredMetrics({
-              monthlyRent: activeLease.monthlyRent,
-              vacancyPct: activeLease.vacancyPct || 0,
+              monthlyRent: monthlyRentForMetrics,
+              vacancyPct: vacancyPctForMetrics,
               recurring,
               variableAnnualBudget: 0,
               purchasePrice: prop.purchasePrice,
               closingCostsTotal,
+              currentValue: prop.currentValue,
               loan,
             });
 
@@ -361,8 +455,22 @@ export function CashflowPage() {
           }) || leaseFallback;
 
         // Annual rent
-        rentIncome +=
-          activeLease.monthlyRent * 12 * (1 - (activeLease.vacancyPct || 0));
+        const rooms = roomsByProp[prop.id] || [];
+        if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+          for (let month = 1; month <= 12; month++) {
+            const monthDate = dayjs(`${year}-${month.toString().padStart(2, "0")}-01`);
+            const agg = getAggregatedRentForMonth({
+              property: prop,
+              leases,
+              rooms,
+              monthDate,
+            });
+            rentIncome += agg.monthlyGross;
+          }
+        } else {
+          rentIncome +=
+            activeLease.monthlyRent * 12 * (1 - (activeLease.vacancyPct || 0));
+        }
 
         // Recurring expenses
         const recurring = recurringByProp[prop.id] || [];
@@ -390,10 +498,35 @@ export function CashflowPage() {
         const loan = loans.length > 0 ? loans[0] : null;
 
         if (loan) {
+          // Calculate average monthly rent for the year
+          let avgMonthlyRent = 0;
+          let avgVacancyPct = 0;
+
+          if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+            let totalGross = 0;
+            let totalVacancyPct = 0;
+            for (let month = 1; month <= 12; month++) {
+              const monthDate = dayjs(`${year}-${month.toString().padStart(2, "0")}-01`);
+              const agg = getAggregatedRentForMonth({
+                property: prop,
+                leases,
+                rooms,
+                monthDate,
+              });
+              totalGross += agg.monthlyGross;
+              totalVacancyPct += agg.effectiveVacancyPct;
+            }
+            avgMonthlyRent = totalGross / 12;
+            avgVacancyPct = totalVacancyPct / 12;
+          } else {
+            avgMonthlyRent = activeLease.monthlyRent;
+            avgVacancyPct = activeLease.vacancyPct || 0;
+          }
+
           const closingCostsTotal = sumClosingCosts(prop.closingCosts);
           const metrics = computeLeveredMetrics({
-            monthlyRent: activeLease.monthlyRent,
-            vacancyPct: activeLease.vacancyPct || 0,
+            monthlyRent: avgMonthlyRent,
+            vacancyPct: avgVacancyPct,
             recurring,
             variableAnnualBudget: 0,
             purchasePrice: prop.purchasePrice,
@@ -438,6 +571,11 @@ export function CashflowPage() {
 
     setMonthlyData(monthly);
     setYearlyData(yearly);
+    
+    // Cache the computed data
+    cacheRef.current[`${selectedPropertyId}:monthly`] = monthly;
+    cacheRef.current[`${selectedPropertyId}:yearly`] = yearly;
+    
     setLoading(false);
   }, [
     dataLoaded,
@@ -446,6 +584,8 @@ export function CashflowPage() {
     recurringByProp,
     oneOffByProp,
     loansByProp,
+    selectedPropertyId,
+    viewMode,
   ]);
 
   // 4) Derive which data to show from viewMode (no recompute, just select)
@@ -834,7 +974,7 @@ export function CashflowPage() {
         )}
 
         <Stack spacing={2}>
-          {cashflowData.map((row) => (
+          {cashflowData.slice(0, visibleCount).map((row) => (
             <Card key={row.period} variant="outlined">
               <CardContent>
                 <Typography variant="h6" gutterBottom color="primary">
@@ -998,6 +1138,17 @@ export function CashflowPage() {
               </CardContent>
             </Card>
           ))}
+
+          {cashflowData.length > visibleCount && (
+            <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={() => setVisibleCount((prev) => prev + 6)}
+              >
+                Cargar más
+              </Button>
+            </Box>
+          )}
 
           {cashflowData.length > 0 && (
             <Card variant="outlined" sx={{ bgcolor: "grey.100" }}>

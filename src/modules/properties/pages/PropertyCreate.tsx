@@ -13,6 +13,11 @@ import {
   Snackbar,
   Alert,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers";
 import { useAuth } from "@/auth/authContext";
@@ -27,6 +32,7 @@ const schema = z.object({
   zip: z.string().optional(),
   purchasePrice: z.number().min(1, "El precio debe ser mayor a 0"),
   purchaseDate: z.any().optional(),
+  rentalMode: z.enum(["ENTIRE_UNIT", "PER_ROOM"]),
   notes: z.string().optional(),
 });
 
@@ -82,6 +88,7 @@ export function PropertyCreate() {
       zip: "",
       purchasePrice: 0,
       purchaseDate: dayjs(),
+      rentalMode: "ENTIRE_UNIT",
       notes: "",
     },
   });
@@ -116,7 +123,10 @@ export function PropertyCreate() {
         organizationId: userDoc.orgId,
         purchaseDate: toISOString(data.purchaseDate),
       });
-      navigate(`/properties/${property.id}`);
+      
+      // Navigate based on rental mode
+      const tab = data.rentalMode === "PER_ROOM" ? "habitaciones" : "contrato";
+      navigate(`/properties/${property.id}?tab=${tab}`);
     } catch (error) {
       setSnackbar({
         open: true,
@@ -220,6 +230,36 @@ export function PropertyCreate() {
                         },
                       }}
                     />
+                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="rentalMode"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth size="medium">
+                      <InputLabel>Modo de Alquiler</InputLabel>
+                      <Select
+                        {...field}
+                        label="Modo de Alquiler"
+                        error={!!errors.rentalMode}
+                      >
+                        <MenuItem value="ENTIRE_UNIT">Piso entero</MenuItem>
+                        <MenuItem value="PER_ROOM">Por habitaciones</MenuItem>
+                      </Select>
+                      {errors.rentalMode && (
+                        <FormHelperText error>
+                          {errors.rentalMode.message}
+                        </FormHelperText>
+                      )}
+                      <FormHelperText>
+                        {field.value === "ENTIRE_UNIT"
+                          ? "Solo puede haber 1 contrato activo para el piso. Para crear uno nuevo, primero finaliza el actual."
+                          : "Solo puede haber 1 contrato activo por habitación. Para crear uno nuevo en una habitación, primero finaliza el actual."}
+                      </FormHelperText>
+                    </FormControl>
                   )}
                 />
               </Grid>

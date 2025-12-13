@@ -40,6 +40,7 @@ ChartJS.register(
   ChartLegend
 );
 
+import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
 import {
   getProperties,
@@ -47,12 +48,14 @@ import {
   getLoans,
   getRecurringExpenses,
   getOneOffExpenses,
+  getRooms,
 } from "@/modules/properties/api";
-import { Property } from "@/modules/properties/types";
+import { Property, Room } from "@/modules/properties/types";
 import {
   computeLeveredMetrics,
   sumClosingCosts,
 } from "@/modules/properties/calculations";
+import { getAggregatedRentForMonth } from "@/modules/properties/rentalAggregation";
 import { formatCurrency } from "@/utils/format";
 
 interface OneOffExpense {
@@ -150,6 +153,15 @@ export function DashboardPage() {
           })
         );
 
+        const roomsEntries = await Promise.all(
+          filteredProps
+            .filter((prop) => prop.rentalMode === "PER_ROOM")
+            .map(async (prop) => {
+              const rooms = await getRooms(prop.id);
+              return [prop.id, rooms || []] as const;
+            })
+        );
+
         const leasesByProp: Record<string, any[]> = {};
         leasesEntries.forEach(([id, leases]) => {
           leasesByProp[id] = leases;
@@ -168,6 +180,11 @@ export function DashboardPage() {
         const oneOffByProp: Record<string, OneOffExpense[]> = {};
         oneOffEntries.forEach(([id, capex]) => {
           oneOffByProp[id] = capex;
+        });
+
+        const roomsByProp: Record<string, Room[]> = {};
+        roomsEntries.forEach(([id, rooms]) => {
+          roomsByProp[id] = rooms;
         });
 
         // --- Aggregations ---
@@ -199,6 +216,8 @@ export function DashboardPage() {
           const loans = loansByProp[prop.id] || [];
           const loan = loans[0];
 
+          const rooms = roomsByProp[prop.id] || [];
+
           // Debt ratio: always based on loan + current value, even if no lease
           if (loan) {
             totalPrincipal += loan.principal;
@@ -209,16 +228,36 @@ export function DashboardPage() {
               ? prop.currentValue
               : prop.purchasePrice;
 
-          // If no lease, skip the rest of metrics for this property
-          if (!lease) continue;
+          // If no lease and not PER_ROOM with rooms, skip the rest of metrics for this property
+          const hasLease = !!lease;
+          const hasRoomsForPerRoom = prop.rentalMode === "PER_ROOM" && rooms.length > 0;
+          if (!hasLease && !hasRoomsForPerRoom) continue;
 
           const recurring = recurringByProp[prop.id] || [];
           const oneOffExpenses = oneOffByProp[prop.id] || [];
 
+          // Calculate aggregated rent for metrics
+          let monthlyRentForMetrics = 0;
+          let vacancyPctForMetrics = 0;
+
+          if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+            const aggNow = getAggregatedRentForMonth({
+              property: prop,
+              leases,
+              rooms,
+              monthDate: dayjs(),
+            });
+            monthlyRentForMetrics = aggNow.monthlyGross;
+            vacancyPctForMetrics = aggNow.effectiveVacancyPct;
+          } else if (lease) {
+            monthlyRentForMetrics = lease.monthlyRent;
+            vacancyPctForMetrics = lease.vacancyPct || 0;
+          }
+
           const closingCostsTotal = sumClosingCosts(prop.closingCosts);
           const metrics = computeLeveredMetrics({
-            monthlyRent: lease.monthlyRent,
-            vacancyPct: lease.vacancyPct || 0,
+            monthlyRent: monthlyRentForMetrics,
+            vacancyPct: vacancyPctForMetrics,
             recurring,
             variableAnnualBudget: 0,
             purchasePrice: prop.purchasePrice,
@@ -229,8 +268,22 @@ export function DashboardPage() {
 
           cfaf += metrics.cfaf;
 
-          const yearlyRent =
-            lease.monthlyRent * 12 * (1 - (lease.vacancyPct || 0));
+          // Calculate annual income
+          let yearlyRent = 0;
+          if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+            for (let month = 0; month < 12; month++) {
+              const monthDate = dayjs().year(currentYear).month(month);
+              const agg = getAggregatedRentForMonth({
+                property: prop,
+                leases,
+                rooms,
+                monthDate,
+              });
+              yearlyRent += agg.monthlyNet;
+            }
+          } else if (lease) {
+            yearlyRent = lease.monthlyRent * 12 * (1 - (lease.vacancyPct || 0));
+          }
           annualIncome += yearlyRent;
 
           annualRecurringExpenses +=
@@ -245,12 +298,27 @@ export function DashboardPage() {
             .reduce((sum, exp) => sum + exp.amount, 0);
           annualOneOffExpenses += yearOneOffExpenses;
 
-          const monthlyRent = lease.monthlyRent * (1 - (lease.vacancyPct || 0));
-          const monthlyExpenses =
-            (metrics.recurringAnnual + metrics.variableAnnual) / 12;
-          const monthlyDebt = loan ? metrics.ads / 12 : 0;
-
+          // Calculate monthly data
           for (let i = 1; i <= 12; i++) {
+            const monthDate = dayjs().year(currentYear).month(i - 1);
+            let monthlyRent = 0;
+
+            if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+              const agg = getAggregatedRentForMonth({
+                property: prop,
+                leases,
+                rooms,
+                monthDate,
+              });
+              monthlyRent = agg.monthlyNet;
+            } else if (lease) {
+              monthlyRent = lease.monthlyRent * (1 - (lease.vacancyPct || 0));
+            }
+
+            const monthlyExpenses =
+              (metrics.recurringAnnual + metrics.variableAnnual) / 12;
+            const monthlyDebt = loan ? metrics.ads / 12 : 0;
+
             monthlyData[i].ingresos += monthlyRent;
             monthlyData[i].gastos += monthlyExpenses;
             monthlyData[i].deuda += monthlyDebt;

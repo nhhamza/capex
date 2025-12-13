@@ -1,5 +1,7 @@
 export type Periodicity = "monthly" | "quarterly" | "yearly";
 
+export type RentalMode = "ENTIRE_UNIT" | "PER_ROOM";
+
 export interface AcquisitionCosts {
   itp?: number;
   notary?: number;
@@ -22,11 +24,13 @@ export interface Property {
   currentValue?: number; // Valor actual del inmueble para métricas (LTV dinámico, yield actual)
   closingCosts?: AcquisitionCosts;
   images?: string[];
+  rentalMode?: RentalMode; // "ENTIRE_UNIT" (por defecto) o "PER_ROOM"
 }
 
 export interface Lease {
   id: string;
   propertyId: string;
+  roomId?: string; // Si está definido, es un lease de habitación; si es undefined, es de vivienda completa
   tenantName?: string;
   tenantPhone?: string;
   tenantDNI?: string;
@@ -89,6 +93,16 @@ export interface Loan {
   notes?: string;
 }
 
+export interface Room {
+  id: string;
+  propertyId: string;
+  name: string; // "Hab 1", "Suite interior", etc.
+  sizeM2?: number;
+  floor?: string;
+  notes?: string;
+  isActive: boolean;
+}
+
 export interface AmortizationRow {
   month: number;
   payment: number;
@@ -120,4 +134,12 @@ export interface LeveredMetrics extends AnnualMetrics {
   cashOnCash: number;
   dscr: number;
   ltv: number;
+}
+
+export interface AggregatedRentResult {
+  monthlyGross: number;
+  monthlyNet: number;
+  effectiveVacancyPct: number;
+  occupiedRooms: number;
+  totalRooms: number;
 }

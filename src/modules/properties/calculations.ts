@@ -5,7 +5,12 @@ import {
   AmortizationSchedule,
   AnnualMetrics,
   LeveredMetrics,
+  Property,
+  Lease,
+  Room,
+  AggregatedRentResult,
 } from "./types";
+import dayjs, { Dayjs } from "dayjs";
 
 /**
  * Calculate monthly payment for French amortization (constant payment)
@@ -237,5 +242,170 @@ export function computeLeveredMetrics(params: {
     cashOnCash,
     dscr,
     ltv,
+  };
+}
+
+/**
+ * Get aggregated rent for a specific month
+ * Handles both ENTIRE_UNIT and PER_ROOM rental modes
+ */
+export interface AggregatedRentForMonthOptions {
+  property: Property;
+  leases: Lease[];
+  rooms: Room[];
+  monthDate: Dayjs;
+}
+
+export function getAggregatedRentForMonth(
+  options: AggregatedRentForMonthOptions
+): AggregatedRentResult {
+  const { property, leases, rooms, monthDate } = options;
+
+  // Helper: Check if a lease is active during a specific month
+  const isLeaseActiveInMonth = (lease: Lease, month: Dayjs): boolean => {
+    const startDate = dayjs(lease.startDate).startOf("day");
+    const endDate = lease.endDate ? dayjs(lease.endDate).startOf("day") : null;
+    const monthStart = month.startOf("month");
+    const monthEnd = month.endOf("month");
+
+    // Lease must start before or during the month
+    if (startDate.isAfter(monthEnd)) return false;
+
+    // If lease has an end date, it must end after the month starts
+    if (endDate && endDate.isBefore(monthStart)) return false;
+
+    return true;
+  };
+
+  // Case 1: ENTIRE_UNIT mode
+  if (property.rentalMode === "ENTIRE_UNIT" || !property.rentalMode) {
+    // Find active lease for this month
+    const activeLease = leases.find(
+      (l) => !l.roomId && isLeaseActiveInMonth(l, monthDate)
+    );
+
+    if (!activeLease) {
+      return {
+        monthlyGross: 0,
+        monthlyNet: 0,
+        effectiveVacancyPct: 0,
+        occupiedRooms: 0,
+        totalRooms: 1,
+      };
+    }
+
+    const monthlyGross = activeLease.monthlyRent;
+    const vacancyPct = activeLease.vacancyPct || 0;
+    const monthlyNet = monthlyGross * (1 - vacancyPct);
+    const effectiveVacancyPct =
+      monthlyGross > 0 ? 1 - monthlyNet / monthlyGross : 0;
+
+    return {
+      monthlyGross,
+      monthlyNet,
+      effectiveVacancyPct,
+      occupiedRooms: 1,
+      totalRooms: 1,
+    };
+  }
+
+  // Case 2: PER_ROOM mode
+  const totalRooms = rooms.length || 0;
+
+  // Get active leases for this month with roomId
+  const activeLeases = leases.filter(
+    (l) => l.roomId && isLeaseActiveInMonth(l, monthDate)
+  );
+
+  if (activeLeases.length === 0) {
+    return {
+      monthlyGross: 0,
+      monthlyNet: 0,
+      effectiveVacancyPct: 0,
+      occupiedRooms: 0,
+      totalRooms,
+    };
+  }
+
+  // Calculate aggregated rent
+  const monthlyGross = activeLeases.reduce(
+    (sum, lease) => sum + (lease.monthlyRent || 0),
+    0
+  );
+
+  const monthlyNet = activeLeases.reduce((sum, lease) => {
+    const vacancyPct = lease.vacancyPct || 0;
+    return sum + (lease.monthlyRent || 0) * (1 - vacancyPct);
+  }, 0);
+
+  const effectiveVacancyPct =
+    monthlyGross > 0 ? 1 - monthlyNet / monthlyGross : 0;
+
+  // Count occupied rooms (rooms with at least one active lease)
+  const occupiedRoomIds = new Set(activeLeases.map((l) => l.roomId));
+  const occupiedRooms = occupiedRoomIds.size;
+
+  return {
+    monthlyGross,
+    monthlyNet,
+    effectiveVacancyPct,
+    occupiedRooms,
+    totalRooms,
+  };
+}
+
+/**
+ * Get aggregated rent for a specific year
+ * Sums monthly aggregates for all 12 months
+ */
+export interface AggregatedRentForYearOptions {
+  property: Property;
+  leases: Lease[];
+  rooms: Room[];
+  year: number;
+}
+
+export interface AggregatedRentForYearResult {
+  annualGross: number;
+  annualNet: number;
+  averageEffectiveVacancyPct: number;
+}
+
+export function getAggregatedRentForYear(
+  options: AggregatedRentForYearOptions
+): AggregatedRentForYearResult {
+  const { property, leases, rooms, year } = options;
+
+  let totalMonthlyGross = 0;
+  let totalMonthlyNet = 0;
+  const monthlyVacancyRates: number[] = [];
+
+  // Calculate for each month
+  for (let month = 0; month < 12; month++) {
+    const monthDate = dayjs(`${year}-${String(month + 1).padStart(2, "0")}-15`);
+
+    const monthResult = getAggregatedRentForMonth({
+      property,
+      leases,
+      rooms,
+      monthDate,
+    });
+
+    totalMonthlyGross += monthResult.monthlyGross;
+    totalMonthlyNet += monthResult.monthlyNet;
+    monthlyVacancyRates.push(monthResult.effectiveVacancyPct);
+  }
+
+  // Calculate average vacancy rate
+  const averageEffectiveVacancyPct =
+    monthlyVacancyRates.length > 0
+      ? monthlyVacancyRates.reduce((sum, rate) => sum + rate, 0) /
+        monthlyVacancyRates.length
+      : 0;
+
+  return {
+    annualGross: totalMonthlyGross,
+    annualNet: totalMonthlyNet,
+    averageEffectiveVacancyPct,
   };
 }

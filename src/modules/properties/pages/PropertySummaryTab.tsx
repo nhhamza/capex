@@ -9,10 +9,12 @@ import {
   Legend as ChartLegend,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
-import { Property, Lease, Loan, RecurringExpense } from "../types";
+import dayjs from "dayjs";
+import { Property, Lease, Loan, RecurringExpense, Room } from "../types";
 import { KPI } from "@/components/KPI";
 import { computeLeveredMetrics, sumClosingCosts } from "../calculations";
 import { formatPercent, formatCurrency } from "@/utils/format";
+import { getAggregatedRentForMonth } from "../rentalAggregation";
 
 // Register Chart.js components
 ChartJS.register(
@@ -28,6 +30,10 @@ interface PropertySummaryTabProps {
   lease: Lease | null;
   loan: Loan | null;
   recurring: RecurringExpense[];
+
+  // 👇 NUEVOS (opcionales para compat)
+  leases?: Lease[];
+  rooms?: Room[];
 }
 
 export function PropertySummaryTab({
@@ -35,22 +41,54 @@ export function PropertySummaryTab({
   lease,
   loan,
   recurring,
+  leases,
+  rooms,
 }: PropertySummaryTabProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  if (!lease) {
+  // Si no hay lease y tampoco leases de habitaciones, mostramos aviso
+  const hasAnyLease =
+    !!lease || (leases && leases.length > 0 && property.rentalMode === "PER_ROOM");
+
+  if (!hasAnyLease) {
     return (
       <Alert severity="info">
         No hay contrato de arrendamiento todavía. Añade uno en la pestaña
-        "Contrato" para ver métricas.
+        {property.rentalMode === "PER_ROOM"
+          ? ' "Habitaciones" o "Contrato" para ver métricas.'
+          : ' "Contrato" para ver métricas.'}
       </Alert>
     );
   }
 
   const closingCostsTotal = sumClosingCosts(property.closingCosts);
+
+  // ==========================
+  // 1) Calcular renta mensual para metrics
+  // ==========================
+  let monthlyRentForMetrics = 0;
+  let vacancyPctForMetrics = 0;
+
+  if (property.rentalMode === "PER_ROOM" && leases && rooms) {
+    const now = dayjs();
+    const agg = getAggregatedRentForMonth({
+      property,
+      leases,
+      rooms,
+      monthDate: now,
+    });
+
+    monthlyRentForMetrics = agg.monthlyGross; // usamos la renta bruta como base
+    vacancyPctForMetrics = agg.effectiveVacancyPct; // 0..1
+  } else if (lease) {
+    // Modo vivienda completa (actual)
+    monthlyRentForMetrics = lease.monthlyRent;
+    vacancyPctForMetrics = lease.vacancyPct || 0;
+  }
+
   const metrics = computeLeveredMetrics({
-    monthlyRent: lease.monthlyRent,
-    vacancyPct: lease.vacancyPct || 0,
+    monthlyRent: monthlyRentForMetrics,
+    vacancyPct: vacancyPctForMetrics,
     recurring,
     variableAnnualBudget: 0,
     purchasePrice: property.purchasePrice,
@@ -59,10 +97,31 @@ export function PropertySummaryTab({
     loan: loan || undefined,
   });
 
-  // Chart monthly data
+  // ==========================
+  // 2) Datos para gráfico 12 meses
+  // ==========================
+
+  // Por ahora mantenemos una serie "plana" como antes:
+  // mismos valores mensuales (si más adelante quieres que varíe por meses, se puede refinar).
+  const ingresosMensuales =
+    property.rentalMode === "PER_ROOM" && leases && rooms
+      ? (() => {
+          const now = dayjs();
+          const agg = getAggregatedRentForMonth({
+            property,
+            leases,
+            rooms,
+            monthDate: now,
+          });
+          return agg.monthlyNet;
+        })()
+      : lease
+      ? lease.monthlyRent * (1 - (lease.vacancyPct || 0))
+      : 0;
+
   const chartData = Array.from({ length: 12 }, (_, i) => ({
     month: `M${i + 1}`,
-    ingresos: lease.monthlyRent * (1 - (lease.vacancyPct || 0)),
+    ingresos: ingresosMensuales,
     gastos: metrics.recurringAnnual / 12 + metrics.variableAnnual / 12,
     deuda: loan ? metrics.ads / 12 : 0,
   }));
@@ -207,6 +266,42 @@ export function PropertySummaryTab({
                 description="Patrimonio neto en la propiedad."
               />
             </Grid>
+          )}
+
+          {/* KPIs extra solo para PER_ROOM */}
+          {property.rentalMode === "PER_ROOM" && leases && rooms && (
+            <>
+              <Grid item xs={12} sm={6} md={3}>
+                <KPI
+                  label="Ocupación Habitaciones"
+                  value={`${(
+                    (getAggregatedRentForMonth({
+                      property,
+                      leases,
+                      rooms,
+                      monthDate: dayjs(),
+                    }).occupiedRooms /
+                      (rooms.length || 1)) *
+                    100
+                  ).toFixed(0)}%`}
+                  color="primary"
+                  description="Porcentaje de habitaciones ocupadas respecto al total definido en la vivienda."
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <KPI
+                  label="Habitaciones ocupadas"
+                  value={`${getAggregatedRentForMonth({
+                    property,
+                    leases,
+                    rooms,
+                    monthDate: dayjs(),
+                  }).occupiedRooms} / ${rooms.length || 0}`}
+                  color="primary"
+                  description="Número de habitaciones que tienen un contrato activo este mes."
+                />
+              </Grid>
+            </>
           )}
         </Grid>
       </Collapse>

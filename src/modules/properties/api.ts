@@ -4,6 +4,7 @@ import {
   RecurringExpense,
   OneOffExpense,
   Loan,
+  Room,
 } from "./types";
 // Firestore migration: using flat collections. Legacy in-memory implementation retained below in comments for reference.
 import { db as firestore } from "@/firebase/client";
@@ -29,6 +30,7 @@ const COL_LEASES = "leases";
 const COL_RECURRING = "recurringExpenses";
 const COL_ONEOFF = "oneOffExpenses";
 const COL_LOANS = "loans";
+const COL_ROOMS = "rooms";
 const COL_PROPERTY_DOCS = "propertyDocs";
 
 // ---------- Properties CRUD (Firestore) ----------
@@ -52,17 +54,24 @@ export async function getProperties(
     where("organizationId", "==", organizationId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...(d.data() as Omit<Property, "id">),
-  }));
+  return snap.docs.map((d) => {
+    const raw = d.data() as Omit<Property, "id">;
+    const rentalMode = raw.rentalMode ?? "ENTIRE_UNIT";
+    return {
+      id: d.id,
+      ...raw,
+      rentalMode,
+    };
+  });
 }
 
 export async function getProperty(id: string): Promise<Property | undefined> {
   const ref = doc(firestore, COL_PROPERTIES, id);
   const snap = await getDoc(ref);
   if (!snap.exists()) return undefined;
-  return { id: snap.id, ...(snap.data() as Omit<Property, "id">) };
+  const raw = snap.data() as Omit<Property, "id">;
+  const rentalMode = raw.rentalMode ?? "ENTIRE_UNIT";
+  return { id: snap.id, ...raw, rentalMode };
 }
 
 export async function createProperty(
@@ -321,6 +330,98 @@ export async function deleteLoan(id: string): Promise<void> {
   const ref = doc(firestore, COL_LOANS, id);
   await deleteDoc(ref);
 }
+
+// ---------- Rooms CRUD (Firestore) ----------
+/**
+ * Get all rooms for a property
+ */
+export async function getRooms(propertyId: string): Promise<Room[]> {
+  const q = query(
+    collection(firestore, COL_ROOMS),
+    where("propertyId", "==", propertyId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as Omit<Room, "id">),
+  }));
+}
+
+/**
+ * Get a single room by ID
+ */
+export async function getRoom(id: string): Promise<Room | undefined> {
+  const ref = doc(firestore, COL_ROOMS, id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return undefined;
+  return { id: snap.id, ...(snap.data() as Omit<Room, "id">) };
+}
+
+/**
+ * Create a new room for a property
+ */
+export async function createRoom(
+  propertyId: string,
+  data: Omit<Room, "id" | "propertyId">
+): Promise<Room> {
+  const now = new Date().toISOString();
+  let payload = cleanUndefinedDeep({
+    ...data,
+    propertyId,
+    createdAt: now,
+    updatedAt: now,
+  });
+  if (hasInvalidNumbers(payload))
+    throw new Error("Payload contains NaN/Infinity");
+  const docRef = await addDoc(collection(firestore, COL_ROOMS), payload);
+  return { id: docRef.id, ...(payload as Omit<Room, "id">) } as Room;
+}
+
+/**
+ * Update a room
+ */
+export async function updateRoom(
+  propertyId: string,
+  roomId: string,
+  data: Partial<Omit<Room, "id" | "propertyId">>
+): Promise<Room> {
+  const ref = doc(firestore, COL_ROOMS, roomId);
+  let payload = cleanUndefinedDeep({
+    ...data,
+    updatedAt: new Date().toISOString(),
+  });
+  if (hasInvalidNumbers(payload))
+    throw new Error("Payload contains NaN/Infinity");
+  await updateDoc(ref, payload);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Room not found");
+  const roomData = snap.data() as Omit<Room, "id">;
+  // Verify propertyId matches (security check)
+  if (roomData.propertyId !== propertyId) {
+    throw new Error("Room does not belong to this property");
+  }
+  return { id: snap.id, ...roomData };
+}
+
+/**
+ * Delete a room
+ */
+export async function deleteRoom(
+  propertyId: string,
+  roomId: string
+): Promise<void> {
+  // Verify room belongs to property before deleting (security check)
+  const room = await getRoom(roomId);
+  if (!room) {
+    throw new Error("Room not found");
+  }
+  if (room.propertyId !== propertyId) {
+    throw new Error("Room does not belong to this property");
+  }
+  const ref = doc(firestore, COL_ROOMS, roomId);
+  await deleteDoc(ref);
+}
+
 // Property documents (simple file metadata list)
 export interface PropertyDocMeta {
   id: string;
@@ -361,7 +462,7 @@ export async function deletePropertyDoc(id: string): Promise<void> {
 }
 // Cascade delete helper: remove related docs by propertyId (client-side)
 async function cascadeDeleteByProperty(propertyId: string) {
-  const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS];
+  const collections = [COL_LEASES, COL_RECURRING, COL_ONEOFF, COL_LOANS, COL_ROOMS];
   for (const col of collections) {
     const q = query(
       collection(firestore, col),
