@@ -19,6 +19,7 @@ import {
   useTheme,
   Paper,
   Chip,
+  Divider,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -32,6 +33,7 @@ import PeopleIcon from "@mui/icons-material/People";
 import UpgradeIcon from "@mui/icons-material/Upgrade";
 import CalculateIcon from "@mui/icons-material/Calculate";
 import ApartmentIcon from "@mui/icons-material/Apartment";
+import ContactMailIcon from "@mui/icons-material/ContactMail";
 import { useAuth } from "@/auth/authContext";
 import { useOrgLimits } from "@/hooks/useOrgLimits";
 
@@ -169,6 +171,38 @@ export function Layout() {
           </ListItem>
         )}
       </List>
+
+      {/* Contact Information Section */}
+      <Divider sx={{ mt: 2 }} />
+      <Box sx={{ p: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "flex-start", mb: 1 }}>
+          <ContactMailIcon
+            sx={{ mr: 1, mt: 0.5, color: "primary.main", fontSize: 20 }}
+          />
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+              ¿Necesitas ayuda?
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mb: 1 }}
+            >
+              Si tienes cualquier duda, manda un mensaje a:
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "primary.main",
+                fontWeight: 500,
+                wordBreak: "break-all",
+              }}
+            >
+              nh_hamza@hotmail.fr
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
     </Box>
   );
 
