@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import {
@@ -15,6 +15,7 @@ import {
   Chip,
   Stack,
   Tooltip,
+  CircularProgress,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -61,17 +62,9 @@ function getRemainingLoanBalance(
         (currentDate.getMonth() - startDate.getMonth())
     );
 
-    // Don't calculate if loan hasn't started yet
-    if (monthsElapsed < 0) {
-      return loan.principal;
-    }
+    if (monthsElapsed < 0) return loan.principal;
+    if (monthsElapsed >= loan.termMonths) return 0;
 
-    // If loan term is complete, balance is 0
-    if (monthsElapsed >= loan.termMonths) {
-      return 0;
-    }
-
-    // Build amortization schedule and get the balance at current month
     const schedule = buildAmortizationSchedule({
       principal: loan.principal,
       annualRatePct: loan.annualRatePct || 0,
@@ -96,8 +89,11 @@ export function PropertiesList() {
   const { loading: limitsLoading, propertyLimit } = useOrgLimits(
     userDoc?.orgId
   );
+
   const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // loading properties list
+  const [rowsLoading, setRowsLoading] = useState(false); // loading metrics/rows
+
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -105,9 +101,12 @@ export function PropertiesList() {
     severity: "success" as "success" | "error",
   });
 
-  const hasReachedLimit = !limitsLoading && properties.length >= propertyLimit;
+  const hasReachedLimit = useMemo(
+    () => !limitsLoading && properties.length >= propertyLimit,
+    [limitsLoading, properties.length, propertyLimit]
+  );
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!userDoc?.orgId) return;
 
     setLoading(true);
@@ -123,13 +122,13 @@ export function PropertiesList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userDoc?.orgId]);
 
   useEffect(() => {
     loadData();
-  }, [userDoc]);
+  }, [loadData]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!deleteId) return;
 
     try {
@@ -149,113 +148,144 @@ export function PropertiesList() {
     } finally {
       setDeleteId(null);
     }
-  };
+  }, [deleteId, loadData]);
 
   // Build enriched rows with metrics
   const [rows, setRows] = useState<any[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const enrichRows = async () => {
-      const enriched = await Promise.all(
-        properties.map(async (property) => {
-          // Load all required data for the property
-          const leases = await getLeases(property.id);
-          const rooms =
-            property.rentalMode === "PER_ROOM"
-              ? await getRooms(property.id)
-              : [];
-          const loan = await getLoan(property.id);
-          const recurring = await getRecurringExpenses(property.id);
+      if (properties.length === 0) {
+        setRows([]);
+        return;
+      }
 
-          const closingCostsTotal = sumClosingCosts(property.closingCosts);
-          const totalInvestment = property.purchasePrice + closingCostsTotal;
+      setRowsLoading(true);
 
-          // Calculate remaining loan balance
-          const remainingBalance = getRemainingLoanBalance(loan);
+      // compute once (avoid calling dayjs() per property)
+      const monthDate = dayjs();
 
-          // Compute aggregated rent metrics
-          const agg = getAggregatedRentForMonth({
-            property,
-            leases,
-            rooms,
-            monthDate: dayjs(),
-          });
+      try {
+        const enriched = await Promise.all(
+          properties.map(async (property) => {
+            // ✅ parallelize within each property
+            const leasesPromise = getLeases(property.id);
+            const loanPromise = getLoan(property.id);
+            const recurringPromise = getRecurringExpenses(property.id);
+            const roomsPromise =
+              property.rentalMode === "PER_ROOM"
+                ? getRooms(property.id)
+                : Promise.resolve([]);
 
-          // For ENTIRE_UNIT: keep existing logic (find active unit lease)
-          // For PER_ROOM: use aggregated values
-          let monthlyRentNet: number;
-          let monthlyRentGross: number;
-          let occupancy: number;
+            const [leases, loan, recurring, rooms] = await Promise.all([
+              leasesPromise,
+              loanPromise,
+              recurringPromise,
+              roomsPromise,
+            ]);
 
-          if (property.rentalMode === "PER_ROOM") {
-            monthlyRentNet = agg.monthlyNet;
-            monthlyRentGross = agg.monthlyGross;
-            occupancy =
-              agg.totalRooms > 0
-                ? (agg.occupiedRooms / agg.totalRooms) * 100
-                : 0;
-          } else {
-            // ENTIRE_UNIT: find active unit lease (no roomId)
-            const activeUnitLease = leases.find(
-              (lease) => !lease.roomId && lease.isActive !== false
-            );
-            if (!activeUnitLease) {
-              monthlyRentNet = 0;
-              monthlyRentGross = 0;
-              occupancy = 0;
+            const closingCostsTotal = sumClosingCosts(property.closingCosts);
+            const totalInvestment = property.purchasePrice + closingCostsTotal;
+
+            const remainingBalance = getRemainingLoanBalance(loan);
+
+            const agg = getAggregatedRentForMonth({
+              property,
+              leases,
+              rooms,
+              monthDate,
+            });
+
+            let monthlyRentNet: number;
+            let monthlyRentGross: number;
+            let occupancy: number;
+
+            if (property.rentalMode === "PER_ROOM") {
+              monthlyRentNet = agg.monthlyNet;
+              monthlyRentGross = agg.monthlyGross;
+              occupancy =
+                agg.totalRooms > 0
+                  ? (agg.occupiedRooms / agg.totalRooms) * 100
+                  : 0;
             } else {
-              monthlyRentNet =
-                activeUnitLease.monthlyRent *
-                (1 - (activeUnitLease.vacancyPct || 0));
-              monthlyRentGross = activeUnitLease.monthlyRent;
-              occupancy = (1 - (activeUnitLease.vacancyPct || 0)) * 100;
+              const activeUnitLease = leases.find(
+                (lease) => !lease.roomId && lease.isActive !== false
+              );
+
+              if (!activeUnitLease) {
+                monthlyRentNet = 0;
+                monthlyRentGross = 0;
+                occupancy = 0;
+              } else {
+                monthlyRentNet =
+                  activeUnitLease.monthlyRent *
+                  (1 - (activeUnitLease.vacancyPct || 0));
+                monthlyRentGross = activeUnitLease.monthlyRent;
+                occupancy = (1 - (activeUnitLease.vacancyPct || 0)) * 100;
+              }
             }
-          }
 
-          // Compute profitability metrics using aggregated data
-          const metrics = computeLeveredMetrics({
-            monthlyRent: monthlyRentGross,
-            vacancyPct: agg.effectiveVacancyPct,
-            recurring,
-            variableAnnualBudget: 0,
-            purchasePrice: property.purchasePrice,
-            closingCostsTotal,
-            loan,
+            const metrics = computeLeveredMetrics({
+              monthlyRent: monthlyRentGross,
+              vacancyPct: agg.effectiveVacancyPct,
+              recurring,
+              variableAnnualBudget: 0,
+              purchasePrice: property.purchasePrice,
+              closingCostsTotal,
+              loan,
+            });
+
+            return {
+              id: property.id,
+              address: property.address,
+              purchasePrice: property.purchasePrice,
+              currentValue: property.currentValue || property.purchasePrice,
+              totalInvestment,
+              monthlyRent: monthlyRentNet,
+              capRate: metrics.capRateNet,
+              cashOnCash: metrics.cashOnCash,
+              occupancy,
+              loanBalance: remainingBalance,
+              loan,
+              computed: {
+                monthlyRentNet,
+                monthlyRentGross,
+                effectiveVacancyPct: agg.effectiveVacancyPct,
+                occupiedRooms: agg.occupiedRooms,
+                totalRooms: agg.totalRooms,
+                rentalMode: property.rentalMode,
+              },
+            };
+          })
+        );
+
+        if (!cancelled) setRows(enriched);
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          setSnackbar({
+            open: true,
+            message: "Error al calcular métricas",
+            severity: "error",
           });
-
-          return {
-            id: property.id,
-            address: property.address,
-            purchasePrice: property.purchasePrice,
-            currentValue: property.currentValue || property.purchasePrice,
-            totalInvestment,
-            monthlyRent: monthlyRentNet,
-            capRate: metrics.capRateNet,
-            cashOnCash: metrics.cashOnCash,
-            occupancy,
-            loanBalance: remainingBalance,
-            loan,
-            // Store computed metrics for debugging/transparency
-            computed: {
-              monthlyRentNet,
-              monthlyRentGross,
-              effectiveVacancyPct: agg.effectiveVacancyPct,
-              occupiedRooms: agg.occupiedRooms,
-              totalRooms: agg.totalRooms,
-              rentalMode: property.rentalMode,
-            },
-          };
-        })
-      );
-      setRows(enriched);
+          setRows([]);
+        }
+      } finally {
+        if (!cancelled) setRowsLoading(false);
+      }
     };
 
-    if (properties.length > 0) {
-      enrichRows();
-    } else {
-      setRows([]);
-    }
+    enrichRows();
+
+    return () => {
+      cancelled = true;
+    };
   }, [properties]);
+
+  const showInitialLoading = loading && properties.length === 0;
+  const showRowsLoading = rowsLoading && properties.length > 0;
 
   return (
     <Box>
@@ -290,8 +320,17 @@ export function PropertiesList() {
         </Tooltip>
       </Box>
 
-      {loading && properties.length === 0 && (
-        <Typography>Cargando...</Typography>
+      {showInitialLoading && (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+          <CircularProgress size={18} />
+          <Typography>Cargando viviendas...</Typography>
+        </Box>
+      )}
+
+      {showRowsLoading && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Calculando métricas (rentas, ocupación, hipoteca)...
+        </Alert>
       )}
 
       <Grid container spacing={3}>
@@ -303,10 +342,7 @@ export function PropertiesList() {
                 display: "flex",
                 flexDirection: "column",
                 transition: "all 0.3s ease",
-                "&:hover": {
-                  transform: "translateY(-4px)",
-                  boxShadow: 4,
-                },
+                "&:hover": { transform: "translateY(-4px)", boxShadow: 4 },
                 cursor: "pointer",
               }}
               onClick={() => navigate(`/properties/${row.id}`)}
@@ -328,6 +364,7 @@ export function PropertiesList() {
                   >
                     <HomeIcon sx={{ fontSize: 32, color: "white" }} />
                   </Box>
+
                   <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                     <Typography
                       variant="h6"
@@ -347,11 +384,7 @@ export function PropertiesList() {
                     </Typography>
                     <Box sx={{ display: "flex", alignItems: "center" }}>
                       <LocationOnIcon
-                        sx={{
-                          fontSize: 18,
-                          color: "text.secondary",
-                          mr: 0.5,
-                        }}
+                        sx={{ fontSize: 18, color: "text.secondary", mr: 0.5 }}
                       />
                       <Typography
                         variant="body2"
@@ -454,8 +487,8 @@ export function PropertiesList() {
                           row.capRate > 5
                             ? "success"
                             : row.capRate > 3
-                            ? "warning"
-                            : "default"
+                              ? "warning"
+                              : "default"
                         }
                         size="small"
                       />
@@ -467,8 +500,8 @@ export function PropertiesList() {
                           row.cashOnCash > 5
                             ? "success"
                             : row.cashOnCash > 3
-                            ? "warning"
-                            : "default"
+                              ? "warning"
+                              : "default"
                         }
                         size="small"
                       />
@@ -480,8 +513,8 @@ export function PropertiesList() {
                           row.occupancy === 100
                             ? "success"
                             : row.occupancy > 0
-                            ? "warning"
-                            : "error"
+                              ? "warning"
+                              : "error"
                         }
                         size="small"
                       />
