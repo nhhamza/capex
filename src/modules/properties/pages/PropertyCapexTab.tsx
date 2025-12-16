@@ -31,13 +31,12 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DownloadIcon from "@mui/icons-material/Download";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { DatePicker } from "@mui/x-date-pickers";
-import { storage } from "@/firebase/client";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { OneOffExpense } from "../types";
 import {
   createOneOffExpense,
   updateOneOffExpense,
   deleteOneOffExpense,
+  uploadCapexAttachment,
 } from "../api";
 import { parseDate, toISOString, formatDate } from "@/utils/date";
 import { Money } from "@/components/Money";
@@ -174,31 +173,21 @@ export function PropertyCapexTab({
     setUploadProgress(0);
     try {
       const file = e.target.files[0]; // Only take first file
-      const storagePath = `capex/${propertyId}/${Date.now()}_${file.name}`;
-      const fileRef = ref(storage, storagePath);
-
-      const uploadTask = uploadBytesResumable(fileRef, file);
-
-      // Track progress
-      uploadTask.on("state_changed", (snap) => {
-        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-        setUploadProgress(pct);
-      });
-
-      // Wait for upload to complete
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on("state_changed", undefined, reject, () => resolve());
-      });
-
-      // Get download URL
-      const url = await getDownloadURL(fileRef);
-      setUploadedFile({ name: file.name, url });
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      alert("Error al subir el archivo");
+      const attachment = await uploadCapexAttachment(propertyId, file, file.name);
+      setUploadedFile({ name: attachment.name, url: attachment.url });
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Error al subir el archivo";
+      console.error("Error uploading file:", err);
+      alert(errorMsg);
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      // Reset input to allow re-uploading same file
+      e.target.value = "";
     }
   };
 

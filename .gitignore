@@ -38,3 +38,8 @@ coverage/
 # Misc
 *.tsbuildinfo
 .cache
+.env
+
+backend/.env
+
+.env.local

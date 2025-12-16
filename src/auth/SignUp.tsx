@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { addDoc, collection, doc, setDoc } from "firebase/firestore/lite";
-import { auth, db } from "@/firebase/client";
+import { auth } from "@/firebase/client";
+import { backendApi } from "@/lib/backendApi";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -80,29 +80,15 @@ export default function SignUp() {
     setLoading(true);
 
     try {
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        data.email,
-        data.password
-      );
-      const uid = cred.user.uid;
-
-      const orgRef = await addDoc(collection(db, "organizations"), {
-        name: data.orgName,
-        ownerUid: uid,
-        createdAt: new Date().toISOString(),
-      });
-      const orgId = orgRef.id;
-
-      await setDoc(doc(db, "users", uid), {
-        name: data.name,
-        email: data.email,
-        city: data.city,
-        phone: data.phone || null,
-        userType: data.userType,
-        orgId,
-        role: "owner",
-        createdAt: new Date().toISOString(),
+      await createUserWithEmailAndPassword(auth, data.email, data.password);
+      await backendApi.post("/api/bootstrap", {
+        orgName: data.orgName,
+        profile: {
+          name: data.name,
+          city: data.city,
+          phone: data.phone || null,
+          userType: data.userType,
+        },
       });
 
       navigate("/dashboard");

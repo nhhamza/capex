@@ -25,6 +25,12 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Card,
+  CardContent,
+  CardActions,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -55,6 +61,37 @@ interface PropertyRoomsTabProps {
   onDataChanged?: () => void;
 }
 
+const formatEur = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  return new Intl.NumberFormat("es-ES", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+// ✅ Update this if your Lease uses another field name
+const getMonthlyRentFromLease = (
+  lease: Lease | null | undefined
+): number | null => {
+  if (!lease) return null;
+
+  // Common possibilities (safe): change/remove once you know the real one
+  const maybe = lease as unknown as Record<string, unknown>;
+  const candidates = ["monthlyRent", "rent", "amount", "price", "monthlyPrice"];
+
+  for (const key of candidates) {
+    const v = maybe[key];
+    if (typeof v === "number") return v;
+    if (typeof v === "string" && v.trim() !== "") {
+      const parsed = Number(v);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+  }
+
+  return null;
+};
+
 export function PropertyRoomsTab({
   propertyId,
   onDataChanged,
@@ -68,6 +105,9 @@ export function PropertyRoomsTab({
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const {
     control,
@@ -85,7 +125,6 @@ export function PropertyRoomsTab({
     },
   });
 
-  // Cargar habitaciones y contratos
   const loadData = async () => {
     setIsLoadingRooms(true);
     try {
@@ -105,16 +144,15 @@ export function PropertyRoomsTab({
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId]);
 
-  // Verificar si una habitación está ocupada
   const isRoomOccupied = (roomId: string): boolean => {
     return leases.some(
       (l) => l.roomId === roomId && isLeaseActiveToday(l.startDate, l.endDate)
     );
   };
 
-  // Obtener el inquilino de una habitación
   const getRoomTenant = (roomId: string): string | null => {
     const lease = leases.find(
       (l) => l.roomId === roomId && isLeaseActiveToday(l.startDate, l.endDate)
@@ -122,14 +160,18 @@ export function PropertyRoomsTab({
     return lease?.tenantName || null;
   };
 
-  // Abrir diálogo para crear
+  const getRoomRentLabel = (roomId: string): string => {
+    const activeLease = getActiveRoomLease(leases, roomId);
+    const rent = getMonthlyRentFromLease(activeLease);
+    return rent === null ? "-" : `${formatEur(rent)}/mes`;
+  };
+
   const handleCreateClick = () => {
     setEditingRoom(null);
     reset();
     setDialogOpen(true);
   };
 
-  // Abrir diálogo para editar
   const handleEditClick = (room: Room) => {
     setEditingRoom(room);
     reset({
@@ -142,15 +184,12 @@ export function PropertyRoomsTab({
     setDialogOpen(true);
   };
 
-  // Guardar habitación (crear o actualizar)
   const onSubmit = async (data: FormData) => {
     try {
       setLoading(true);
       if (editingRoom) {
-        // Actualizar
         await updateRoom(propertyId, editingRoom.id, data);
       } else {
-        // Crear
         await createRoom(propertyId, data);
       }
       setDialogOpen(false);
@@ -163,7 +202,6 @@ export function PropertyRoomsTab({
     }
   };
 
-  // Crear contrato para habitación
   const handleCreateContractClick = (room: Room) => {
     const activeLease = getActiveRoomLease(leases, room.id);
     if (activeLease) {
@@ -172,14 +210,12 @@ export function PropertyRoomsTab({
       );
       return;
     }
-    // Navigate to contrato tab with roomId
     const next = new URLSearchParams(searchParams);
     next.set("tab", "contrato");
     next.set("roomId", room.id);
     navigate(`/properties/${propertyId}?${next.toString()}`);
   };
 
-  // Ver contrato existente para habitación
   const handleViewContractClick = (room: Room) => {
     const next = new URLSearchParams(searchParams);
     next.set("tab", "contrato");
@@ -187,7 +223,6 @@ export function PropertyRoomsTab({
     navigate(`/properties/${propertyId}?${next.toString()}`);
   };
 
-  // Eliminar habitación
   const handleDeleteClick = async (roomId: string) => {
     try {
       setLoading(true);
@@ -207,7 +242,6 @@ export function PropertyRoomsTab({
     reset();
   };
 
-  // Estado vacío
   if (isLoadingRooms && rooms.length === 0) {
     return (
       <Box sx={{ textAlign: "center", py: 4 }}>
@@ -222,9 +256,11 @@ export function PropertyRoomsTab({
       <Box
         sx={{
           display: "flex",
+          flexDirection: isMobile ? "column" : "row",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: isMobile ? "stretch" : "center",
           mb: 3,
+          gap: 2,
         }}
       >
         <Box>
@@ -233,7 +269,7 @@ export function PropertyRoomsTab({
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Crea y gestiona las habitaciones de la propiedad. Los contratos se
-            asocian a habitaciones específicas en modo PER_ROOM.
+            asocian a habitaciones específicas en modo por habitaciones.
           </Typography>
         </Box>
         <Button
@@ -241,6 +277,7 @@ export function PropertyRoomsTab({
           startIcon={<AddIcon />}
           onClick={handleCreateClick}
           disabled={loading}
+          fullWidth={isMobile}
         >
           Nueva Habitación
         </Button>
@@ -269,6 +306,137 @@ export function PropertyRoomsTab({
             nuevo en una habitación, primero finaliza el actual.
           </Typography>
         </Alert>
+      ) : isMobile ? (
+        <Stack spacing={2} sx={{ mt: 2 }}>
+          {rooms.map((room) => {
+            const occupied = isRoomOccupied(room.id);
+            const tenant = getRoomTenant(room.id);
+            const rentLabel = getRoomRentLabel(room.id);
+
+            return (
+              <Card
+                key={room.id}
+                variant="outlined"
+                sx={{ opacity: room.isActive ? 1 : 0.6 }}
+              >
+                <CardContent sx={{ pb: 1.5 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <MeetingRoomIcon fontSize="small" color="primary" />
+                    <Typography variant="subtitle1" sx={{ flex: 1 }} noWrap>
+                      {room.name}
+                    </Typography>
+                    {!room.isActive && (
+                      <Chip label="Inactiva" size="small" variant="outlined" />
+                    )}
+                  </Stack>
+
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    flexWrap="wrap"
+                    useFlexGap
+                    sx={{ mt: 1 }}
+                  >
+                    <Chip
+                      size="small"
+                      color={occupied ? "success" : "warning"}
+                      variant={occupied ? "filled" : "outlined"}
+                      label={
+                        occupied
+                          ? `Ocupada${tenant ? ` · ${tenant}` : ""}`
+                          : "Disponible"
+                      }
+                    />
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`Renta: ${rentLabel}`}
+                    />
+                    {room.sizeM2 ? (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`${room.sizeM2} m²`}
+                      />
+                    ) : null}
+                    {room.floor ? (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`Piso: ${room.floor}`}
+                      />
+                    ) : null}
+                  </Stack>
+
+                  {room.notes ? (
+                    <>
+                      <Divider sx={{ my: 1.5 }} />
+                      <Typography variant="body2" color="text.secondary">
+                        {room.notes}
+                      </Typography>
+                    </>
+                  ) : null}
+                </CardContent>
+
+                <CardActions sx={{ px: 2, pb: 2, pt: 0 }}>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ width: "100%" }}
+                    alignItems="center"
+                  >
+                    {occupied ? (
+                      <Button
+                        fullWidth
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleViewContractClick(room)}
+                        disabled={loading}
+                        startIcon={<EditIcon fontSize="small" />}
+                      >
+                        Ver/Editar
+                      </Button>
+                    ) : (
+                      <Button
+                        fullWidth
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleCreateContractClick(room)}
+                        disabled={loading}
+                        startIcon={<AddIcon fontSize="small" />}
+                      >
+                        Crear contrato
+                      </Button>
+                    )}
+
+                    <IconButton
+                      size="small"
+                      onClick={() => handleEditClick(room)}
+                      disabled={loading}
+                      title="Editar habitación"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteClick(room.id)}
+                      disabled={loading || occupied}
+                      title={
+                        occupied
+                          ? "No se puede eliminar una habitación ocupada"
+                          : "Eliminar habitación"
+                      }
+                      color="error"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                </CardActions>
+              </Card>
+            );
+          })}
+        </Stack>
       ) : (
         <TableContainer component={Paper} sx={{ mt: 3 }}>
           <Table>

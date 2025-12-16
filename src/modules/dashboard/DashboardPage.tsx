@@ -43,12 +43,7 @@ ChartJS.register(
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
 import {
-  getProperties,
-  getLeases,
-  getLoans,
-  getRecurringExpenses,
-  getOneOffExpenses,
-  getRooms,
+  getDashboard,
 } from "@/modules/properties/api";
 import { Property, Room } from "@/modules/properties/types";
 import {
@@ -102,7 +97,8 @@ export function DashboardPage() {
 
       setLoading(true);
       try {
-        const props = await getProperties(userDoc.orgId);
+        const dash = await getDashboard();
+        const props = dash.properties || [];
         setProperties(props);
 
         const filteredProps =
@@ -123,44 +119,30 @@ export function DashboardPage() {
           return;
         }
 
-        // --- Fetch all per-property data in parallel ---
+        // --- Data already loaded in parallel by backend (/api/dashboard) ---
+        const leasesAll = (dash.leases || []) as any[];
+        const loansAll = (dash.loans || []) as any[];
+        const recurringAll = (dash.recurringExpenses || []) as any[];
+        const oneOffAll = (dash.oneOffExpenses || []) as any[];
+        const roomsAll = (dash.rooms || []) as any[];
 
-        const leasesEntries = await Promise.all(
-          filteredProps.map(async (prop) => {
-            const leases = await getLeases(prop.id);
-            return [prop.id, leases || []] as const;
-          })
+        const leasesEntries = filteredProps.map((prop) =>
+          [prop.id, leasesAll.filter((x) => x.propertyId === prop.id)] as const
         );
-
-        const loansEntries = await Promise.all(
-          filteredProps.map(async (prop) => {
-            const loans = await getLoans(prop.id);
-            return [prop.id, loans || []] as const;
-          })
+        const loansEntries = filteredProps.map((prop) =>
+          [prop.id, loansAll.filter((x) => x.propertyId === prop.id)] as const
         );
-
-        const recurringEntries = await Promise.all(
-          filteredProps.map(async (prop) => {
-            const rec = await getRecurringExpenses(prop.id);
-            return [prop.id, rec || []] as const;
-          })
+        const recurringEntries = filteredProps.map((prop) =>
+          [prop.id, recurringAll.filter((x) => x.propertyId === prop.id)] as const
         );
-
-        const oneOffEntries = await Promise.all(
-          filteredProps.map(async (prop) => {
-            const capex = await getOneOffExpenses(prop.id);
-            return [prop.id, (capex || []) as OneOffExpense[]] as const;
-          })
+        const oneOffEntries = filteredProps.map((prop) =>
+          [prop.id, oneOffAll.filter((x) => x.propertyId === prop.id)] as const
         );
-
-        const roomsEntries = await Promise.all(
-          filteredProps
-            .filter((prop) => prop.rentalMode === "PER_ROOM")
-            .map(async (prop) => {
-              const rooms = await getRooms(prop.id);
-              return [prop.id, rooms || []] as const;
-            })
-        );
+        const roomsEntries = filteredProps
+          .filter((prop) => prop.rentalMode === "PER_ROOM")
+          .map((prop) =>
+            [prop.id, roomsAll.filter((x) => x.propertyId === prop.id)] as const
+          );
 
         const leasesByProp: Record<string, any[]> = {};
         leasesEntries.forEach(([id, leases]) => {

@@ -5,6 +5,7 @@ import {
   createProperty,
   createLease,
   createLoan,
+  getProperties,
 } from "@/modules/properties/api";
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
@@ -43,11 +44,17 @@ export function OnboardingWizard() {
   const [orgName, setOrgName] = useState("Mi Cartera Inmobiliaria");
   const [saving, setSaving] = useState(false);
 
-  // If user already has an org, redirect to dashboard
   useEffect(() => {
-    if (!authLoading && userDoc?.orgId) {
-      navigate("/dashboard");
-    }
+    const run = async () => {
+      if (authLoading) return;
+      if (!userDoc?.organizationId && !userDoc?.orgId) return;
+
+      const orgId = userDoc.organizationId ?? userDoc.orgId;
+      const props = await getProperties(orgId); // backend call
+      if (props.length > 0) navigate("/dashboard");
+    };
+
+    run().catch(() => {});
   }, [authLoading, userDoc, navigate]);
 
   // Local temp state for first property fields
@@ -521,82 +528,6 @@ export function OnboardingWizard() {
                     onChange={(e) => setContractEndDate(e.target.value)}
                     InputLabelProps={{ shrink: true }}
                   />
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Documento del Contrato (PDF) Optional
-                  </Typography>
-                  {contractFile ? (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        p: 2,
-                        border: 1,
-                        borderColor: "divider",
-                        borderRadius: 1,
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ flexGrow: 1 }}>
-                        {contractFile.name}
-                      </Typography>
-                      <Tooltip title="Descargar">
-                        <IconButton
-                          size="small"
-                          onClick={() => {
-                            const a = document.createElement("a");
-                            a.href = contractFile.url;
-                            a.download = contractFile.name;
-                            a.click();
-                          }}
-                        >
-                          <DownloadIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Eliminar">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={handleContractFileDelete}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  ) : (
-                    <>
-                      <Button
-                        component="label"
-                        variant="outlined"
-                        startIcon={
-                          contractUploading ? (
-                            <CircularProgress size={18} />
-                          ) : (
-                            <CloudUploadIcon />
-                          )
-                        }
-                        disabled={contractUploading}
-                      >
-                        {contractUploading ? "Subiendo..." : "Subir Contrato"}
-                        <input
-                          type="file"
-                          hidden
-                          accept=".pdf"
-                          onChange={handleContractFileChange}
-                        />
-                      </Button>
-                      {contractUploading && contractUploadProgress > 0 && (
-                        <Typography
-                          variant="caption"
-                          display="block"
-                          sx={{ mt: 1 }}
-                        >
-                          Progreso: {contractUploadProgress}%
-                        </Typography>
-                      )}
-                    </>
-                  )}
                 </Grid>
               </Grid>
             </Box>

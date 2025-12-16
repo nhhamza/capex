@@ -7,15 +7,19 @@ import {
   ReactNode,
 } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore/lite";
-import { auth, db } from "@/firebase/client";
+import { auth } from "@/firebase/client";
+import { backendApi } from "@/lib/backendApi";
 
-type UserDoc = {
-  email: string;
-  orgId: string;
-  role: "owner" | "member" | "admin";
-  createdAt: string;
-} | null;
+type UserDoc =
+  | {
+      email: string | null;
+      orgId?: string;
+      organizationId?: string;
+      role: "owner" | "member" | "admin";
+      createdAt?: string;
+      updatedAt?: string;
+    }
+  | null;
 
 type AuthCtx = {
   user: User | null;
@@ -47,8 +51,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        const snap = await getDoc(doc(db, "users", u.uid));
-        setUserDoc(snap.exists() ? (snap.data() as UserDoc) : null);
+        // Load profile from backend. If profile is missing (first signup), bootstrap then retry.
+        try {
+          const me = await backendApi.get("/api/me");
+          setUserDoc(me.data.user || null);
+        } catch (e: any) {
+          const status = e?.response?.status;
+          if (status === 403) {
+            await backendApi.post("/api/bootstrap", { orgName: "Mi organización" });
+            const me = await backendApi.get("/api/me");
+            setUserDoc(me.data.user || null);
+          } else {
+            throw e;
+          }
+        }
       } catch (err) {
         console.error("[Auth] Error fetching user doc:", err);
         setUserDoc(null);
@@ -70,8 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refreshUserDoc() {
     if (!user) return;
     try {
-      const snap = await getDoc(doc(db, "users", user.uid));
-      setUserDoc(snap.exists() ? (snap.data() as UserDoc) : null);
+      const me = await backendApi.get("/api/me");
+      setUserDoc(me.data.user || null);
       console.log("✅ User doc refreshed");
     } catch (err) {
       console.error("[Auth] Error refreshing user doc:", err);

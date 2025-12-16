@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthed() { return request.auth != null; }
+    function userDoc() { return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)); }
+    function userOrg() {
+      let user = userDoc().data;
+      return user.orgId != null ? user.orgId : user.organizationId;
+    }
+
+    // Organization files - only users in the same org can access
+    match /orgs/{orgId}/{allPaths=**} {
+      allow read: if isAuthed() && userOrg() == orgId;
+      allow write: if false; // only backend can write (via Admin SDK)
+      allow delete: if false; // only backend can delete
+    }
+
+    // Legacy paths (if any exist) - deny all direct access
+    match /capex/{allPaths=**} {
+      allow read, write: if false; // migrated to /orgs/{orgId}/... path
+    }
+    match /properties/{allPaths=**} {
+      allow read, write: if false; // migrated to /orgs/{orgId}/... path
+    }
+
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Gestion Inmobiliaria</string>
-    <string name="title_activity_main">Gestion Inmobiliaria</string>
-    <string name="package_name">com.gestion.inmobiliaria</string>
-    <string name="custom_url_scheme">com.gestion.inmobiliaria</string>
-</resources>

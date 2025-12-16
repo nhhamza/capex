@@ -47,5 +47,28 @@ service cloud.firestore {
       allow create: if isAuthed() && sameOrg(request.resource.data);
       allow update, delete: if isAuthed() && sameOrg(resource.data);
     }
+    match /rooms/{id} {
+      allow read: if isAuthed() && sameOrg(resource.data);
+      allow create: if isAuthed() && sameOrg(request.resource.data);
+      allow update, delete: if isAuthed() && sameOrg(resource.data);
+    }
+    match /propertyDocs/{id} {
+      allow read: if isAuthed() && sameOrg(resource.data);
+      allow create: if isAuthed() && sameOrg(request.resource.data);
+      allow update, delete: if isAuthed() && sameOrg(resource.data);
+    }
+    match /dealScenarios/{id} {
+      allow read: if isAuthed() && sameOrg(resource.data);
+      allow create: if isAuthed() && sameOrg(request.resource.data);
+      allow update, delete: if isAuthed() && sameOrg(resource.data);
+    }
+
+    // Subscription plans (orgs collection)
+    match /orgs/{orgId} {
+      allow read: if isAuthed() && userOrg() == orgId;
+      allow create: if false; // only backend can create
+      allow update: if false; // only backend (Stripe webhooks) can update
+      allow delete: if false; // only backend can delete
+    }
   }
 }

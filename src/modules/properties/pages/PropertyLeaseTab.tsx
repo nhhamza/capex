@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useSearchParams } from "react-router-dom";
 import {
   Box,
   Grid,
@@ -81,6 +82,7 @@ export function PropertyLeaseTab({
 }: PropertyLeaseTabProps) {
   const propertyId = property.id;
   const rentalMode = property.rentalMode;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [leases, setLeases] = useState<Lease[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -107,6 +109,16 @@ export function PropertyLeaseTab({
     loadLeases();
     loadRooms();
   }, [propertyId, rentalMode]);
+
+  const handleRoomChange = (newRoomId: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (newRoomId) {
+      newParams.set("roomId", newRoomId);
+    } else {
+      newParams.delete("roomId");
+    }
+    setSearchParams(newParams);
+  };
 
   const {
     control,
@@ -466,13 +478,40 @@ export function PropertyLeaseTab({
           return (
             <>
               <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Contrato - Habitación: {room?.name || "Desconocida"}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Gestiona el contrato de arrendamiento para esta habitación
-                  específica.
-                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    flexDirection: { xs: "column", sm: "row" },
+                    gap: 2,
+                    mb: 2,
+                  }}
+                >
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Contrato - Habitación: {room?.name || "Desconocida"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Gestiona el contrato de arrendamiento para esta habitación
+                      específica.
+                    </Typography>
+                  </Box>
+                  <TextField
+                    select
+                    label="Habitación"
+                    value={roomId || ""}
+                    onChange={(e) => handleRoomChange(e.target.value)}
+                    sx={{ minWidth: 200 }}
+                    size="small"
+                  >
+                    {rooms.map((r) => (
+                      <MenuItem key={r.id} value={r.id}>
+                        {r.name}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Box>
               </Box>
 
               {activeLease ? (

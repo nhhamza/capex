@@ -15,7 +15,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import {
   listPropertyDocs,
-  addPropertyDoc,
+  uploadPropertyDoc, // ✅ new backend upload
   deletePropertyDoc,
   PropertyDocMeta,
 } from "../api";
@@ -35,15 +35,17 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
     setError(null);
     try {
       const list = await listPropertyDocs(propertyId);
-      // sort newest first
+
+      // sort newest first (guard in case uploadedAt is missing)
       setDocs(
-        list.sort(
-          (a, b) =>
-            new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
-        )
+        [...list].sort((a, b) => {
+          const ta = a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
+          const tb = b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
+          return tb - ta;
+        })
       );
     } catch (e: any) {
-      setError(e.message || "Error cargando documentos");
+      setError(e?.message || "Error cargando documentos");
     } finally {
       setLoading(false);
     }
@@ -51,43 +53,54 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId]);
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
-  };
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
 
     setUploading(true);
     setError(null);
+
     try {
-      for (const file of Array.from(e.target.files)) {
-        const base64Url = await fileToBase64(file);
-        await addPropertyDoc({ propertyId, name: file.name, url: base64Url });
-      }
+      // Upload in parallel (faster)
+      await Promise.all(
+        files.map((file) => uploadPropertyDoc(propertyId, file, file.name))
+      );
+
       await load();
-    } catch (e: any) {
-      setError(e.message || "Error guardando documento");
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        (typeof err?.response?.data === "string" ? err.response.data : null) ||
+        err?.message ||
+        "Error subiendo documento";
+
+      setError(msg);
+      console.error("Upload failed:", {
+        status: err?.response?.status,
+        data: err?.response?.data,
+        message: err?.message,
+      });
     } finally {
       setUploading(false);
+      // allow re-uploading same file by resetting input value
+      e.target.value = "";
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("¿Eliminar este documento?")) return;
     setUploading(true);
+    setError(null);
+
     try {
       await deletePropertyDoc(id);
       setDocs((prev) => prev.filter((d) => d.id !== id));
     } catch (e: any) {
-      setError(e.message || "Error eliminando documento");
+      setError(e?.message || "Error eliminando documento");
     } finally {
       setUploading(false);
     }
@@ -98,6 +111,7 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
       <Typography variant="h6" gutterBottom>
         Documentos
       </Typography>
+
       <Button
         component="label"
         variant="outlined"
@@ -116,6 +130,7 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
           multiple
         />
       </Button>
+
       {error && (
         <Typography
           color="error"
@@ -126,9 +141,11 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
           {error}
         </Typography>
       )}
+
       <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
         Documentos adjuntos:
       </Typography>
+
       {loading ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
           <CircularProgress size={32} />
@@ -154,7 +171,11 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
             >
               <ListItemText
                 primary={doc.name}
-                secondary={new Date(doc.uploadedAt).toLocaleString()}
+                secondary={
+                  doc.uploadedAt
+                    ? new Date(doc.uploadedAt).toLocaleString()
+                    : ""
+                }
                 sx={{
                   flex: 1,
                   minWidth: 0,
@@ -167,14 +188,13 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
                   },
                 }}
               />
+
               <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
                 <Tooltip title="Descargar">
                   <IconButton
                     onClick={() => {
-                      const a = document.createElement("a");
-                      a.href = doc.url;
-                      a.download = doc.name;
-                      a.click();
+                      // signed URL from backend
+                      window.open(doc.url, "_blank", "noopener,noreferrer");
                     }}
                     sx={{ minWidth: 48, minHeight: 48 }}
                     color="primary"
@@ -182,6 +202,7 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
                     <DownloadIcon />
                   </IconButton>
                 </Tooltip>
+
                 <Tooltip title="Eliminar">
                   <IconButton
                     onClick={() => handleDelete(doc.id)}

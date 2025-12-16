@@ -25,18 +25,7 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DeleteIcon from "@mui/icons-material/Delete";
-import {
-  collection,
-  getDocs,
-  doc,
-  getDoc,
-  updateDoc,
-  setDoc,
-  deleteDoc,
-  query,
-  where,
-} from "firebase/firestore/lite";
-import { db } from "@/firebase/client";
+import { backendApi } from "@/lib/backendApi";
 import { useAuth } from "@/auth/authContext";
 
 type User = {
@@ -63,56 +52,13 @@ export function UsersPage() {
 
   const isAdmin = userDoc?.role === "admin";
 
-  const getPropertiesCount = async (orgId: string): Promise<number> => {
-    try {
-      const propertiesSnap = await getDocs(
-        query(
-          collection(db, "properties"),
-          where("organizationId", "==", orgId)
-        )
-      );
-      return propertiesSnap.size;
-    } catch (err) {
-      console.error(`Error counting properties for org ${orgId}:`, err);
-      return 0;
-    }
-  };
-
   const loadUsers = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Load ALL users (no organization filter for admin)
-      const snapshot = await getDocs(collection(db, "users"));
-      const usersList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as User[];
-
-      // Fetch plan and property count for each user's organization
-      const usersWithPlans = await Promise.all(
-        usersList.map(async (user) => {
-          try {
-            const orgSnap = await getDoc(doc(db, "orgs", user.orgId));
-            const orgData = orgSnap.exists() ? orgSnap.data() : {};
-            const propertyCount = await getPropertiesCount(user.orgId);
-            return {
-              ...user,
-              plan: orgData.plan ?? "free",
-              propertyCount,
-            };
-          } catch (err) {
-            console.error(`Error loading org for user ${user.id}:`, err);
-            return {
-              ...user,
-              plan: "unknown",
-              propertyCount: 0,
-            };
-          }
-        })
-      );
-
-      setUsers(usersWithPlans);
+      // Backend enforces org scoping via ID token
+      const r = await backendApi.get("/api/users");
+      setUsers((r.data.users || []) as User[]);
     } catch (err) {
       console.error("Error loading users:", err);
       setError("Error al cargar usuarios");
@@ -132,9 +78,7 @@ export function UsersPage() {
     setError(null);
     setSuccess(null);
     try {
-      await updateDoc(doc(db, "users", userId), {
-        role: newRole,
-      });
+      await backendApi.put(`/api/users/${userId}/role`, { role: newRole });
 
       // Update local state
       setUsers((prev) =>
@@ -162,8 +106,7 @@ export function UsersPage() {
     setError(null);
     setSuccess(null);
     try {
-      // Use setDoc with merge to create org document if it doesn't exist
-      await setDoc(doc(db, "orgs", orgId), { plan: newPlan }, { merge: true });
+      await backendApi.put(`/api/orgs/${orgId}/plan`, { plan: newPlan });
 
       // Update local state for all users in this org
       setUsers((prev) =>
@@ -192,69 +135,9 @@ export function UsersPage() {
     setSuccess(null);
     try {
       const userId = userToDelete.id;
-      const orgId = userToDelete.orgId;
-
-      // Delete all properties for this user's organization
-      const propertiesSnap = await getDocs(
-        query(
-          collection(db, "properties"),
-          where("organizationId", "==", orgId)
-        )
-      );
-      for (const propertyDoc of propertiesSnap.docs) {
-        // Delete all related data for this property
-        const propertyId = propertyDoc.id;
-
-        // Delete loans
-        const loansSnap = await getDocs(
-          query(collection(db, "loans"), where("propertyId", "==", propertyId))
-        );
-        for (const loanDoc of loansSnap.docs) {
-          await deleteDoc(loanDoc.ref);
-        }
-
-        // Delete leases
-        const leasesSnap = await getDocs(
-          query(collection(db, "leases"), where("propertyId", "==", propertyId))
-        );
-        for (const leaseDoc of leasesSnap.docs) {
-          await deleteDoc(leaseDoc.ref);
-        }
-
-        // Delete recurring expenses
-        const recurringSnap = await getDocs(
-          query(
-            collection(db, "recurring_expenses"),
-            where("propertyId", "==", propertyId)
-          )
-        );
-        for (const expenseDoc of recurringSnap.docs) {
-          await deleteDoc(expenseDoc.ref);
-        }
-
-        // Delete one-off expenses
-        const oneOffSnap = await getDocs(
-          query(
-            collection(db, "one_off_expenses"),
-            where("propertyId", "==", propertyId)
-          )
-        );
-        for (const expenseDoc of oneOffSnap.docs) {
-          await deleteDoc(expenseDoc.ref);
-        }
-
-        // Delete the property itself
-        await deleteDoc(propertyDoc.ref);
-      }
-
-      // Delete the user document
-      await deleteDoc(doc(db, "users", userId));
-
-      // Remove from local state
+      await backendApi.delete(`/api/users/${userId}`);
       setUsers((prev) => prev.filter((u) => u.id !== userId));
-      setSuccess(
-        `Usuario ${userToDelete.email} eliminado correctamente con todos sus datos`
-      );
+      setSuccess(`Usuario ${userToDelete.email} eliminado correctamente`);
       setDeleteDialogOpen(false);
       setUserToDelete(null);
     } catch (err) {

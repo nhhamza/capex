@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "@/firebase/client";
+import { auth } from "@/firebase/client";
+import { backendApi } from "@/lib/backendApi";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -90,29 +90,17 @@ export function SignupPage() {
         data.password
       );
 
-      // Create organization ID (for multi-tenant)
-      const organizationId = `org_${userCredential.user.uid}`;
-
-      // Store user profile in Firestore
-      await setDoc(doc(db, "users", userCredential.user.uid), {
-        name: data.name,
-        email: data.email,
-        phone: data.phone || null,
-        city: data.city,
-        userType: data.userType,
-        companyName: data.companyName || null,
-        propertyCount: data.propertyCount,
-        organizationId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // Create organization document
-      await setDoc(doc(db, "organizations", organizationId), {
-        name: data.companyName || data.name,
-        ownerId: userCredential.user.uid,
-        createdAt: new Date().toISOString(),
-        plan: "free",
+      // Bootstrap profile + organization from backend (Admin SDK)
+      await backendApi.post("/api/bootstrap", {
+        orgName: data.companyName || data.name,
+        profile: {
+          name: data.name,
+          phone: data.phone || null,
+          city: data.city,
+          userType: data.userType,
+          companyName: data.companyName || null,
+          propertyCount: data.propertyCount,
+        },
       });
 
       // Navigate to dashboard

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { db } from "@/firebase/client";
-import { doc, getDoc } from "firebase/firestore/lite";
+import { backendApi } from "@/lib/backendApi";
 
 interface OrgLimitsState {
   loading: boolean;
@@ -33,8 +32,8 @@ export function useOrgLimits(orgId?: string): OrgLimitsState {
       }
       setLoading(true);
       try {
-        const snap = await getDoc(doc(db, "orgs", orgId));
-        const data = snap.exists() ? (snap.data() as any) : {};
+        const r = await backendApi.get("/api/org/limits");
+        const data = (r.data || {}) as any;
         if (!alive) return;
         const p = data.plan ?? "free";
         setPlan(p);

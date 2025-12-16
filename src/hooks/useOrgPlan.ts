@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { db } from "@/firebase/client";
-import { doc, getDoc } from "firebase/firestore/lite";
+import { backendApi } from "@/lib/backendApi";
 
 /** Reads org document and returns plan + status.
  * Shape assumed: orgs/{orgId} => { plan: "free"|"solo"|"pro"|"agency", status?: string }
@@ -20,9 +19,9 @@ export function useOrgPlan(orgId?: string) {
         return;
       }
       try {
-        const snap = await getDoc(doc(db, "orgs", orgId));
+        const r = await backendApi.get("/api/org/limits");
         if (!alive) return;
-        const data = snap.exists() ? (snap.data() as any) : {};
+        const data = (r.data || {}) as any;
         setPlan(data.plan ?? "free");
         setStatus(data.status ?? null);
       } finally {
