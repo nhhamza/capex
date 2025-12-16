@@ -8,7 +8,27 @@ import multer from "multer";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+
+// app.use((req, res, next) => {
+//   const origin = req.headers.origin;
+
+//   if (origin === process.env.FRONTEND_URL) {
+//     res.setHeader("Access-Control-Allow-Origin", origin);
+//     res.setHeader("Vary", "Origin");
+//     res.setHeader("Access-Control-Allow-Credentials", "true");
+//   }
+
+//   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+//   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+//   if (req.method === "OPTIONS") {
+//     return res.status(204).end();
+//   }
+
+//   next();
+// });
+
+const isVercel = Boolean(process.env.VERCEL);
 
 // Initialize Stripe
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -38,8 +58,13 @@ try {
       storageBucket: storageBucket || (projectId ? `${projectId}.appspot.com` : undefined),
     });
   } else {
+    if (isVercel) {
+      throw new Error(
+        "FIREBASE_SERVICE_ACCOUNT is required on Vercel (do not use local serviceAccountKey.json in production)."
+      );
+    }
     console.log("Initializing Firebase Admin with local file...");
-    // NOTE: path is relative to backend/
+    // NOTE: path is relative to project root
     admin.initializeApp({
       credential: admin.credential.cert("./serviceAccountKey.json"),
       projectId,
@@ -50,7 +75,8 @@ try {
     projectId: admin.app().options.projectId,
     storageBucket: admin.app().options.storageBucket,
   });
-} catch (error) {
+}
+catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
   throw error;
 }
@@ -900,10 +926,6 @@ app.post(
 );
 
 
-app.listen(PORT, () => {
-  console.log(`🚀 Billing API running on http://localhost:${PORT}`);
-});
-
 // TEST ENDPOINT - Remove in production
 // Manually update org plan for testing
 app.post("/test-update-plan", express.json(), async (req, res) => {
@@ -932,3 +954,6 @@ app.post("/test-update-plan", express.json(), async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+export default app;
+

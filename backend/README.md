@@ -1,81 +1,60 @@
 # Gestion Backend
 
-Unified backend with two deployment options:
-1. **Express Server** (`index.js`) - Deploy to Vercel/any Node.js host
-2. **Firebase Functions** (`functions/`) - Deploy to Firebase Cloud Functions
+Backend with **local Express dev** + **Vercel Serverless** deployment.
 
-## Setup
+## Structure
+- `src/app.js` - Express app (no `listen`) used by both local + Vercel
+- `server.js` - Local server runner (`app.listen`)
+- `api/index.js` - Vercel Serverless entrypoint
 
-1. **Install dependencies:**
+> Note: This repo also contains a legacy `functions/` folder (Firebase Functions). It is **not** used for Vercel.
 
-   ```bash
-   npm install
-   ```
+## Local setup
 
-2. **Get Firebase Service Account Key:**
-
-   - Go to [Firebase Console](https://console.firebase.google.com/project/immo-hamza/settings/serviceaccounts/adminsdk)
-   - Click "Generate new private key"
-   - Save the file as `serviceAccountKey.json` in this folder
-
-3. **Configure environment variables:**
-
-   - Edit `.env` file with your Stripe keys
-   - Update `STRIPE_WEBHOOK_SECRET` after deploying
-
-4. **Run Express server locally:**
-   ```bash
-   npm run dev
-   ```
-
-5. **Build and test Firebase Functions:**
-   ```bash
-   npm run build
-   npm run serve
-   ```
-
-## Deploy to Vercel
-
-1. Install Vercel CLI:
-
-   ```bash
-   npm i -g vercel
-   ```
-
-2. Deploy:
-
-   ```bash
-   vercel
-   ```
-
-3. Add environment variables in Vercel dashboard:
-
-   - `STRIPE_SECRET_KEY`
-   - `STRIPE_WEBHOOK_SECRET`
-   - `FRONTEND_URL`
-
-4. Add Firebase service account as environment variable:
-   - Copy content of `serviceAccountKey.json`
-   - Add as `FIREBASE_SERVICE_ACCOUNT` in Vercel
-   - Update index.js to use `JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)`
-
-## Deploy to Firebase
-
+1) Install
 ```bash
-npm run deploy
+npm install
 ```
 
-This deploys the Firebase Functions from the `functions/` directory.
+2) Create `serviceAccountKey.json` (local only)
+- Firebase Console → Project Settings → Service accounts → Generate new private key
+- Save as `serviceAccountKey.json` at project root
+
+3) Configure env
+- Copy `.env.example` (if you have one) or edit `.env`
+- Required (local):
+  - `STRIPE_SECRET_KEY`
+  - `STRIPE_WEBHOOK_SECRET` (should be `whsec_...`)
+  - `FIREBASE_PROJECT_ID`
+  - `FIREBASE_STORAGE_BUCKET` (optional)
+
+4) Run
+```bash
+npm run dev
+```
+
+## Deploy to Vercel (Serverless)
+
+### 1) Deploy
+```bash
+vercel
+```
+
+### 2) Set env vars in Vercel
+In Vercel → Project → Settings → Environment Variables:
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET` (must be `whsec_...`)
+- `FRONTEND_URL` (your Vercel frontend URL)
+- `FIREBASE_SERVICE_ACCOUNT` (the **full JSON** from Firebase admin key)
+- `FIREBASE_PROJECT_ID` (optional if included in JSON)
+- `FIREBASE_STORAGE_BUCKET` (optional)
+
+Important:
+- On Vercel you **must** set `FIREBASE_SERVICE_ACCOUNT`. The serverless runtime should not use `serviceAccountKey.json`.
 
 ## API Endpoints
-
-### Express Server (Vercel deployment)
 - `GET /` - Health check
 - `POST /checkout` - Create Stripe checkout session
-- `POST /webhook` - Handle Stripe webhooks
-- `GET /check-session/:sessionId` - Check checkout session status
-- `POST /test-update-plan` - Test endpoint for manual plan updates
-
-### Firebase Functions
-- `createCheckoutSessionFn` - Callable function for creating checkout sessions
-- `stripeWebhookFn` - HTTP function for Stripe webhooks
+- `POST /webhook` - Stripe webhooks (raw body)
+- `GET /check-session/:sessionId` - Check session status
+- `POST /test-update-plan` - Test endpoint (remove for production)

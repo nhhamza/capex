@@ -3,16 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Express backend for billing with Stripe",
-  "main": "index.js",
+  "main": "server.js",
   "engines": {
     "node": "20"
   },
   "scripts": {
-    "dev": "node --watch index.js",
-    "start": "node index.js",
-    "build": "tsc",
-    "serve": "npm run build && firebase emulators:start --only functions",
-    "deploy": "npm run build && firebase deploy --only functions"
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "build": "tsc"
   },
   "dependencies": {
     "@capacitor/core": "^7.4.4",
