@@ -9,24 +9,24 @@ dotenv.config();
 
 const app = express();
 
-// app.use((req, res, next) => {
-//   const origin = req.headers.origin;
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-//   if (origin === process.env.FRONTEND_URL) {
-//     res.setHeader("Access-Control-Allow-Origin", origin);
-//     res.setHeader("Vary", "Origin");
-//     res.setHeader("Access-Control-Allow-Credentials", "true");
-//   }
+  if (origin === process.env.FRONTEND_URL) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
 
-//   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-//   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-//   if (req.method === "OPTIONS") {
-//     return res.status(204).end();
-//   }
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
 
-//   next();
-// });
+  next();
+});
 
 const isVercel = Boolean(process.env.VERCEL);
 
