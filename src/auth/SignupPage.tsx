@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/firebase/client";
 import { backendApi } from "@/lib/backendApi";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -83,13 +81,6 @@ export function SignupPage() {
     setLoading(true);
 
     try {
-      // Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        data.email,
-        data.password
-      );
-
       // Bootstrap profile + organization from backend (Admin SDK)
       await backendApi.post("/api/bootstrap", {
         orgName: data.companyName || data.name,

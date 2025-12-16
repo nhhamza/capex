@@ -22,7 +22,7 @@ function mapPrice(priceId?: string) {
 }
 
 // Plan prices for reference (in EUR)
-const PLAN_PRICES = {
+export const PLAN_PRICES = {
   free: 0,
   solo: 0.99,
   pro: 1.99,

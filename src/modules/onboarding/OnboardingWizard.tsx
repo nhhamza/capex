@@ -9,8 +9,7 @@ import {
 } from "@/modules/properties/api";
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
-import { db, storage } from "@/firebase/client";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { db } from "@/firebase/client";
 import {
   Box,
   Paper,
@@ -22,13 +21,8 @@ import {
   TextField,
   Grid,
   CircularProgress,
-  Tooltip,
-  IconButton,
   MenuItem,
 } from "@mui/material";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import DownloadIcon from "@mui/icons-material/Download";
-import DeleteIcon from "@mui/icons-material/Delete";
 
 const steps = [
   "Perfil",
@@ -66,12 +60,6 @@ export function OnboardingWizard() {
   const [contractTenantName, setContractTenantName] = useState("");
   const [contractStartDate, setContractStartDate] = useState("");
   const [contractEndDate, setContractEndDate] = useState("");
-  const [contractFile, setContractFile] = useState<{
-    name: string;
-    url: string;
-  } | null>(null);
-  const [contractUploading, setContractUploading] = useState(false);
-  const [contractUploadProgress, setContractUploadProgress] = useState(0);
 
   // Financing information state
   const [financingLoanAmount, setFinancingLoanAmount] = useState<number | "">(
@@ -83,47 +71,6 @@ export function OnboardingWizard() {
   const [financingTermYears, setFinancingTermYears] = useState<number | "">("");
   const [financingBank, setFinancingBank] = useState("");
   const [financingLoanType, setFinancingLoanType] = useState("fixed");
-
-  const handleContractFileChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-
-    setContractUploading(true);
-    setContractUploadProgress(0);
-    try {
-      const file = e.target.files[0];
-      const storagePath = `onboarding-contracts/${Date.now()}_${file.name}`;
-      const fileRef = ref(storage, storagePath);
-
-      const uploadTask = uploadBytesResumable(fileRef, file);
-
-      // Track progress
-      uploadTask.on("state_changed", (snap) => {
-        const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
-        setContractUploadProgress(pct);
-      });
-
-      // Wait for upload to complete
-      await new Promise<void>((resolve, reject) => {
-        uploadTask.on("state_changed", undefined, reject, () => resolve());
-      });
-
-      // Get download URL
-      const url = await getDownloadURL(fileRef);
-      setContractFile({ name: file.name, url });
-    } catch (error) {
-      console.error("Error uploading contract:", error);
-      alert("Error al subir el contrato");
-    } finally {
-      setContractUploading(false);
-      setContractUploadProgress(0);
-    }
-  };
-
-  const handleContractFileDelete = () => {
-    setContractFile(null);
-  };
 
   const handleNext = async () => {
     if (activeStep === steps.length - 1) {
@@ -184,7 +131,6 @@ export function OnboardingWizard() {
                       typeof firstMonthlyRent === "number"
                         ? firstMonthlyRent
                         : 0,
-                    contractUrl: contractFile?.url || undefined,
                     isActive: true,
                   });
                 } catch (err) {
@@ -282,7 +228,6 @@ export function OnboardingWizard() {
                     : undefined,
                   monthlyRent:
                     typeof firstMonthlyRent === "number" ? firstMonthlyRent : 0,
-                  contractUrl: contractFile?.url || undefined,
                   isActive: true,
                 });
               } catch (err) {

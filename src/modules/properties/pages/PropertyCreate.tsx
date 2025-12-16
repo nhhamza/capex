@@ -52,7 +52,7 @@ export function PropertyCreate() {
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
-    severity: "error" as "error",
+    severity: "error" as const,
   });
 
   const hasReachedLimit = !limitsLoading && propertyCount >= propertyLimit;
