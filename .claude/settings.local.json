@@ -5,7 +5,8 @@
       "Bash(test:*)",
       "Bash(npm run build:*)",
       "Bash(firebase deploy:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

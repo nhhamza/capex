@@ -188,9 +188,9 @@ export function PropertyRoomsTab({
     try {
       setLoading(true);
       if (editingRoom) {
-        await updateRoom(propertyId, editingRoom.id, data);
+        await updateRoom(editingRoom.id, data);
       } else {
-        await createRoom(propertyId, data);
+        await createRoom({ ...data, propertyId });
       }
       setDialogOpen(false);
       await loadData();
@@ -226,7 +226,7 @@ export function PropertyRoomsTab({
   const handleDeleteClick = async (roomId: string) => {
     try {
       setLoading(true);
-      await deleteRoom(propertyId, roomId);
+      await deleteRoom(roomId);
       await loadData();
       onDataChanged?.();
     } catch (err: any) {
