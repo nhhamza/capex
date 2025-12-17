@@ -889,6 +889,88 @@ app.delete("/api/:collection/:id", requireAuth, requireOrg, requireBillingOk, as
   }
 });
 
+// Generic collection CRUD with /collection prefix (for frontend compatibility)
+app.get("/api/collection/:collection", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
+  try {
+    const col = req.params.collection;
+    if (!relatedCollections.includes(col)) {
+      return res.status(400).json({ error: "unknown collection" });
+    }
+
+    const propertyId = req.query.propertyId;
+    let query = db.collection(col).where("organizationId", "==", req.orgId);
+
+    // Filter by propertyId if provided
+    if (propertyId) {
+      query = query.where("propertyId", "==", propertyId);
+    }
+
+    const snap = await query.get();
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json({ items });
+  } catch (err) {
+    console.error(`[collection/${req.params.collection}] list failed`, err);
+    res.status(500).json({ error: `failed to list ${req.params.collection}` });
+  }
+});
+
+app.post("/api/collection/:collection", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
+  try {
+    const col = req.params.collection;
+    if (!relatedCollections.includes(col)) {
+      return res.status(400).json({ error: "unknown collection" });
+    }
+    const payload = req.body || {};
+    payload.organizationId = req.orgId;
+    const ref = db.collection(col).doc();
+    await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
+    const snap = await ref.get();
+    res.json({ item: { id: ref.id, ...snap.data() } });
+  } catch (err) {
+    console.error(`[collection/${req.params.collection}] create failed`, err);
+    res.status(500).json({ error: `failed to create ${req.params.collection}` });
+  }
+});
+
+app.put("/api/collection/:collection/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
+  try {
+    const col = req.params.collection;
+    if (!relatedCollections.includes(col)) {
+      return res.status(400).json({ error: "unknown collection" });
+    }
+    const ref = db.collection(col).doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: "not found" });
+    if (snap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
+    const payload = req.body || {};
+    delete payload.organizationId;
+    await ref.set({ ...payload, updatedAt: nowIso() }, { merge: true });
+    const updated = await ref.get();
+    res.json({ item: { id: ref.id, ...updated.data() } });
+  } catch (err) {
+    console.error(`[collection/${req.params.collection}] update failed`, err);
+    res.status(500).json({ error: `failed to update ${req.params.collection}` });
+  }
+});
+
+app.delete("/api/collection/:collection/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
+  try {
+    const col = req.params.collection;
+    if (!relatedCollections.includes(col)) {
+      return res.status(400).json({ error: "unknown collection" });
+    }
+    const ref = db.collection(col).doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: "not found" });
+    if (snap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
+    await ref.delete();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(`[collection/${req.params.collection}] delete failed`, err);
+    res.status(500).json({ error: `failed to delete ${req.params.collection}` });
+  }
+});
+
 // Property docs upload (PROTECTED)
 app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, upload.single("file"), async (req, res) => {
   try {

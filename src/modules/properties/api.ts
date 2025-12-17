@@ -94,7 +94,7 @@ export async function deleteProperty(id: string): Promise<void> {
 // ------------------------------
 
 async function listChild<T>(col: string, propertyId?: string): Promise<T[]> {
-  const r = await backendApi.get(`/api/${col}`, {
+  const r = await backendApi.get(`/api/collection/${col}`, {
     params: propertyId ? { propertyId } : undefined,
   });
   const data = r.data ?? {};
@@ -102,7 +102,7 @@ async function listChild<T>(col: string, propertyId?: string): Promise<T[]> {
 }
 
 async function createChild<T>(col: string, payload: any): Promise<T> {
-  const r = await backendApi.post(`/api/${col}`, payload);
+  const r = await backendApi.post(`/api/collection/${col}`, payload);
   return r.data?.item as T;
 }
 
@@ -111,12 +111,12 @@ async function updateChild<T>(
   id: string,
   payload: any
 ): Promise<T> {
-  const r = await backendApi.put(`/api/${col}/${id}`, payload);
+  const r = await backendApi.put(`/api/collection/${col}/${id}`, payload);
   return r.data?.item as T;
 }
 
 async function deleteChild(col: string, id: string): Promise<void> {
-  await backendApi.delete(`/api/${col}/${id}`);
+  await backendApi.delete(`/api/collection/${col}/${id}`);
 }
 
 // ------------------------------
@@ -244,7 +244,7 @@ export const addPropertyDoc = async (args: {
 };
 
 export async function deletePropertyDoc(docId: string): Promise<void> {
-  await backendApi.delete(`/api/propertyDocs/${docId}`);
+  await backendApi.delete(`/api/collection/propertyDocs/${docId}`);
 }
 
 // ------------------------------
