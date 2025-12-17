@@ -20,6 +20,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import { useAuth } from "@/auth/authContext";
 import { useOrgLimits } from "@/hooks/useOrgLimits";
 import { openExternal } from "@/lib/openExternal";
+import { useLocation } from "react-router-dom";
 
 // Backend API URL
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -82,6 +83,9 @@ const plans = [
 ];
 
 export function BillingPage() {
+  const location = useLocation();
+  const blocked = Boolean((location as any).state?.blocked);
+
   const { userDoc } = useAuth();
   const { loading: planLoading, plan, refresh } = useOrgLimits(userDoc?.orgId);
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
@@ -152,6 +156,13 @@ export function BillingPage() {
       <Typography variant="body1" color="text.secondary" paragraph>
         Elige el plan que mejor se adapte a tus necesidades
       </Typography>
+
+      {blocked && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Tu suscripción no está al día. Para seguir usando la app, actualiza tu
+          pago o cambia de plan.
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>

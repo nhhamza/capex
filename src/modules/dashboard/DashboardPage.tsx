@@ -42,9 +42,7 @@ ChartJS.register(
 
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
-import {
-  getDashboard,
-} from "@/modules/properties/api";
+import { getDashboard } from "@/modules/properties/api";
 import { Property, Room } from "@/modules/properties/types";
 import {
   computeLeveredMetrics,
@@ -77,6 +75,8 @@ export function DashboardPage() {
   const [avgCapRate, setAvgCapRate] = useState(0);
   const [totalEquity, setTotalEquity] = useState(0);
   const [portfolioDebtRatio, setPortfolioDebtRatio] = useState<number>(0);
+  const [totalPrincipal, setTotalPrincipal] = useState(0);
+  const [totalCurrentValue, setTotalCurrentValue] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -92,6 +92,8 @@ export function DashboardPage() {
         setAvgCapRate(0);
         setAvgCashOnCash(0);
         setPortfolioDebtRatio(0);
+        setTotalPrincipal(0);
+        setTotalCurrentValue(0);
         return;
       }
 
@@ -116,6 +118,8 @@ export function DashboardPage() {
           setAvgCapRate(0);
           setAvgCashOnCash(0);
           setPortfolioDebtRatio(0);
+          setTotalPrincipal(0);
+          setTotalCurrentValue(0);
           return;
         }
 
@@ -126,22 +130,39 @@ export function DashboardPage() {
         const oneOffAll = (dash.oneOffExpenses || []) as any[];
         const roomsAll = (dash.rooms || []) as any[];
 
-        const leasesEntries = filteredProps.map((prop) =>
-          [prop.id, leasesAll.filter((x) => x.propertyId === prop.id)] as const
+        const leasesEntries = filteredProps.map(
+          (prop) =>
+            [
+              prop.id,
+              leasesAll.filter((x) => x.propertyId === prop.id),
+            ] as const
         );
-        const loansEntries = filteredProps.map((prop) =>
-          [prop.id, loansAll.filter((x) => x.propertyId === prop.id)] as const
+        const loansEntries = filteredProps.map(
+          (prop) =>
+            [prop.id, loansAll.filter((x) => x.propertyId === prop.id)] as const
         );
-        const recurringEntries = filteredProps.map((prop) =>
-          [prop.id, recurringAll.filter((x) => x.propertyId === prop.id)] as const
+        const recurringEntries = filteredProps.map(
+          (prop) =>
+            [
+              prop.id,
+              recurringAll.filter((x) => x.propertyId === prop.id),
+            ] as const
         );
-        const oneOffEntries = filteredProps.map((prop) =>
-          [prop.id, oneOffAll.filter((x) => x.propertyId === prop.id)] as const
+        const oneOffEntries = filteredProps.map(
+          (prop) =>
+            [
+              prop.id,
+              oneOffAll.filter((x) => x.propertyId === prop.id),
+            ] as const
         );
         const roomsEntries = filteredProps
           .filter((prop) => prop.rentalMode === "PER_ROOM")
-          .map((prop) =>
-            [prop.id, roomsAll.filter((x) => x.propertyId === prop.id)] as const
+          .map(
+            (prop) =>
+              [
+                prop.id,
+                roomsAll.filter((x) => x.propertyId === prop.id),
+              ] as const
           );
 
         const leasesByProp: Record<string, any[]> = {};
@@ -322,6 +343,8 @@ export function DashboardPage() {
         setTotalRecurringExpenses(annualRecurringExpenses);
         setTotalOneOffExpenses(annualOneOffExpenses);
         setTotalEquity(totalEquitySum);
+        setTotalPrincipal(totalPrincipal);
+        setTotalCurrentValue(totalCurrentValue);
 
         setPortfolioDebtRatio(
           totalCurrentValue > 0 ? (totalPrincipal / totalCurrentValue) * 100 : 0
@@ -532,8 +555,8 @@ export function DashboardPage() {
                           portfolioDebtRatio < 50
                             ? "#4caf50"
                             : portfolioDebtRatio < 70
-                            ? "#ff9800"
-                            : "#f44336",
+                              ? "#ff9800"
+                              : "#f44336",
                       }}
                     >
                       {portfolioDebtRatio.toFixed(1)}%
@@ -675,7 +698,7 @@ export function DashboardPage() {
             </Typography>
 
             <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={4}>
+              <Grid item xs={6} sm={3}>
                 <Box
                   sx={{
                     textAlign: "center",
@@ -700,7 +723,7 @@ export function DashboardPage() {
                   )}
                 </Box>
               </Grid>
-              <Grid item xs={4}>
+              <Grid item xs={6} sm={3}>
                 <Box
                   sx={{
                     textAlign: "center",
@@ -725,7 +748,7 @@ export function DashboardPage() {
                   )}
                 </Box>
               </Grid>
-              <Grid item xs={4}>
+              <Grid item xs={6} sm={3}>
                 <Box
                   sx={{
                     textAlign: "center",
@@ -739,13 +762,39 @@ export function DashboardPage() {
                     color="text.secondary"
                     display="block"
                   >
-                    Deuda Pagada
+                    Deuda Pagada / Total Deuda
                   </Typography>
                   {loading ? (
                     <Skeleton variant="text" width={120} height={30} />
                   ) : (
                     <Typography variant="h6" fontWeight="bold" color="#f44336">
-                      {formatCurrency(deudaTotal)}
+                      {formatCurrency(deudaTotal)} /{" "}
+                      {formatCurrency(totalPrincipal)}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <Box
+                  sx={{
+                    textAlign: "center",
+                    p: 1.5,
+                    bgcolor: "rgba(156, 39, 176, 0.08)",
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    Total Valor Actual
+                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={120} height={30} />
+                  ) : (
+                    <Typography variant="h6" fontWeight="bold" color="#9c27b0">
+                      {formatCurrency(totalCurrentValue)}
                     </Typography>
                   )}
                 </Box>

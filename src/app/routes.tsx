@@ -4,7 +4,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { RequireAuth, RequireOrg } from "@/auth/guards";
+import { RequireAuth, RequireOrg, RequireBilling } from "@/auth/guards";
 import { RequireAdmin } from "@/auth/RequireAdmin";
 import { LoginPage } from "@/auth/LoginPage";
 import SignUp from "@/auth/SignUp";
@@ -23,6 +23,7 @@ import { BillingPage } from "@/modules/billing/BillingPage";
 import { BillingSuccessPage } from "@/modules/billing/BillingSuccessPage";
 import { BillingCancelPage } from "@/modules/billing/BillingCancelPage";
 import { DealAnalyzerPage } from "@/modules/deal-analyzer/DealAnalyzerPage";
+import { BlockedPage } from "@/pages/BlockedPage";
 import { isNative } from "./isNative";
 
 const makeRouter = () => (isNative() ? createHashRouter : createBrowserRouter);
@@ -39,6 +40,14 @@ export const router = makeRouter()([
   {
     path: "/forgot-password",
     element: <ForgotPasswordPage />,
+  },
+  {
+    path: "/blocked",
+    element: (
+      <RequireAuth>
+        <BlockedPage />
+      </RequireAuth>
+    ),
   },
   {
     path: "/setup-org",
@@ -64,39 +73,75 @@ export const router = makeRouter()([
       },
       {
         path: "dashboard",
-        element: <DashboardPage />,
+        element: (
+          <RequireBilling>
+            <DashboardPage />
+          </RequireBilling>
+        ),
       },
       {
         path: "properties",
-        element: <PropertiesList />,
+        element: (
+          <RequireBilling>
+            <PropertiesList />
+          </RequireBilling>
+        ),
       },
       {
         path: "properties/new",
-        element: <PropertyCreate />,
+        element: (
+          <RequireBilling>
+            <PropertyCreate />
+          </RequireBilling>
+        ),
       },
       {
         path: "properties/:id",
-        element: <PropertyDetail />,
+        element: (
+          <RequireBilling>
+            <PropertyDetail />
+          </RequireBilling>
+        ),
       },
       {
         path: "expenses",
-        element: <ExpensesPage />,
+        element: (
+          <RequireBilling>
+            <ExpensesPage />
+          </RequireBilling>
+        ),
       },
       {
         path: "cashflow",
-        element: <CashflowPage />,
+        element: (
+          <RequireBilling>
+            <CashflowPage />
+          </RequireBilling>
+        ),
       },
       {
         path: "deal-analyzer",
-        element: <DealAnalyzerPage />,
+        element: (
+          <RequireBilling>
+            <DealAnalyzerPage />
+          </RequireBilling>
+        ),
       },
       {
         path: "reports",
-        element: <ReportsPage />,
+        element: (
+          <RequireBilling>
+            <ReportsPage />
+          </RequireBilling>
+        ),
       },
       {
         path: "settings",
-        element: <SettingsPage />,
+        element: (
+          <RequireBilling>
+            <SettingsPage />
+          </RequireBilling>
+        ),
       },
       {
         path: "billing",
@@ -113,9 +158,11 @@ export const router = makeRouter()([
       {
         path: "users",
         element: (
-          <RequireAdmin>
-            <UsersPage />
-          </RequireAdmin>
+          <RequireBilling>
+            <RequireAdmin>
+              <UsersPage />
+            </RequireAdmin>
+          </RequireBilling>
         ),
       },
     ],

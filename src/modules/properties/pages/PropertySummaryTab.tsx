@@ -117,8 +117,8 @@ export function PropertySummaryTab({
           return agg.monthlyNet;
         })()
       : lease
-      ? lease.monthlyRent * (1 - (lease.vacancyPct || 0))
-      : 0;
+        ? lease.monthlyRent * (1 - (lease.vacancyPct || 0))
+        : 0;
 
   const chartData = Array.from({ length: 12 }, (_, i) => ({
     month: `M${i + 1}`,
@@ -211,8 +211,8 @@ export function PropertySummaryTab({
                 metrics.ltv < 65
                   ? "success"
                   : metrics.ltv < 80
-                  ? "warning"
-                  : "error"
+                    ? "warning"
+                    : "error"
               }
               description="Porcentaje del valor que está financiado."
             />
@@ -272,23 +272,6 @@ export function PropertySummaryTab({
           {/* KPIs extra solo para PER_ROOM */}
           {property.rentalMode === "PER_ROOM" && leases && rooms && (
             <>
-              <Grid item xs={12} sm={6} md={3}>
-                <KPI
-                  label="Ocupación Habitaciones"
-                  value={`${(
-                    (getAggregatedRentForMonth({
-                      property,
-                      leases,
-                      rooms,
-                      monthDate: dayjs(),
-                    }).occupiedRooms /
-                      (rooms.length || 1)) *
-                    100
-                  ).toFixed(0)}%`}
-                  color="primary"
-                  description="Porcentaje de habitaciones ocupadas respecto al total definido en la vivienda."
-                />
-              </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <KPI
                   label="Habitaciones ocupadas"

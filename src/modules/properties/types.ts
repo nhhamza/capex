@@ -44,6 +44,7 @@ export interface Lease {
   contractUrl?: string; // Scanned contract document
   notes?: string;
   isActive?: boolean; // To mark current active lease
+  createdAt?: number; // Timestamp de creación del contrato
 }
 
 export interface RecurringExpense {

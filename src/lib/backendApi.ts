@@ -16,3 +16,18 @@ backendApi.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+// Response interceptor for billing_blocked errors
+backendApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 403 && error.response?.data?.error === "billing_blocked") {
+      // Store payload in sessionStorage
+      sessionStorage.setItem("billing_blocked_payload", JSON.stringify(error.response.data));
+      // Redirect to blocked page
+      window.location.assign("/blocked");
+      return Promise.reject(error);
+    }
+    return Promise.reject(error);
+  }
+);

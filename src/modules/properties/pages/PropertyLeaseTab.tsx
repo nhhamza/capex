@@ -46,7 +46,6 @@ import {
   getRooms,
 } from "../api";
 import { parseDate, toISOString, formatDate } from "@/utils/date";
-import { getActiveUnitLease, getActiveRoomLease } from "@/utils/date";
 import { formatCurrency } from "@/utils/format";
 
 const schema = z.object({
@@ -83,6 +82,17 @@ export function PropertyLeaseTab({
   const propertyId = property.id;
   const rentalMode = property.rentalMode;
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Helper to check if a lease is truly active (based on dates)
+  const isLeaseTrulyActive = (lease: Lease) => {
+    if (lease.isActive === false) return false;
+    if (!lease.endDate) return true; // No end date means ongoing
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(lease.endDate);
+    endDate.setHours(0, 0, 0, 0);
+    return endDate >= today; // Active if end date is today or in the future
+  };
 
   const [leases, setLeases] = useState<Lease[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -247,14 +257,17 @@ export function PropertyLeaseTab({
         notes: data.notes,
         isActive: data.isActive,
         roomId: data.roomId,
+        createdAt: editingLease ? undefined : Date.now(), // Solo al crear nuevo contrato
       };
 
       // Business rule validation: only one active lease at a time
       if (!editingLease) {
         // Creating new lease
         if (!data.roomId) {
-          // ENTIRE_UNIT lease
-          const activeUnitLease = getActiveUnitLease(leases);
+          // ENTIRE_UNIT lease - check if there's a truly active lease
+          const activeUnitLease = leases
+            .filter((l) => !l.roomId)
+            .find((l) => isLeaseTrulyActive(l));
           if (activeUnitLease) {
             setError(
               "Ya existe un contrato activo para esta vivienda. Finaliza el contrato actual antes de crear uno nuevo."
@@ -263,8 +276,10 @@ export function PropertyLeaseTab({
             return;
           }
         } else {
-          // PER_ROOM lease
-          const activeRoomLease = getActiveRoomLease(leases, data.roomId);
+          // PER_ROOM lease - check if there's a truly active lease for this room
+          const activeRoomLease = leases
+            .filter((l) => l.roomId === data.roomId)
+            .find((l) => isLeaseTrulyActive(l));
           if (activeRoomLease) {
             setError(
               "Esta habitación ya tiene un contrato activo. Finaliza el contrato actual antes de crear uno nuevo."
@@ -292,12 +307,14 @@ export function PropertyLeaseTab({
     }
   };
 
-  const activeUnitLease = getActiveUnitLease(leases);
+  const activeUnitLease = leases
+    .filter((l) => !l.roomId)
+    .find((l) => isLeaseTrulyActive(l));
 
   return (
     <Box>
       {rentalMode === "ENTIRE_UNIT" ? (
-        // MODO ENTIRE_UNIT: Comportamiento actual
+        // MODO ENTIRE_UNIT
         <>
           <Box
             sx={{
@@ -308,22 +325,7 @@ export function PropertyLeaseTab({
             }}
           >
             <Typography variant="h6">Contrato de Arrendamiento</Typography>
-            {activeUnitLease ? (
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="outlined"
-                  onClick={() => handleEdit(activeUnitLease)}
-                >
-                  Editar Contrato
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={() => handleEdit(activeUnitLease)}
-                >
-                  Finalizar Contrato
-                </Button>
-              </Stack>
-            ) : (
+            {!activeUnitLease && (
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
@@ -335,26 +337,13 @@ export function PropertyLeaseTab({
           </Box>
 
           {activeUnitLease ? (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              Ya existe un contrato activo. Finaliza el contrato actual (pon
-              fecha de fin) antes de crear uno nuevo.
-            </Alert>
-          ) : leases.length === 0 ? (
-            <Alert severity="info">
-              <Typography variant="body2" gutterBottom>
-                No hay contratos registrados. Haz clic en "Nuevo Contrato" para
-                añadir uno.
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Solo puede haber 1 contrato activo para el piso. Para crear uno
-                nuevo, primero finaliza el actual añadindo una fecha de fin del
-                alquiler
-              </Typography>
-            </Alert>
-          ) : (
-            <Grid container spacing={2}>
-              {leases.map((lease) => (
-                <Grid item xs={12} md={6} key={lease.id}>
+            <>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Ya existe un contrato activo. Finaliza el contrato actual (pon
+                fecha de fin) antes de crear uno nuevo.
+              </Alert>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
                   <Card>
                     <CardContent>
                       <Box
@@ -362,12 +351,19 @@ export function PropertyLeaseTab({
                       >
                         <PersonIcon sx={{ mr: 1, color: "primary.main" }} />
                         <Typography variant="h6">
-                          {lease.tenantName || "Sin nombre"}
+                          {activeUnitLease.tenantName || "Sin nombre"}
                         </Typography>
-                        {lease.isActive !== false && (
+                        {isLeaseTrulyActive(activeUnitLease) ? (
                           <Chip
                             label="Activo"
                             color="success"
+                            size="small"
+                            sx={{ ml: "auto" }}
+                          />
+                        ) : (
+                          <Chip
+                            label="Finalizado"
+                            color="default"
                             size="small"
                             sx={{ ml: "auto" }}
                           />
@@ -375,42 +371,42 @@ export function PropertyLeaseTab({
                       </Box>
 
                       <Stack spacing={1}>
-                        {lease.tenantPhone && (
+                        {activeUnitLease.tenantPhone && (
                           <Typography variant="body2">
-                            <strong>Teléfono:</strong> {lease.tenantPhone}
+                            <strong>Teléfono:</strong> {activeUnitLease.tenantPhone}
                           </Typography>
                         )}
-                        {lease.tenantDNI && (
+                        {activeUnitLease.tenantDNI && (
                           <Typography variant="body2">
-                            <strong>DNI:</strong> {lease.tenantDNI}
+                            <strong>DNI:</strong> {activeUnitLease.tenantDNI}
                           </Typography>
                         )}
-                        {lease.tenantEmail && (
+                        {activeUnitLease.tenantEmail && (
                           <Typography variant="body2">
-                            <strong>Email:</strong> {lease.tenantEmail}
+                            <strong>Email:</strong> {activeUnitLease.tenantEmail}
                           </Typography>
                         )}
                         <Typography variant="body2">
                           <strong>Fecha inicio:</strong>{" "}
-                          {formatDate(lease.startDate)}
+                          {formatDate(activeUnitLease.startDate)}
                         </Typography>
-                        {lease.endDate && (
+                        {activeUnitLease.endDate && (
                           <Typography variant="body2">
                             <strong>Fecha fin:</strong>{" "}
-                            {formatDate(lease.endDate)}
+                            {formatDate(activeUnitLease.endDate)}
                           </Typography>
                         )}
                         <Typography variant="body2">
                           <strong>Renta mensual:</strong>{" "}
-                          {formatCurrency(lease.monthlyRent)}
+                          {formatCurrency(activeUnitLease.monthlyRent)}
                         </Typography>
-                        {lease.deposit && (
+                        {activeUnitLease.deposit && (
                           <Typography variant="body2">
                             <strong>Fianza:</strong>{" "}
-                            {formatCurrency(lease.deposit)}
+                            {formatCurrency(activeUnitLease.deposit)}
                           </Typography>
                         )}
-                        {lease.contractUrl && (
+                        {activeUnitLease.contractUrl && (
                           <Box
                             sx={{
                               display: "flex",
@@ -427,15 +423,15 @@ export function PropertyLeaseTab({
                       </Stack>
                     </CardContent>
                     <CardActions sx={{ justifyContent: "flex-end" }}>
-                      {lease.contractUrl && (
+                      {activeUnitLease.contractUrl && (
                         <Tooltip title="Descargar contrato">
                           <IconButton
                             size="small"
                             color="primary"
                             onClick={() =>
                               handleDownloadContract(
-                                lease.contractUrl!,
-                                lease.tenantName || "contrato"
+                                activeUnitLease.contractUrl!,
+                                activeUnitLease.tenantName || "contrato"
                               )
                             }
                           >
@@ -447,33 +443,234 @@ export function PropertyLeaseTab({
                         <IconButton
                           size="small"
                           color="primary"
-                          onClick={() => handleEdit(lease)}
+                          onClick={() => handleEdit(activeUnitLease)}
                         >
                           <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Eliminar">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleDelete(lease.id)}
-                        >
-                          <DeleteIcon />
                         </IconButton>
                       </Tooltip>
                     </CardActions>
                   </Card>
                 </Grid>
-              ))}
-            </Grid>
+              </Grid>
+            </>
+          ) : leases.length === 0 ? (
+            <Alert severity="info">
+              <Typography variant="body2" gutterBottom>
+                No hay contratos registrados. Haz clic en "Nuevo Contrato" para
+                añadir uno.
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Solo puede haber 1 contrato activo para el piso. Para crear uno
+                nuevo, primero finaliza el actual añadiendo una fecha de fin del
+                alquiler
+              </Typography>
+            </Alert>
+          ) : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2" gutterBottom>
+                Esta vivienda no tiene un contrato activo.
+              </Typography>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleAdd}
+                sx={{ mt: 1 }}
+              >
+                Crear nuevo contrato
+              </Button>
+            </Alert>
           )}
+
+          {/* Historial de contratos - Always show if there are contracts */}
+          {(() => {
+            // Filter out active lease and sort by creation date (newest first)
+            const historyLeases = leases
+              .filter((l) => !l.roomId && l.id !== activeUnitLease?.id)
+              .sort((a, b) => {
+                const aDate = a.createdAt || 0;
+                const bDate = b.createdAt || 0;
+                return bDate - aDate;
+              });
+
+            return historyLeases.length > 0 ? (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Historial de contratos ({historyLeases.length})
+                </Typography>
+                {/* Mobile-friendly: Show cards on small screens */}
+                <Box sx={{ display: { xs: "block", md: "none" } }}>
+                  <Stack spacing={2}>
+                    {historyLeases.map((lease) => (
+                    <Card key={lease.id} variant="outlined">
+                      <CardContent>
+                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                            {lease.tenantName || "-"}
+                          </Typography>
+                          {isLeaseTrulyActive(lease) ? (
+                            <Chip label="Activo" color="success" size="small" />
+                          ) : (
+                            <Chip label="Finalizado" size="small" />
+                          )}
+                        </Box>
+                        <Stack spacing={0.5}>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Renta:</strong> {formatCurrency(lease.monthlyRent)}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Inicio:</strong> {formatDate(lease.startDate)}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Fin:</strong> {formatDate(lease.endDate) || "Sin definir"}
+                          </Typography>
+                        </Stack>
+                        <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                          <Button size="small" variant="outlined" onClick={() => handleEdit(lease)}>
+                            Editar
+                          </Button>
+                          {lease.contractUrl && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              startIcon={<DownloadIcon />}
+                              onClick={() =>
+                                handleDownloadContract(
+                                  lease.contractUrl!,
+                                  lease.tenantName || "contrato"
+                                )
+                              }
+                            >
+                              Descargar
+                            </Button>
+                          )}
+                          <Button
+                            size="small"
+                            variant="text"
+                            color="error"
+                            onClick={() => handleDelete(lease.id)}
+                          >
+                            Eliminar
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              </Box>
+              {/* Desktop: Show table */}
+              <Box sx={{ display: { xs: "none", md: "block" } }}>
+                <TableContainer component={Paper}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          Inquilino
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          Renta
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          Inicio
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          Fin
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          Estado
+                        </TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>
+                          Acciones
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {historyLeases.map((lease) => (
+                        <TableRow key={lease.id}>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {lease.tenantName || "-"}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {formatCurrency(lease.monthlyRent)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {formatDate(lease.startDate)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {formatDate(lease.endDate) || "-"}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            {isLeaseTrulyActive(lease) ? (
+                              <Chip
+                                label="Activo"
+                                color="success"
+                                size="small"
+                              />
+                            ) : (
+                              <Chip label="Finalizado" size="small" />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: "flex", gap: 0.5 }}>
+                              <Tooltip title="Editar">
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleEdit(lease)}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              {lease.contractUrl && (
+                                <Tooltip title="Descargar contrato">
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={() =>
+                                      handleDownloadContract(
+                                        lease.contractUrl!,
+                                        lease.tenantName || "contrato"
+                                      )
+                                    }
+                                  >
+                                    <DownloadIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              <Tooltip title="Eliminar">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleDelete(lease.id)}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            </Box>
+            ) : null;
+          })()}
         </>
       ) : roomId ? (
         // MODO PER_ROOM con roomId específico: Mostrar contrato de esa habitación
         (() => {
           const room = rooms.find((r) => r.id === roomId);
           const roomLeases = leases.filter((l) => l.roomId === roomId);
-          const activeLease = getActiveRoomLease(leases, roomId);
+          const activeLease = roomLeases.find((l) => isLeaseTrulyActive(l));
 
           return (
             <>
@@ -536,12 +733,21 @@ export function PropertyLeaseTab({
                             <Typography variant="h6">
                               {activeLease.tenantName || "Sin nombre"}
                             </Typography>
-                            <Chip
-                              label="Activo"
-                              color="success"
-                              size="small"
-                              sx={{ ml: "auto" }}
-                            />
+                            {isLeaseTrulyActive(activeLease) ? (
+                              <Chip
+                                label="Activo"
+                                color="success"
+                                size="small"
+                                sx={{ ml: "auto" }}
+                              />
+                            ) : (
+                              <Chip
+                                label="Finalizado"
+                                color="default"
+                                size="small"
+                                sx={{ ml: "auto" }}
+                              />
+                            )}
                           </Box>
 
                           <Stack spacing={1}>
@@ -633,126 +839,257 @@ export function PropertyLeaseTab({
                   </Grid>
                 </>
               ) : (
-                <>
-                  <Alert severity="info" sx={{ mb: 2 }}>
-                    <Typography variant="body2" gutterBottom>
-                      Esta habitación no tiene un contrato activo.
-                    </Typography>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() => {
-                        reset({
-                          tenantName: "",
-                          tenantPhone: "",
-                          tenantDNI: "",
-                          tenantEmail: "",
-                          startDate: null,
-                          endDate: null,
-                          monthlyRent: 0,
-                          deposit: 0,
-                          indexationRule: "none",
-                          notes: "",
-                          isActive: true,
-                          roomId: roomId, // Pre-fill roomId
-                        });
-                        setEditingLease(null);
-                        setContractFile(null);
-                        setExistingContract("");
-                        setDialogOpen(true);
-                      }}
-                      sx={{ mt: 1 }}
-                    >
-                      Crear contrato para esta habitación
-                    </Button>
-                  </Alert>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  <Typography variant="body2" gutterBottom>
+                    Esta habitación no tiene un contrato activo.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => {
+                      reset({
+                        tenantName: "",
+                        tenantPhone: "",
+                        tenantDNI: "",
+                        tenantEmail: "",
+                        startDate: null,
+                        endDate: null,
+                        monthlyRent: 0,
+                        deposit: 0,
+                        indexationRule: "none",
+                        notes: "",
+                        isActive: true,
+                        roomId: roomId, // Pre-fill roomId
+                      });
+                      setEditingLease(null);
+                      setContractFile(null);
+                      setExistingContract("");
+                      setDialogOpen(true);
+                    }}
+                    sx={{ mt: 1 }}
+                  >
+                    Crear contrato para esta habitación
+                  </Button>
+                </Alert>
+              )}
 
-                  {roomLeases.length > 0 && (
-                    <Box sx={{ mt: 3 }}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        Historial de contratos
-                      </Typography>
-                      <TableContainer component={Paper}>
-                        <Table size="small">
-                          <TableHead>
-                            <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Inquilino
+              {/* Historial de contratos - Always show if there are contracts */}
+              {(() => {
+                // Filter out active lease and sort by creation date (newest first)
+                const historyLeases = roomLeases
+                  .filter((l) => l.id !== activeLease?.id)
+                  .sort((a, b) => {
+                    const aDate = a.createdAt || 0;
+                    const bDate = b.createdAt || 0;
+                    return bDate - aDate;
+                  });
+
+                return historyLeases.length > 0 ? (
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Historial de contratos ({historyLeases.length})
+                    </Typography>
+                    {/* Mobile-friendly: Show cards on small screens */}
+                    <Box sx={{ display: { xs: "block", md: "none" } }}>
+                      <Stack spacing={2}>
+                        {historyLeases.map((lease) => (
+                        <Card key={lease.id} variant="outlined">
+                          <CardContent>
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                {lease.tenantName || "-"}
+                              </Typography>
+                              {isLeaseTrulyActive(lease) ? (
+                                <Chip label="Activo" color="success" size="small" />
+                              ) : (
+                                <Chip label="Finalizado" size="small" />
+                              )}
+                            </Box>
+                            <Stack spacing={0.5}>
+                              <Typography variant="body2" color="text.secondary">
+                                <strong>Renta:</strong> {formatCurrency(lease.monthlyRent)}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                <strong>Inicio:</strong> {formatDate(lease.startDate)}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                <strong>Fin:</strong> {formatDate(lease.endDate) || "Sin definir"}
+                              </Typography>
+                            </Stack>
+                            <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                              <Button size="small" variant="outlined" onClick={() => handleEdit(lease)}>
+                                Editar
+                              </Button>
+                              {lease.contractUrl && (
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  startIcon={<DownloadIcon />}
+                                  onClick={() =>
+                                    handleDownloadContract(
+                                      lease.contractUrl!,
+                                      lease.tenantName || "contrato"
+                                    )
+                                  }
+                                >
+                                  Descargar
+                                </Button>
+                              )}
+                            </Box>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Stack>
+                  </Box>
+                  {/* Desktop: Show table */}
+                  <Box sx={{ display: { xs: "none", md: "block" } }}>
+                    <TableContainer component={Paper}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              Inquilino
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              Renta
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              Inicio
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              Fin
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              Estado
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              Acciones
+                            </TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {historyLeases.map((lease) => (
+                            <TableRow key={lease.id}>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {lease.tenantName || "-"}
+                                </Typography>
                               </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Renta
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {formatCurrency(lease.monthlyRent)}
+                                </Typography>
                               </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Inicio
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {formatDate(lease.startDate)}
+                                </Typography>
                               </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Fin
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {formatDate(lease.endDate) || "-"}
+                                </Typography>
                               </TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                Estado
+                              <TableCell>
+                                {isLeaseTrulyActive(lease) ? (
+                                  <Chip
+                                    label="Activo"
+                                    color="success"
+                                    size="small"
+                                  />
+                                ) : (
+                                  <Chip label="Finalizado" size="small" />
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Box sx={{ display: "flex", gap: 0.5 }}>
+                                  <Tooltip title="Editar">
+                                    <IconButton
+                                      size="small"
+                                      color="primary"
+                                      onClick={() => handleEdit(lease)}
+                                    >
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  {lease.contractUrl && (
+                                    <Tooltip title="Descargar contrato">
+                                      <IconButton
+                                        size="small"
+                                        color="primary"
+                                        onClick={() =>
+                                          handleDownloadContract(
+                                            lease.contractUrl!,
+                                            lease.tenantName || "contrato"
+                                          )
+                                        }
+                                      >
+                                        <DownloadIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                </Box>
                               </TableCell>
                             </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {roomLeases.map((lease) => (
-                              <TableRow key={lease.id}>
-                                <TableCell>
-                                  <Typography variant="body2">
-                                    {lease.tenantName || "-"}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2">
-                                    {formatCurrency(lease.monthlyRent)}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2">
-                                    {formatDate(lease.startDate)}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  <Typography variant="body2">
-                                    {formatDate(lease.endDate)}
-                                  </Typography>
-                                </TableCell>
-                                <TableCell>
-                                  {lease.isActive !== false ? (
-                                    <Chip
-                                      label="Activo"
-                                      color="success"
-                                      size="small"
-                                    />
-                                  ) : (
-                                    <Chip label="Inactivo" size="small" />
-                                  )}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    </Box>
-                  )}
-                </>
-              )}
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
+                </Box>
+                ) : null;
+              })()}
             </>
           );
         })()
       ) : (
-        // MODO PER_ROOM sin roomId: Mostrar mensaje para seleccionar habitación
+        // MODO PER_ROOM sin roomId: Mostrar selector de habitación
         <>
-          <Box sx={{ textAlign: "center", py: 6 }}>
+          <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               Gestión de Contratos por Habitación
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Selecciona una habitación desde la pestaña "Habitaciones" para
-              gestionar su contrato de arrendamiento.
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Selecciona una habitación para gestionar su contrato de arrendamiento.
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Cada habitación puede tener solo 1 contrato activo a la vez.
-            </Typography>
+            {rooms.length > 0 ? (
+              <TextField
+                select
+                label="Selecciona una habitación"
+                value=""
+                onChange={(e) => handleRoomChange(e.target.value)}
+                sx={{ minWidth: 300 }}
+                size="medium"
+                helperText="Cada habitación puede tener solo 1 contrato activo a la vez"
+              >
+                {rooms.map((r) => {
+                  const roomLease = leases
+                    .filter((l) => l.roomId === r.id)
+                    .find((l) => isLeaseTrulyActive(l));
+                  return (
+                    <MenuItem key={r.id} value={r.id}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+                        <span>{r.name}</span>
+                        {roomLease && (
+                          <Chip
+                            label="Con contrato"
+                            color="success"
+                            size="small"
+                            sx={{ ml: 2 }}
+                          />
+                        )}
+                      </Box>
+                    </MenuItem>
+                  );
+                })}
+              </TextField>
+            ) : (
+              <Alert severity="info">
+                <Typography variant="body2">
+                  No hay habitaciones registradas. Ve a la pestaña "Habitaciones" para crear una.
+                </Typography>
+              </Alert>
+            )}
           </Box>
         </>
       )}

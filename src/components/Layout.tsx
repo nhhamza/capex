@@ -36,6 +36,9 @@ import ApartmentIcon from "@mui/icons-material/Apartment";
 import ContactMailIcon from "@mui/icons-material/ContactMail";
 import { useAuth } from "@/auth/authContext";
 import { useOrgLimits } from "@/hooks/useOrgLimits";
+import { useBillingStatus } from "@/billing/useBillingStatus";
+import WarningIcon from "@mui/icons-material/Warning";
+import { Alert } from "@mui/material";
 
 const DRAWER_WIDTH = 240;
 const BOTTOM_NAV_HEIGHT = 56;
@@ -53,11 +56,25 @@ export function Layout() {
   const location = useLocation();
   const { user, userDoc, logout } = useAuth();
   const { loading: planLoading, plan, refresh } = useOrgLimits(userDoc?.orgId);
+  const { billing, isGrace } = useBillingStatus();
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
   const isAdmin = userDoc?.role === "admin";
+
+  const formatDate = (isoDate: string | undefined) => {
+    if (!isoDate) return "";
+    try {
+      return new Date(isoDate).toLocaleDateString("es-ES", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch {
+      return isoDate;
+    }
+  };
 
   // Refresh plan when navigating to billing or from success page
   useEffect(() => {
@@ -343,6 +360,27 @@ export function Layout() {
         }}
       >
         <Toolbar />
+        {/* Grace period warning banner */}
+        {isGrace && billing?.graceUntil && (
+          <Alert
+            severity="warning"
+            icon={<WarningIcon />}
+            sx={{ mb: 3 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => navigate("/billing")}>
+                Actualizar
+              </Button>
+            }
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Problema con el pago
+            </Typography>
+            <Typography variant="body2">
+              Tu suscripción tiene un problema de pago. Por favor, actualiza tu método de pago antes del{" "}
+              <strong>{formatDate(billing.graceUntil)}</strong> para evitar la interrupción del servicio.
+            </Typography>
+          </Alert>
+        )}
         <Outlet />
       </Box>
 
