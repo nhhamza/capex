@@ -47,7 +47,6 @@ interface PropertyLoanTabProps {
 export function PropertyLoanTab({
   propertyId,
   loan,
-  lease: _lease,
   onSave,
 }: PropertyLoanTabProps) {
   const [loading, setLoading] = useState(false);
@@ -221,9 +220,9 @@ export function PropertyLoanTab({
           </Grid>
 
           <Grid item xs={12}>
-            <Button 
-              type="submit" 
-              variant="contained" 
+            <Button
+              type="submit"
+              variant="contained"
               disabled={loading}
               size="large"
               sx={{ minHeight: 48 }}
