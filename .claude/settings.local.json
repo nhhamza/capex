@@ -6,7 +6,15 @@
       "Bash(npm run build:*)",
       "Bash(firebase deploy:*)",
       "Bash(npx tsc:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(rm:*)",
+      "Bash(ls:*)",
+      "Bash(npm remove:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

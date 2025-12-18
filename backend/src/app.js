@@ -134,9 +134,6 @@ const upload = multer({
   },
 });
 
-// JSON parsing for all routes except Stripe webhook
-app.use(express.json({ limit: "10mb" }));
-
 // --- Auth helpers (Firebase ID token) ---
 async function requireAuth(req, res, next) {
   try {
@@ -163,6 +160,10 @@ function pickOrgId(userDoc) {
 
 async function requireOrg(req, res, next) {
   try {
+    if (!req.user || !req.user.uid) {
+      console.error("[org] No user in request");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
     const u = await getUserDoc(req.user.uid);
     if (!u) return res.status(403).json({ error: "User profile not initialized" });
     const orgId = pickOrgId(u);
