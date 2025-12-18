@@ -1,8 +1,7 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { CircularProgress, Box } from "@mui/material";
 import { useAuth } from "@/auth/authContext";
-import { backendApi } from "@/lib/backendApi";
 import { useBillingStatus } from "@/billing/useBillingStatus";
 
 /**
@@ -66,7 +65,7 @@ export function RequireOrg({ children }: { children: React.ReactNode }) {
 export function RequireBilling({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { loading: authLoading } = useAuth();
-  const { billing, loading, isGrace, isBlocked } = useBillingStatus();
+  const { billing, loading, isBlocked } = useBillingStatus();
 
   // while auth is loading, don't redirect
   if (authLoading || loading) {
