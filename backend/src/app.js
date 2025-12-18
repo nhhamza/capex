@@ -33,7 +33,9 @@ try {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       projectId,
-      storageBucket: storageBucket || (projectId ? `${projectId}.appspot.com` : undefined),
+      storageBucket:
+        storageBucket ||
+        (projectId ? `${projectId}.appspot.com` : undefined),
     });
   } else {
     if (isVercel) {
@@ -45,15 +47,16 @@ try {
     admin.initializeApp({
       credential: admin.credential.cert("./serviceAccountKey.json"),
       projectId,
-      storageBucket: storageBucket || (projectId ? `${projectId}.appspot.com` : undefined),
+      storageBucket:
+        storageBucket ||
+        (projectId ? `${projectId}.appspot.com` : undefined),
     });
   }
   console.log("Firebase Admin initialized successfully", {
     projectId: admin.app().options.projectId,
     storageBucket: admin.app().options.storageBucket,
   });
-}
-catch (error) {
+} catch (error) {
   console.error("Failed to initialize Firebase Admin:", error);
   throw error;
 }
@@ -99,7 +102,7 @@ function isBillingAllowed(billing) {
   const graceUntil = billing.graceUntil;
   const now = new Date().toISOString();
 
-  // Free plan or active/trialing paid plans => allowed
+  // Active/trialing => allowed
   if (status === "active" || status === "trialing") {
     return { allowed: true };
   }
@@ -109,7 +112,7 @@ function isBillingAllowed(billing) {
     return { allowed: false, reason: "Subscription canceled" };
   }
 
-  // past_due or unpaid => check grace period
+  // past_due/unpaid => check grace period
   if (status === "past_due" || status === "unpaid") {
     if (graceUntil && now <= graceUntil) {
       return { allowed: true, reason: "Grace period active", graceUntil };
@@ -222,7 +225,6 @@ const allowedOrigins = [
   ...envOrigins,
 ];
 
-
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -236,14 +238,10 @@ app.use(
   })
 );
 
-// Webhook needs raw body, so we apply express.json() AFTER webhook route
-// We'll handle this differently below
-
 /** Map Stripe priceId -> plan + limits */
 function mapPrice(priceId) {
   if (!priceId) return { plan: "free", propertyLimit: 2, seatLimit: 1 };
 
-  // Match actual Stripe Price IDs
   if (priceId === "price_1SRy7v1Ooy6ryYPn2mc6FKfu") {
     return { plan: "solo", propertyLimit: 10, seatLimit: 1 };
   }
@@ -274,188 +272,182 @@ app.get("/", (req, res) => {
 });
 
 // Stripe webhook (must be BEFORE express.json() to get raw body)
-app.post(
-  "/webhook",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    const sig = req.headers["stripe-signature"];
-    let event;
+app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
 
-    try {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-    } catch (err) {
-      console.error("Webhook signature verification failed:", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-
-    try {
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        const customerId = session.customer;
-        if (!session.subscription) {
-          return res.status(200).send("OK");
-        }
-        const subscriptionId =
-          typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription.id;
-        const subscription = await stripe.subscriptions.retrieve(
-          subscriptionId
-        );
-        const priceId = subscription.items.data[0].price.id;
-        const status = subscription.status;
-        const customer = await stripe.customers.retrieve(customerId);
-        const orgId = customer.metadata?.orgId;
-        if (orgId) {
-          const limits = mapPrice(priceId);
-          await writeBilling(orgId, {
-            plan: limits.plan,
-            status,
-            priceId,
-            stripeCustomerId: customerId,
-            stripeSubscriptionId: subscription.id,
-            propertyLimit: limits.propertyLimit,
-            seatLimit: limits.seatLimit,
-          });
-        }
-      }
-
-      if (
-        event.type === "customer.subscription.updated" ||
-        event.type === "customer.subscription.created"
-      ) {
-        const sub = event.data.object;
-        const priceId = sub.items.data[0].price.id;
-        const status = sub.status;
-        const customer = await stripe.customers.retrieve(sub.customer);
-        const orgId = customer.metadata?.orgId;
-        if (orgId) {
-          const limits = mapPrice(priceId);
-          await writeBilling(orgId, {
-            plan: limits.plan,
-            status,
-            priceId,
-            stripeCustomerId: sub.customer,
-            stripeSubscriptionId: sub.id,
-            propertyLimit: limits.propertyLimit,
-            seatLimit: limits.seatLimit,
-          });
-        }
-      }
-
-      if (event.type === "customer.subscription.deleted") {
-        const sub = event.data.object;
-        const customer = await stripe.customers.retrieve(sub.customer);
-        const orgId = customer.metadata?.orgId;
-        if (orgId) {
-          await writeBilling(orgId, {
-            plan: "free",
-            status: "canceled",
-          });
-        }
-      }
-
-      if (event.type === "invoice.payment_failed") {
-        const invoice = event.data.object;
-        const customer = await stripe.customers.retrieve(invoice.customer);
-        const orgId = customer.metadata?.orgId;
-        if (orgId) {
-          let priceId = null;
-          let status = "past_due";
-          if (invoice.subscription) {
-            const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
-            const sub = await stripe.subscriptions.retrieve(subId);
-            priceId = sub.items?.data?.[0]?.price?.id || null;
-            status = sub.status || status;
-          }
-          const limits = mapPrice(priceId);
-          const graceUntil = addDaysIso(nowIso(), 7); // 7-day grace period
-          await writeBilling(orgId, {
-            plan: limits.plan,
-            status,
-            priceId,
-            stripeCustomerId: invoice.customer,
-            stripeSubscriptionId: invoice.subscription || null,
-            lastInvoiceId: invoice.id,
-            lastInvoiceStatus: invoice.status || null,
-            lastPaymentError: invoice.last_payment_error?.message || null,
-            propertyLimit: limits.propertyLimit,
-            seatLimit: limits.seatLimit,
-            graceUntil,
-          });
-        }
-      }
-
-      if (event.type === "invoice.payment_succeeded") {
-        const invoice = event.data.object;
-        const customer = await stripe.customers.retrieve(invoice.customer);
-        const orgId = customer.metadata?.orgId;
-        if (orgId && invoice.subscription) {
-          const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
-          const sub = await stripe.subscriptions.retrieve(subId);
-          const priceId = sub.items?.data?.[0]?.price?.id || null;
-          const limits = mapPrice(priceId);
-          await writeBilling(orgId, {
-            plan: limits.plan,
-            status: sub.status,
-            priceId,
-            stripeCustomerId: invoice.customer,
-            stripeSubscriptionId: sub.id,
-            lastInvoiceId: invoice.id,
-            lastInvoiceStatus: invoice.status || null,
-            lastPaymentError: null,
-            propertyLimit: limits.propertyLimit,
-            seatLimit: limits.seatLimit,
-            graceUntil: null, // Clear grace period on successful payment
-          });
-        }
-      }
-
-      res.status(200).send("OK");
-    } catch (error) {
-      console.error("Error processing webhook:", error);
-      res.status(500).send("Webhook processing failed");
-    }
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
   }
-);
+
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const customerId = session.customer;
+      if (!session.subscription) return res.status(200).send("OK");
+
+      const subscriptionId =
+        typeof session.subscription === "string"
+          ? session.subscription
+          : session.subscription.id;
+
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const priceId = subscription.items.data[0].price.id;
+      const status = subscription.status;
+
+      const customer = await stripe.customers.retrieve(customerId);
+      const orgId = customer.metadata?.orgId;
+
+      if (orgId) {
+        const limits = mapPrice(priceId);
+        await writeBilling(orgId, {
+          plan: limits.plan,
+          status,
+          priceId,
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subscription.id,
+          propertyLimit: limits.propertyLimit,
+          seatLimit: limits.seatLimit,
+        });
+      }
+    }
+
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
+      const sub = event.data.object;
+      const priceId = sub.items.data[0].price.id;
+      const status = sub.status;
+
+      const customer = await stripe.customers.retrieve(sub.customer);
+      const orgId = customer.metadata?.orgId;
+
+      if (orgId) {
+        const limits = mapPrice(priceId);
+        await writeBilling(orgId, {
+          plan: limits.plan,
+          status,
+          priceId,
+          stripeCustomerId: sub.customer,
+          stripeSubscriptionId: sub.id,
+          propertyLimit: limits.propertyLimit,
+          seatLimit: limits.seatLimit,
+        });
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const sub = event.data.object;
+      const customer = await stripe.customers.retrieve(sub.customer);
+      const orgId = customer.metadata?.orgId;
+      if (orgId) {
+        await writeBilling(orgId, { plan: "free", status: "canceled" });
+      }
+    }
+
+    if (event.type === "invoice.payment_failed") {
+      const invoice = event.data.object;
+      const customer = await stripe.customers.retrieve(invoice.customer);
+      const orgId = customer.metadata?.orgId;
+
+      if (orgId) {
+        let priceId = null;
+        let status = "past_due";
+
+        if (invoice.subscription) {
+          const subId =
+            typeof invoice.subscription === "string"
+              ? invoice.subscription
+              : invoice.subscription.id;
+
+          const sub = await stripe.subscriptions.retrieve(subId);
+          priceId = sub.items?.data?.[0]?.price?.id || null;
+          status = sub.status || status;
+        }
+
+        const limits = mapPrice(priceId);
+        const graceUntil = addDaysIso(nowIso(), 7);
+
+        await writeBilling(orgId, {
+          plan: limits.plan,
+          status,
+          priceId,
+          stripeCustomerId: invoice.customer,
+          stripeSubscriptionId: invoice.subscription || null,
+          lastInvoiceId: invoice.id,
+          lastInvoiceStatus: invoice.status || null,
+          lastPaymentError: invoice.last_payment_error?.message || null,
+          propertyLimit: limits.propertyLimit,
+          seatLimit: limits.seatLimit,
+          graceUntil,
+        });
+      }
+    }
+
+    if (event.type === "invoice.payment_succeeded") {
+      const invoice = event.data.object;
+      const customer = await stripe.customers.retrieve(invoice.customer);
+      const orgId = customer.metadata?.orgId;
+
+      if (orgId && invoice.subscription) {
+        const subId =
+          typeof invoice.subscription === "string"
+            ? invoice.subscription
+            : invoice.subscription.id;
+
+        const sub = await stripe.subscriptions.retrieve(subId);
+        const priceId = sub.items?.data?.[0]?.price?.id || null;
+        const limits = mapPrice(priceId);
+
+        await writeBilling(orgId, {
+          plan: limits.plan,
+          status: sub.status,
+          priceId,
+          stripeCustomerId: invoice.customer,
+          stripeSubscriptionId: sub.id,
+          lastInvoiceId: invoice.id,
+          lastInvoiceStatus: invoice.status || null,
+          lastPaymentError: null,
+          propertyLimit: limits.propertyLimit,
+          seatLimit: limits.seatLimit,
+          graceUntil: null,
+        });
+      }
+    }
+
+    res.status(200).send("OK");
+  } catch (error) {
+    console.error("Error processing webhook:", error);
+    res.status(500).send("Webhook processing failed");
+  }
+});
 
 // Apply JSON parser for all other routes
 app.use(express.json());
 
-// Create checkout session
-app.post("/checkout", async (req, res) => {
+/**
+ * ✅ FIXED: Create checkout session (AUTH REQUIRED)
+ * - orgId comes from logged-in user (req.orgId), NOT from the body.
+ */
+app.post("/checkout", requireAuth, requireOrg, async (req, res) => {
   console.log("📥 Checkout request received:", req.body);
   try {
-    const { orgId, priceId, successUrl, cancelUrl } = req.body;
+    const { priceId, successUrl, cancelUrl } = req.body || {};
+    const orgId = req.orgId;
 
-    console.log("Checking request params...", { orgId, priceId });
+    if (!orgId) return res.status(400).json({ error: "Missing orgId (from user profile)" });
+    if (!priceId) return res.status(400).json({ error: "priceId is required" });
 
-    if (!orgId || !priceId) {
-      console.log("❌ Missing required parameters");
-      return res.status(400).json({
-        error: "orgId and priceId are required",
-      });
-    }
-
-    console.log("Looking up org billing...");
     const billing = await readBilling(orgId);
-    console.log("Billing data:", billing);
-
     let customerId = billing.stripeCustomerId;
-    console.log("Existing Stripe customer ID:", customerId);
+
     if (!customerId) {
-      console.log("Creating new Stripe customer...");
       const customer = await stripe.customers.create({ metadata: { orgId } });
       customerId = customer.id;
-      console.log("Created customer:", customerId);
       await writeBilling(orgId, { stripeCustomerId: customerId });
     }
 
-    console.log("Creating checkout session...");
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
@@ -467,49 +459,41 @@ app.post("/checkout", async (req, res) => {
       metadata: { orgId, priceId },
     });
 
-    console.log("✅ Checkout session created:", session.id);
     res.json({ url: session.url, sessionId: session.id });
   } catch (error) {
-    console.error("❌ Error creating checkout session:");
-    console.error("Error name:", error.name);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
-    if (error.type === 'StripeInvalidRequestError') {
-      console.error("Stripe error details:", error.raw);
-    }
+    console.error("❌ Error creating checkout session:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Check checkout session status and update plan
-app.get("/check-session/:sessionId", async (req, res) => {
+/**
+ * ✅ FIXED + SECURED:
+ * Check checkout session status (AUTH REQUIRED)
+ * - ensures the session orgId matches req.orgId
+ */
+app.get("/check-session/:sessionId", requireAuth, requireOrg, async (req, res) => {
   try {
     const { sessionId } = req.params;
-    console.log("🔍 Checking session status:", sessionId);
 
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['subscription']
+      expand: ["subscription"],
     });
-    console.log("Session payment_status:", session.payment_status);
-    console.log("Session metadata:", session.metadata);
+
+    const sessionOrgId = session.metadata?.orgId;
+    if (!sessionOrgId || sessionOrgId !== req.orgId) {
+      return res.status(403).json({ error: "forbidden" });
+    }
 
     if (session.payment_status === "paid" && session.subscription) {
-      const subscription = typeof session.subscription === 'string'
-        ? await stripe.subscriptions.retrieve(session.subscription)
-        : session.subscription;
+      const subscription =
+        typeof session.subscription === "string"
+          ? await stripe.subscriptions.retrieve(session.subscription)
+          : session.subscription;
 
       const priceId = subscription.items.data[0].price.id;
-      const orgId = session.metadata?.orgId;
-
-      if (!orgId) {
-        console.error("❌ No orgId in session metadata");
-        return res.status(400).json({ error: "Missing orgId in session" });
-      }
-
-      console.log("💳 Payment completed! Updating org:", orgId, "with price:", priceId);
-
       const limits = mapPrice(priceId);
-      await writeBilling(orgId, {
+
+      await writeBilling(req.orgId, {
         plan: limits.plan,
         status: subscription.status,
         priceId,
@@ -519,20 +503,19 @@ app.get("/check-session/:sessionId", async (req, res) => {
         seatLimit: limits.seatLimit,
       });
 
-      console.log("✅ Plan updated to:", limits.plan);
-      res.json({
+      return res.json({
         success: true,
         paid: true,
         plan: limits.plan,
-        status: subscription.status
-      });
-    } else {
-      res.json({
-        success: false,
-        paid: false,
-        payment_status: session.payment_status
+        status: subscription.status,
       });
     }
+
+    return res.json({
+      success: true,
+      paid: false,
+      payment_status: session.payment_status,
+    });
   } catch (error) {
     console.error("❌ Error checking session:", error);
     res.status(500).json({ error: error.message });
@@ -550,7 +533,6 @@ const relatedCollections = Object.freeze([
   "dealScenarios",
 ]);
 
-
 // Bootstrap user profile + organization (signup/init)
 app.post("/api/bootstrap", requireAuth, async (req, res) => {
   try {
@@ -558,23 +540,21 @@ app.post("/api/bootstrap", requireAuth, async (req, res) => {
     const email = req.user.email;
     const body = req.body || {};
 
-    // If user already exists, just return it
     const existing = await getUserDoc(uid);
     if (existing) {
       return res.json({ user: existing, orgId: pickOrgId(existing) });
     }
 
-    // Create org
     const orgName = body.orgName || "Mi organización";
     const orgRef = db.collection("organizations").doc();
     const orgId = orgRef.id;
+
     await orgRef.set({
       name: orgName,
       createdAt: nowIso(),
       updatedAt: nowIso(),
     });
 
-    // Create canonical billing doc with default free plan
     await writeBilling(orgId, {
       plan: "free",
       status: "active",
@@ -582,8 +562,8 @@ app.post("/api/bootstrap", requireAuth, async (req, res) => {
       seatLimit: 1,
     });
 
-    // Create user profile (store extra onboarding fields if provided)
-    const profile = body.profile && typeof body.profile === "object" ? body.profile : {};
+    const profile =
+      body.profile && typeof body.profile === "object" ? body.profile : {};
     const userDoc = {
       email: email || body.email || null,
       ...profile,
@@ -593,6 +573,7 @@ app.post("/api/bootstrap", requireAuth, async (req, res) => {
       createdAt: nowIso(),
       updatedAt: nowIso(),
     };
+
     await db.collection("users").doc(uid).set(userDoc);
 
     return res.json({ user: { id: uid, ...userDoc }, orgId });
@@ -633,7 +614,9 @@ app.post("/api/billing/portal", requireAuth, requireOrg, async (req, res) => {
       return res.status(400).json({ error: "No Stripe customer found" });
     }
 
-    const returnUrl = req.body.returnUrl || process.env.FRONTEND_URL || "http://localhost:5173";
+    const returnUrl =
+      req.body?.returnUrl ||
+      (envOrigins[0] || "http://localhost:5173");
 
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
@@ -723,10 +706,7 @@ app.delete("/api/users/:uid", requireAuth, requireOrg, requireAdmin, async (req,
 // Properties (PROTECTED)
 app.get("/api/properties", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
   try {
-    const snap = await db
-      .collection("properties")
-      .where("organizationId", "==", req.orgId)
-      .get();
+    const snap = await db.collection("properties").where("organizationId", "==", req.orgId).get();
     res.json({ properties: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
   } catch (err) {
     console.error("[properties] list failed", err);
@@ -775,13 +755,16 @@ app.delete("/api/properties/:id", requireAuth, requireOrg, requireBillingOk, asy
     const orgId = snap.data().organizationId;
     if (orgId !== req.orgId) return res.status(403).json({ error: "forbidden" });
 
-    // Delete related docs in batch
     const batch = db.batch();
     batch.delete(ref);
+
     for (const col of relatedCollections) {
       const relSnap = await db.collection(col).where("organizationId", "==", orgId).get();
-      relSnap.docs.filter(d => d.data().propertyId === id).forEach(d => batch.delete(d.ref));
+      relSnap.docs
+        .filter(d => d.data().propertyId === id)
+        .forEach(d => batch.delete(d.ref));
     }
+
     await batch.commit();
     res.json({ success: true });
   } catch (err) {
@@ -794,14 +777,15 @@ app.delete("/api/properties/:id", requireAuth, requireOrg, requireBillingOk, asy
 app.get("/api/dashboard", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
   try {
     const orgId = req.orgId;
-    const [propsSnap, leasesSnap, loansSnap, recurringSnap, oneOffSnap, roomsSnap] = await Promise.all([
-      db.collection("properties").where("organizationId", "==", orgId).get(),
-      db.collection("leases").where("organizationId", "==", orgId).get(),
-      db.collection("loans").where("organizationId", "==", orgId).get(),
-      db.collection("recurringExpenses").where("organizationId", "==", orgId).get(),
-      db.collection("oneOffExpenses").where("organizationId", "==", orgId).get(),
-      db.collection("rooms").where("organizationId", "==", orgId).get(),
-    ]);
+    const [propsSnap, leasesSnap, loansSnap, recurringSnap, oneOffSnap, roomsSnap] =
+      await Promise.all([
+        db.collection("properties").where("organizationId", "==", orgId).get(),
+        db.collection("leases").where("organizationId", "==", orgId).get(),
+        db.collection("loans").where("organizationId", "==", orgId).get(),
+        db.collection("recurringExpenses").where("organizationId", "==", orgId).get(),
+        db.collection("oneOffExpenses").where("organizationId", "==", orgId).get(),
+        db.collection("rooms").where("organizationId", "==", orgId).get(),
+      ]);
 
     res.json({
       properties: propsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
@@ -900,7 +884,6 @@ app.get("/api/collection/:collection", requireAuth, requireOrg, requireBillingOk
     const propertyId = req.query.propertyId;
     let query = db.collection(col).where("organizationId", "==", req.orgId);
 
-    // Filter by propertyId if provided
     if (propertyId) {
       query = query.where("propertyId", "==", propertyId);
     }
@@ -993,9 +976,7 @@ app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, 
     await gcsFile.save(file.buffer, {
       contentType: file.mimetype,
       resumable: false,
-      metadata: {
-        cacheControl: "public, max-age=3600",
-      },
+      metadata: { cacheControl: "public, max-age=3600" },
     });
 
     await gcsFile.makePublic();
@@ -1044,9 +1025,7 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
     await gcsFile.save(file.buffer, {
       contentType: file.mimetype,
       resumable: false,
-      metadata: {
-        cacheControl: "public, max-age=3600",
-      },
+      metadata: { cacheControl: "public, max-age=3600" },
     });
 
     await gcsFile.makePublic();

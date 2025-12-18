@@ -21,9 +21,7 @@ import { useAuth } from "@/auth/authContext";
 import { useOrgLimits } from "@/hooks/useOrgLimits";
 import { openExternal } from "@/lib/openExternal";
 import { useLocation } from "react-router-dom";
-
-// Backend API URL
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+import { backendApi } from "@/lib/backendApi";
 
 const plans = [
   {
@@ -88,27 +86,19 @@ export function BillingPage() {
 
   const { userDoc } = useAuth();
   const { loading: planLoading, plan, refresh } = useOrgLimits(userDoc?.orgId);
+
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Refresh plan data when page loads (in case it was just updated)
   useEffect(() => {
-    if (userDoc?.orgId) {
-      console.log("🔄 BillingPage: Refreshing org limits on mount");
-      refresh();
-    }
-  }, [userDoc?.orgId]); // Only run when orgId changes, not on every render
+    if (userDoc?.orgId) refresh();
+  }, [userDoc?.orgId]);
 
   const handleUpgrade = async (planId: string) => {
     setProcessingPlan(planId);
     setError(null);
 
     try {
-      if (!userDoc?.orgId) {
-        throw new Error("Organization ID not found");
-      }
-
-      // Map planId to priceId - real Stripe Price IDs from dashboard
       const planToPrice: Record<string, string> = {
         solo: "price_1SRy7v1Ooy6ryYPn2mc6FKfu",
         pro: "price_1SRyIm1Ooy6ryYPnczGBTB7g",
@@ -118,32 +108,27 @@ export function BillingPage() {
       const priceId = planToPrice[planId];
       if (!priceId) throw new Error("Invalid plan for checkout");
 
-      // Call Express backend instead of Firebase Functions
-      const response = await fetch(`${API_URL}/checkout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          orgId: userDoc.orgId,
-          priceId,
-          successUrl: import.meta.env.VITE_CHECKOUT_SUCCESS_URL,
-          cancelUrl: import.meta.env.VITE_CHECKOUT_CANCEL_URL,
-        }),
+      const origin = window.location.origin;
+      const successUrl =
+        import.meta.env.VITE_CHECKOUT_SUCCESS_URL ||
+        `${origin}/billing/success`;
+      const cancelUrl =
+        import.meta.env.VITE_CHECKOUT_CANCEL_URL || `${origin}/billing/cancel`;
+
+      const { data } = await backendApi.post("/checkout", {
+        priceId,
+        successUrl,
+        cancelUrl,
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to create checkout session");
-      }
-
-      const data = await response.json();
+      if (!data?.url) throw new Error("Missing checkout url");
       await openExternal(data.url);
     } catch (err: any) {
       console.error("Error creating checkout session:", err);
       setError(
-        err.message ||
-          "Error al iniciar el proceso de pago. Inténtalo de nuevo."
+        err?.response?.data?.error || err.message || "Error al iniciar el pago"
       );
+    } finally {
       setProcessingPlan(null);
     }
   };
@@ -185,7 +170,6 @@ export function BillingPage() {
               const isCurrentPlan = plan === planOption.id;
               const isProcessing = processingPlan === planOption.id;
 
-              // Determine plan hierarchy
               const planHierarchy = ["free", "solo", "pro", "agency"];
               const currentPlanIndex = planHierarchy.indexOf(plan || "free");
               const optionPlanIndex = planHierarchy.indexOf(planOption.id);
@@ -212,11 +196,7 @@ export function BillingPage() {
                         label="Recomendado"
                         color="primary"
                         size="small"
-                        sx={{
-                          position: "absolute",
-                          top: 16,
-                          right: 16,
-                        }}
+                        sx={{ position: "absolute", top: 16, right: 16 }}
                       />
                     )}
                     {isCurrentPlan && (
@@ -224,15 +204,12 @@ export function BillingPage() {
                         label="Plan Actual"
                         color="success"
                         size="small"
-                        sx={{
-                          position: "absolute",
-                          top: 16,
-                          left: 16,
-                        }}
+                        sx={{ position: "absolute", top: 16, left: 16 }}
                       />
                     )}
+
                     <CardContent sx={{ flexGrow: 1, pt: 4 }}>
-                      <Typography variant="h5" component="div" gutterBottom>
+                      <Typography variant="h5" gutterBottom>
                         {planOption.name}
                       </Typography>
                       <Box sx={{ mb: 2 }}>
@@ -251,6 +228,7 @@ export function BillingPage() {
                           /{planOption.period}
                         </Typography>
                       </Box>
+
                       <List dense>
                         {planOption.features.map((feature, index) => (
                           <ListItem key={index} disableGutters>
@@ -264,6 +242,7 @@ export function BillingPage() {
                           </ListItem>
                         ))}
                       </List>
+
                       {planOption.limits && (
                         <Typography
                           variant="caption"
@@ -274,6 +253,7 @@ export function BillingPage() {
                         </Typography>
                       )}
                     </CardContent>
+
                     <CardActions sx={{ p: 2 }}>
                       {isCurrentPlan ? (
                         <Button fullWidth disabled variant="outlined">
@@ -330,12 +310,8 @@ export function BillingPage() {
             </Typography>
             <Typography variant="body2" color="text.secondary" paragraph>
               • Los pagos se procesan de forma segura a través de Stripe
-              <br />
-              • Puedes cancelar o cambiar tu plan en cualquier momento
-              <br />
-              • Los cambios de plan se aplican inmediatamente
-              <br />
-              • Reembolso completo si cancelas en los primeros 14 días
+              <br />• Puedes cancelar o cambiar tu plan en cualquier momento
+              <br />• Los cambios se aplican inmediatamente
               <br />• Aceptamos tarjetas de crédito y débito
             </Typography>
           </Paper>

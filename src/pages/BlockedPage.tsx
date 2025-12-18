@@ -1,125 +1,136 @@
-import { useState } from "react";
-import { Box, Typography, Button, Paper, Alert } from "@mui/material";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Alert,
+  CircularProgress,
+} from "@mui/material";
 import { backendApi } from "@/lib/backendApi";
+import { useNavigate, useLocation } from "react-router-dom";
 
-interface BlockedPayload {
-  error: string;
-  status: string;
-  reason: string;
-  graceUntil?: string;
-  message: string;
+type BlockPayload = {
+  error?: string;
+  status?: string;
+  reason?: string;
+  graceUntil?: string | null;
+  message?: string;
+};
+
+function formatDate(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString();
 }
 
 export function BlockedPage() {
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const payload: BlockedPayload | null = (() => {
-    try {
-      const stored = sessionStorage.getItem("billing_blocked_payload");
-      if (!stored) return null;
-      return JSON.parse(stored) as BlockedPayload;
-    } catch {
-      return null;
-    }
-  })();
+  const [payload, setPayload] = useState<BlockPayload | null>(null);
+  const [loadingPortal, setLoadingPortal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleUpdatePayment = async () => {
-    setLoading(true);
-    try {
-      const response = await backendApi.post("/api/billing/portal", {
-        returnUrl: window.location.origin,
-      });
-      const { url } = response.data;
-      if (url) {
-        window.location.href = url;
+  useEffect(() => {
+    const raw = sessionStorage.getItem("billing_blocked_payload");
+    if (raw) {
+      try {
+        setPayload(JSON.parse(raw));
+      } catch {
+        setPayload(null);
       }
-    } catch (error) {
-      console.error("Failed to open billing portal:", error);
-      alert("Failed to open billing portal. Please try again.");
-      setLoading(false);
     }
-  };
+  }, []);
 
-  const formatDate = (isoDate: string | undefined) => {
-    if (!isoDate) return "";
+  const graceText = useMemo(() => {
+    const graceUntil = payload?.graceUntil ?? null;
+    if (!graceUntil) return null;
+    return `Gracia hasta: ${formatDate(graceUntil)}`;
+  }, [payload?.graceUntil]);
+
+  const openPortal = async () => {
+    setLoadingPortal(true);
+    setError(null);
     try {
-      return new Date(isoDate).toLocaleDateString();
-    } catch {
-      return isoDate;
+      const returnUrl = window.location.origin + "/billing";
+      const { data } = await backendApi.post("/api/billing/portal", {
+        returnUrl,
+      });
+      if (!data?.url) throw new Error("Missing portal url");
+      window.location.assign(data.url);
+    } catch (e: any) {
+      setError(
+        e?.response?.data?.error || e.message || "Failed to open billing portal"
+      );
+      setLoadingPortal(false);
     }
   };
 
   return (
     <Box
       sx={{
-        minHeight: "100vh",
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
-        bgcolor: "background.default",
-        p: 2,
+        alignItems: "center",
+        minHeight: "70vh",
+        px: 2,
       }}
     >
-      <Paper
-        elevation={3}
-        sx={{
-          maxWidth: 600,
-          width: "100%",
-          p: 4,
-          textAlign: "center",
-        }}
-      >
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: "error.main" }}>
-          Acceso Bloqueado
+      <Paper sx={{ p: 4, maxWidth: 720, width: "100%" }}>
+        <Typography variant="h4" gutterBottom>
+          Acceso bloqueado por facturación
         </Typography>
 
-        <Typography variant="body1" sx={{ mb: 3, color: "text.secondary" }}>
-          {payload?.message || "Tu suscripción tiene un problema que requiere atención."}
+        <Typography variant="body1" color="text.secondary" paragraph>
+          Tu suscripción no está al día. Para seguir usando la app, actualiza tu
+          método de pago en Stripe.
         </Typography>
 
         {payload?.reason && (
-          <Alert severity="error" sx={{ mb: 3, textAlign: "left" }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Motivo:
-            </Typography>
-            <Typography variant="body2">{payload.reason}</Typography>
-            {payload.status && (
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Estado: <strong>{payload.status}</strong>
-              </Typography>
-            )}
-            {payload.graceUntil && (
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Período de gracia expiró: <strong>{formatDate(payload.graceUntil)}</strong>
-              </Typography>
-            )}
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {payload.reason}
+          </Alert>
+        )}
+        {graceText && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {graceText}
           </Alert>
         )}
 
-        <Typography variant="body2" sx={{ mb: 3 }}>
-          Para restaurar el acceso, actualiza tu método de pago o contacta con soporte.
-        </Typography>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
 
-        <Button
-          variant="contained"
-          color="primary"
-          size="large"
-          onClick={handleUpdatePayment}
-          disabled={loading}
-          fullWidth
-        >
-          {loading ? "Abriendo portal de facturación..." : "Actualizar método de pago"}
-        </Button>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mt: 2 }}>
+          <Button
+            variant="contained"
+            onClick={openPortal}
+            disabled={loadingPortal}
+          >
+            {loadingPortal ? <CircularProgress size={22} /> : "Actualizar pago"}
+          </Button>
 
-        <Button
-          variant="text"
-          color="secondary"
-          size="small"
-          href="mailto:support@example.com"
-          sx={{ mt: 2 }}
-        >
-          Contactar soporte
-        </Button>
+          <Button
+            variant="outlined"
+            onClick={() => navigate("/billing", { state: { blocked: true } })}
+          >
+            Ver planes
+          </Button>
+
+          <Button
+            variant="text"
+            onClick={() => {
+              const from = (location.state as any)?.from;
+              navigate(from || "/dashboard");
+            }}
+          >
+            Volver
+          </Button>
+        </Box>
       </Paper>
     </Box>
   );
