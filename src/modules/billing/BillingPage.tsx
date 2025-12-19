@@ -40,7 +40,7 @@ const plans = [
   {
     id: "solo",
     name: "Solo",
-    price: 0.99,
+    price: 4.99,
     period: "mes",
     color: "primary" as const,
     features: [
@@ -54,7 +54,7 @@ const plans = [
   {
     id: "pro",
     name: "Pro",
-    price: 1.99,
+    price: 9.99,
     period: "mes",
     color: "secondary" as const,
     features: [
@@ -67,7 +67,7 @@ const plans = [
   {
     id: "agency",
     name: "Agency",
-    price: 8.99,
+    price: 19.99,
     period: "mes",
     color: "error" as const,
     features: [
@@ -315,6 +315,19 @@ export function BillingPage() {
               <br />• Aceptamos tarjetas de crédito y débito
             </Typography>
           </Paper>
+
+          {plan && plan !== "free" && (
+            <Paper sx={{ p: 3, mt: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                ¿Quieres darte de baja?
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Si deseas cancelar tu suscripción, envía un correo a{" "}
+                <strong>nh_hamza@hotmail.fr</strong> y procesaremos tu
+                solicitud.
+              </Typography>
+            </Paper>
+          )}
         </>
       )}
     </Box>

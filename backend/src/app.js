@@ -631,6 +631,41 @@ app.post("/api/billing/portal", requireAuth, requireOrg, async (req, res) => {
   }
 });
 
+// Get invoices for current organization
+app.get("/api/invoices", requireAuth, requireOrg, async (req, res) => {
+  try {
+    const billing = await readBilling(req.orgId);
+    const customerId = billing.stripeCustomerId;
+
+    if (!customerId) {
+      return res.json({ invoices: [] });
+    }
+
+    const invoices = await stripe.invoices.list({
+      customer: customerId,
+      limit: 100,
+    });
+
+    const formattedInvoices = invoices.data.map(invoice => ({
+      id: invoice.id,
+      number: invoice.number,
+      amount: invoice.amount_paid / 100, // Convert from cents to euros
+      currency: invoice.currency,
+      status: invoice.status,
+      created: invoice.created,
+      hostedInvoiceUrl: invoice.hosted_invoice_url,
+      invoicePdf: invoice.invoice_pdf,
+      periodStart: invoice.period_start,
+      periodEnd: invoice.period_end,
+    }));
+
+    res.json({ invoices: formattedInvoices });
+  } catch (err) {
+    console.error("[invoices] list failed", err);
+    return res.status(500).json({ error: "Failed to fetch invoices" });
+  }
+});
+
 // Users in current org (for seats / sharing)
 app.get("/api/users", requireAuth, requireOrg, async (req, res) => {
   try {
@@ -1068,6 +1103,113 @@ app.post("/test-update-plan", express.json(), async (req, res) => {
     res.json({ success: true, limits });
   } catch (error) {
     console.error("❌ Error updating plan:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// TEST ENDPOINT - Simulate payment failure with grace period
+app.post("/test-payment-failed", express.json(), async (req, res) => {
+  try {
+    const { orgId, graceDays = 7 } = req.body;
+    console.log("🧪 Test endpoint - simulating payment failure:", { orgId, graceDays });
+
+    const billing = await readBilling(orgId);
+    const graceUntil = addDaysIso(nowIso(), graceDays);
+
+    await writeBilling(orgId, {
+      ...billing,
+      status: "past_due",
+      graceUntil,
+      lastPaymentError: "Test payment failure - card declined",
+    });
+
+    console.log("✅ Payment failure simulated with grace until:", graceUntil);
+    res.json({
+      success: true,
+      status: "past_due",
+      graceUntil,
+      message: `Grace period set for ${graceDays} days`
+    });
+  } catch (error) {
+    console.error("❌ Error simulating payment failure:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// TEST ENDPOINT - Simulate expired grace period (blocked)
+app.post("/test-grace-expired", express.json(), async (req, res) => {
+  try {
+    const { orgId } = req.body;
+    console.log("🧪 Test endpoint - simulating expired grace period:", { orgId });
+
+    const billing = await readBilling(orgId);
+    const expiredDate = addDaysIso(nowIso(), -1); // Yesterday
+
+    await writeBilling(orgId, {
+      ...billing,
+      status: "past_due",
+      graceUntil: expiredDate,
+      lastPaymentError: "Test payment failure - grace period expired",
+    });
+
+    console.log("✅ Grace period expired, user should be blocked");
+    res.json({
+      success: true,
+      status: "past_due",
+      graceUntil: expiredDate,
+      message: "Grace period expired - access should be blocked"
+    });
+  } catch (error) {
+    console.error("❌ Error simulating expired grace:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// TEST ENDPOINT - Simulate payment recovery
+app.post("/test-payment-recovered", express.json(), async (req, res) => {
+  try {
+    const { orgId } = req.body;
+    console.log("🧪 Test endpoint - simulating payment recovery:", { orgId });
+
+    const billing = await readBilling(orgId);
+
+    await writeBilling(orgId, {
+      ...billing,
+      status: "active",
+      graceUntil: null,
+      lastPaymentError: null,
+    });
+
+    console.log("✅ Payment recovered, access restored");
+    res.json({
+      success: true,
+      status: "active",
+      message: "Payment recovered - access restored"
+    });
+  } catch (error) {
+    console.error("❌ Error simulating payment recovery:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// TEST ENDPOINT - Check current billing status
+app.post("/test-check-billing", express.json(), async (req, res) => {
+  try {
+    const { orgId } = req.body;
+    console.log("🧪 Test endpoint - checking billing status:", { orgId });
+
+    const billing = await readBilling(orgId);
+    const verdict = isBillingAllowed(billing);
+
+    console.log("📊 Current billing status:", { billing, verdict });
+    res.json({
+      success: true,
+      billing,
+      verdict,
+      now: nowIso()
+    });
+  } catch (error) {
+    console.error("❌ Error checking billing:", error);
     res.status(500).json({ error: error.message });
   }
 });

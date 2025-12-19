@@ -24,9 +24,9 @@ function mapPrice(priceId?: string) {
 // Plan prices for reference (in EUR)
 export const PLAN_PRICES = {
   free: 0,
-  solo: 0.99,
-  pro: 1.99,
-  agency: 8.99,
+  solo: 4.99,
+  pro: 9.99,
+  agency: 19.99,
 };
 
 export async function createCheckoutSession(
