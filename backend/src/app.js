@@ -1080,138 +1080,138 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
   }
 });
 
-// TEST ENDPOINT - Remove in production
-app.post("/test-update-plan", express.json(), async (req, res) => {
-  try {
-    const { orgId, plan } = req.body;
-    console.log("🧪 Test endpoint - updating plan:", { orgId, plan });
+// // TEST ENDPOINT - Remove in production
+// app.post("/test-update-plan", express.json(), async (req, res) => {
+//   try {
+//     const { orgId, plan } = req.body;
+//     console.log("🧪 Test endpoint - updating plan:", { orgId, plan });
 
-    const limits = mapPrice(
-      plan === "solo" ? "price_1SRy7v1Ooy6ryYPn2mc6FKfu" :
-      plan === "pro" ? "price_1SRyIm1Ooy6ryYPnczGBTB7g" :
-      plan === "agency" ? "price_1SRyMA1Ooy6ryYPnzPLHOkWt" : null
-    );
+//     const limits = mapPrice(
+//       plan === "solo" ? "price_1SRy7v1Ooy6ryYPn2mc6FKfu" :
+//       plan === "pro" ? "price_1SRyIm1Ooy6ryYPnczGBTB7g" :
+//       plan === "agency" ? "price_1SRyMA1Ooy6ryYPnzPLHOkWt" : null
+//     );
 
-    await writeBilling(orgId, {
-      plan: limits.plan,
-      status: "active",
-      propertyLimit: limits.propertyLimit,
-      seatLimit: limits.seatLimit,
-    });
+//     await writeBilling(orgId, {
+//       plan: limits.plan,
+//       status: "active",
+//       propertyLimit: limits.propertyLimit,
+//       seatLimit: limits.seatLimit,
+//     });
 
-    console.log("✅ Plan updated successfully");
-    res.json({ success: true, limits });
-  } catch (error) {
-    console.error("❌ Error updating plan:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+//     console.log("✅ Plan updated successfully");
+//     res.json({ success: true, limits });
+//   } catch (error) {
+//     console.error("❌ Error updating plan:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
-// TEST ENDPOINT - Simulate payment failure with grace period
-app.post("/test-payment-failed", express.json(), async (req, res) => {
-  try {
-    const { orgId, graceDays = 7 } = req.body;
-    console.log("🧪 Test endpoint - simulating payment failure:", { orgId, graceDays });
+// // TEST ENDPOINT - Simulate payment failure with grace period
+// app.post("/test-payment-failed", express.json(), async (req, res) => {
+//   try {
+//     const { orgId, graceDays = 7 } = req.body;
+//     console.log("🧪 Test endpoint - simulating payment failure:", { orgId, graceDays });
 
-    const billing = await readBilling(orgId);
-    const graceUntil = addDaysIso(nowIso(), graceDays);
+//     const billing = await readBilling(orgId);
+//     const graceUntil = addDaysIso(nowIso(), graceDays);
 
-    await writeBilling(orgId, {
-      ...billing,
-      status: "past_due",
-      graceUntil,
-      lastPaymentError: "Test payment failure - card declined",
-    });
+//     await writeBilling(orgId, {
+//       ...billing,
+//       status: "past_due",
+//       graceUntil,
+//       lastPaymentError: "Test payment failure - card declined",
+//     });
 
-    console.log("✅ Payment failure simulated with grace until:", graceUntil);
-    res.json({
-      success: true,
-      status: "past_due",
-      graceUntil,
-      message: `Grace period set for ${graceDays} days`
-    });
-  } catch (error) {
-    console.error("❌ Error simulating payment failure:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+//     console.log("✅ Payment failure simulated with grace until:", graceUntil);
+//     res.json({
+//       success: true,
+//       status: "past_due",
+//       graceUntil,
+//       message: `Grace period set for ${graceDays} days`
+//     });
+//   } catch (error) {
+//     console.error("❌ Error simulating payment failure:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
-// TEST ENDPOINT - Simulate expired grace period (blocked)
-app.post("/test-grace-expired", express.json(), async (req, res) => {
-  try {
-    const { orgId } = req.body;
-    console.log("🧪 Test endpoint - simulating expired grace period:", { orgId });
+// // TEST ENDPOINT - Simulate expired grace period (blocked)
+// app.post("/test-grace-expired", express.json(), async (req, res) => {
+//   try {
+//     const { orgId } = req.body;
+//     console.log("🧪 Test endpoint - simulating expired grace period:", { orgId });
 
-    const billing = await readBilling(orgId);
-    const expiredDate = addDaysIso(nowIso(), -1); // Yesterday
+//     const billing = await readBilling(orgId);
+//     const expiredDate = addDaysIso(nowIso(), -1); // Yesterday
 
-    await writeBilling(orgId, {
-      ...billing,
-      status: "past_due",
-      graceUntil: expiredDate,
-      lastPaymentError: "Test payment failure - grace period expired",
-    });
+//     await writeBilling(orgId, {
+//       ...billing,
+//       status: "past_due",
+//       graceUntil: expiredDate,
+//       lastPaymentError: "Test payment failure - grace period expired",
+//     });
 
-    console.log("✅ Grace period expired, user should be blocked");
-    res.json({
-      success: true,
-      status: "past_due",
-      graceUntil: expiredDate,
-      message: "Grace period expired - access should be blocked"
-    });
-  } catch (error) {
-    console.error("❌ Error simulating expired grace:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+//     console.log("✅ Grace period expired, user should be blocked");
+//     res.json({
+//       success: true,
+//       status: "past_due",
+//       graceUntil: expiredDate,
+//       message: "Grace period expired - access should be blocked"
+//     });
+//   } catch (error) {
+//     console.error("❌ Error simulating expired grace:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
-// TEST ENDPOINT - Simulate payment recovery
-app.post("/test-payment-recovered", express.json(), async (req, res) => {
-  try {
-    const { orgId } = req.body;
-    console.log("🧪 Test endpoint - simulating payment recovery:", { orgId });
+// // TEST ENDPOINT - Simulate payment recovery
+// app.post("/test-payment-recovered", express.json(), async (req, res) => {
+//   try {
+//     const { orgId } = req.body;
+//     console.log("🧪 Test endpoint - simulating payment recovery:", { orgId });
 
-    const billing = await readBilling(orgId);
+//     const billing = await readBilling(orgId);
 
-    await writeBilling(orgId, {
-      ...billing,
-      status: "active",
-      graceUntil: null,
-      lastPaymentError: null,
-    });
+//     await writeBilling(orgId, {
+//       ...billing,
+//       status: "active",
+//       graceUntil: null,
+//       lastPaymentError: null,
+//     });
 
-    console.log("✅ Payment recovered, access restored");
-    res.json({
-      success: true,
-      status: "active",
-      message: "Payment recovered - access restored"
-    });
-  } catch (error) {
-    console.error("❌ Error simulating payment recovery:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+//     console.log("✅ Payment recovered, access restored");
+//     res.json({
+//       success: true,
+//       status: "active",
+//       message: "Payment recovered - access restored"
+//     });
+//   } catch (error) {
+//     console.error("❌ Error simulating payment recovery:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
-// TEST ENDPOINT - Check current billing status
-app.post("/test-check-billing", express.json(), async (req, res) => {
-  try {
-    const { orgId } = req.body;
-    console.log("🧪 Test endpoint - checking billing status:", { orgId });
+// // TEST ENDPOINT - Check current billing status
+// app.post("/test-check-billing", express.json(), async (req, res) => {
+//   try {
+//     const { orgId } = req.body;
+//     console.log("🧪 Test endpoint - checking billing status:", { orgId });
 
-    const billing = await readBilling(orgId);
-    const verdict = isBillingAllowed(billing);
+//     const billing = await readBilling(orgId);
+//     const verdict = isBillingAllowed(billing);
 
-    console.log("📊 Current billing status:", { billing, verdict });
-    res.json({
-      success: true,
-      billing,
-      verdict,
-      now: nowIso()
-    });
-  } catch (error) {
-    console.error("❌ Error checking billing:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+//     console.log("📊 Current billing status:", { billing, verdict });
+//     res.json({
+//       success: true,
+//       billing,
+//       verdict,
+//       now: nowIso()
+//     });
+//   } catch (error) {
+//     console.error("❌ Error checking billing:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
 export default app;

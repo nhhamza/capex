@@ -25,14 +25,10 @@ import LocationOnIcon from "@mui/icons-material/LocationOn";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 
 import { useAuth } from "@/auth/authContext";
-import { useOrgLimits } from "@/hooks/useOrgLimits";
+import { useOrgBilling } from "@/hooks/useOrgBilling";
 import {
-  getProperties,
+  getDashboard,
   deleteProperty,
-  getLeases,
-  getLoan,
-  getRecurringExpenses,
-  getRooms,
 } from "../api";
 import { Property } from "../types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -86,13 +82,14 @@ function getRemainingLoanBalance(
 export function PropertiesList() {
   const navigate = useNavigate();
   const { userDoc } = useAuth();
-  const { loading: limitsLoading, propertyLimit } = useOrgLimits(
-    userDoc?.orgId
-  );
+  const { loading: limitsLoading, propertyLimit } = useOrgBilling();
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true); // loading properties list
   const [rowsLoading, setRowsLoading] = useState(false); // loading metrics/rows
+
+  // Store all data from dashboard
+  const [dashboardData, setDashboardData] = useState<any>(null);
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({
@@ -111,8 +108,10 @@ export function PropertiesList() {
 
     setLoading(true);
     try {
-      const props = await getProperties(userDoc.orgId);
-      setProperties(props);
+      // Single optimized API call instead of N+1 queries
+      const data = await getDashboard();
+      setProperties(data.properties);
+      setDashboardData(data);
     } catch (error) {
       setSnackbar({
         open: true,
@@ -157,7 +156,7 @@ export function PropertiesList() {
     let cancelled = false;
 
     const enrichRows = async () => {
-      if (properties.length === 0) {
+      if (properties.length === 0 || !dashboardData) {
         setRows([]);
         return;
       }
@@ -168,23 +167,38 @@ export function PropertiesList() {
       const monthDate = dayjs();
 
       try {
-        const enriched = await Promise.all(
-          properties.map(async (property) => {
-            // ✅ parallelize within each property
-            const leasesPromise = getLeases(property.id);
-            const loanPromise = getLoan(property.id);
-            const recurringPromise = getRecurringExpenses(property.id);
-            const roomsPromise =
-              property.rentalMode === "PER_ROOM"
-                ? getRooms(property.id)
-                : Promise.resolve([]);
+        // Group dashboard data by propertyId for quick lookup
+        const leasesByProp: Record<string, any[]> = {};
+        const loansByProp: Record<string, any[]> = {};
+        const recurringByProp: Record<string, any[]> = {};
+        const roomsByProp: Record<string, any[]> = {};
 
-            const [leases, loan, recurring, rooms] = await Promise.all([
-              leasesPromise,
-              loanPromise,
-              recurringPromise,
-              roomsPromise,
-            ]);
+        dashboardData.leases.forEach((lease: any) => {
+          if (!leasesByProp[lease.propertyId]) leasesByProp[lease.propertyId] = [];
+          leasesByProp[lease.propertyId].push(lease);
+        });
+
+        dashboardData.loans.forEach((loan: any) => {
+          if (!loansByProp[loan.propertyId]) loansByProp[loan.propertyId] = [];
+          loansByProp[loan.propertyId].push(loan);
+        });
+
+        dashboardData.recurringExpenses.forEach((expense: any) => {
+          if (!recurringByProp[expense.propertyId]) recurringByProp[expense.propertyId] = [];
+          recurringByProp[expense.propertyId].push(expense);
+        });
+
+        dashboardData.rooms.forEach((room: any) => {
+          if (!roomsByProp[room.propertyId]) roomsByProp[room.propertyId] = [];
+          roomsByProp[room.propertyId].push(room);
+        });
+
+        const enriched = properties.map((property) => {
+          // Get data for this property from grouped dashboard data
+          const leases = leasesByProp[property.id] || [];
+          const loan = (loansByProp[property.id] || [])[0]; // Get first loan
+          const recurring = recurringByProp[property.id] || [];
+          const rooms = roomsByProp[property.id] || [];
 
             const closingCostsTotal = sumClosingCosts(property.closingCosts);
             const totalInvestment = property.purchasePrice + closingCostsTotal;
@@ -237,29 +251,28 @@ export function PropertiesList() {
               loan,
             });
 
-            return {
-              id: property.id,
-              address: property.address,
-              purchasePrice: property.purchasePrice,
-              currentValue: property.currentValue || property.purchasePrice,
-              totalInvestment,
-              monthlyRent: monthlyRentNet,
-              capRate: metrics.capRateNet,
-              cashOnCash: metrics.cashOnCash,
-              occupancy,
-              loanBalance: remainingBalance,
-              loan,
-              computed: {
-                monthlyRentNet,
-                monthlyRentGross,
-                effectiveVacancyPct: agg.effectiveVacancyPct,
-                occupiedRooms: agg.occupiedRooms,
-                totalRooms: agg.totalRooms,
-                rentalMode: property.rentalMode,
-              },
-            };
-          })
-        );
+          return {
+            id: property.id,
+            address: property.address,
+            purchasePrice: property.purchasePrice,
+            currentValue: property.currentValue || property.purchasePrice,
+            totalInvestment,
+            monthlyRent: monthlyRentNet,
+            capRate: metrics.capRateNet,
+            cashOnCash: metrics.cashOnCash,
+            occupancy,
+            loanBalance: remainingBalance,
+            loan,
+            computed: {
+              monthlyRentNet,
+              monthlyRentGross,
+              effectiveVacancyPct: agg.effectiveVacancyPct,
+              occupiedRooms: agg.occupiedRooms,
+              totalRooms: agg.totalRooms,
+              rentalMode: property.rentalMode,
+            },
+          };
+        });
 
         if (!cancelled) setRows(enriched);
       } catch (error) {
@@ -282,7 +295,7 @@ export function PropertiesList() {
     return () => {
       cancelled = true;
     };
-  }, [properties]);
+  }, [properties, dashboardData]);
 
   const showInitialLoading = loading && properties.length === 0;
   const showRowsLoading = rowsLoading && properties.length > 0;

@@ -9,15 +9,13 @@ import {
   Alert,
 } from "@mui/material";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import { useAuth } from "@/auth/authContext";
-import { useOrgLimits } from "@/hooks/useOrgLimits";
+import { useOrgBilling } from "@/hooks/useOrgBilling";
 import { backendApi } from "@/lib/backendApi";
 
 export function BillingSuccessPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { userDoc } = useAuth();
-  const { refresh: refreshOrgLimits } = useOrgLimits(userDoc?.orgId);
+  const { refresh: refreshOrgLimits } = useOrgBilling();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

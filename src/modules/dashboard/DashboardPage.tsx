@@ -226,10 +226,12 @@ export function DashboardPage() {
             totalPrincipal += loan.principal;
           }
 
-          totalCurrentValue +=
+          const valueToAdd =
             typeof prop.currentValue === "number" && prop.currentValue > 0
               ? prop.currentValue
               : prop.purchasePrice;
+
+          totalCurrentValue += valueToAdd;
 
           // If no lease and not PER_ROOM with rooms, skip the rest of metrics for this property
           const hasLease = !!lease;

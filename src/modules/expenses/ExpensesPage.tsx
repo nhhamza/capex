@@ -22,8 +22,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import { useAuth } from "@/auth/authContext";
 import {
-  getProperties,
-  getOneOffExpenses,
+  getDashboard,
   deleteOneOffExpense,
 } from "@/modules/properties/api";
 import { Property, OneOffExpense } from "@/modules/properties/types";
@@ -63,16 +62,11 @@ export function ExpensesPage() {
 
     setLoading(true);
     try {
-      const props = await getProperties(userDoc.orgId);
-      setProperties(props);
+      // Single optimized API call instead of sequential loop
+      const data = await getDashboard();
 
-      // Load all expenses from all properties
-      const allExpenses: OneOffExpense[] = [];
-      for (const prop of props) {
-        const propExpenses = await getOneOffExpenses(prop.id);
-        allExpenses.push(...propExpenses);
-      }
-      setExpenses(allExpenses);
+      setProperties(data.properties);
+      setExpenses(data.oneOffExpenses);
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {

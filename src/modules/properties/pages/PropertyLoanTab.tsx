@@ -62,7 +62,7 @@ export function PropertyLoanTab({
     defaultValues: {
       principal: loan?.principal || 0,
       annualRatePct: loan?.annualRatePct || 3.5,
-      termMonths: loan?.termMonths || 300,
+      termMonths: loan?.termMonths || 360,
       startDate: parseDate(loan?.startDate),
       interestOnlyMonths: loan?.interestOnlyMonths || 0,
       upFrontFees: loan?.upFrontFees || 0,

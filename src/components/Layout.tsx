@@ -35,8 +35,7 @@ import CalculateIcon from "@mui/icons-material/Calculate";
 import ApartmentIcon from "@mui/icons-material/Apartment";
 import ContactMailIcon from "@mui/icons-material/ContactMail";
 import { useAuth } from "@/auth/authContext";
-import { useOrgLimits } from "@/hooks/useOrgLimits";
-import { useBillingStatus } from "@/billing/useBillingStatus";
+import { useOrgBilling } from "@/hooks/useOrgBilling";
 import WarningIcon from "@mui/icons-material/Warning";
 import { Alert } from "@mui/material";
 
@@ -55,8 +54,7 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, userDoc, logout } = useAuth();
-  const { loading: planLoading, plan, refresh } = useOrgLimits(userDoc?.orgId);
-  const { billing, isGrace } = useBillingStatus();
+  const { loading: planLoading, plan, billing, isGrace, refresh } = useOrgBilling();
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));

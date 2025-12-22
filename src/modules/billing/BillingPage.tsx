@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 import CheckIcon from "@mui/icons-material/Check";
 import { useAuth } from "@/auth/authContext";
-import { useOrgLimits } from "@/hooks/useOrgLimits";
+import { useOrgBilling } from "@/hooks/useOrgBilling";
 import { openExternal } from "@/lib/openExternal";
 import { useLocation } from "react-router-dom";
 import { backendApi } from "@/lib/backendApi";
@@ -85,7 +85,7 @@ export function BillingPage() {
   const blocked = Boolean((location as any).state?.blocked);
 
   const { userDoc } = useAuth();
-  const { loading: planLoading, plan, refresh } = useOrgLimits(userDoc?.orgId);
+  const { loading: planLoading, plan, refresh } = useOrgBilling();
 
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

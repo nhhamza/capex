@@ -5,6 +5,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import 'dayjs/locale/es';
 import { AuthProvider } from '@/auth/authContext';
+import { OrgBillingProvider } from '@/hooks/useOrgBilling';
 import { router } from './routes';
 import { theme } from './theme';
 
@@ -14,7 +15,9 @@ function App() {
       <CssBaseline />
       <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
         <AuthProvider>
-          <RouterProvider router={router} />
+          <OrgBillingProvider>
+            <RouterProvider router={router} />
+          </OrgBillingProvider>
         </AuthProvider>
       </LocalizationProvider>
     </ThemeProvider>

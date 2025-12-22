@@ -42,12 +42,7 @@ ChartJS.register(
 
 import { useAuth } from "@/auth/authContext";
 import {
-  getProperties,
-  getLeases,
-  getLoans,
-  getRecurringExpenses,
-  getOneOffExpenses,
-  getRooms,
+  getDashboard,
 } from "@/modules/properties/api";
 import {
   Property,
@@ -114,31 +109,16 @@ export function CashflowPage() {
   // Incremental rendering for performance
   const [visibleCount, setVisibleCount] = useState(6);
 
-  // 1) Load properties
+  // Load all data using optimized dashboard endpoint (single API call)
   useEffect(() => {
-    const loadProperties = async () => {
-      if (!userDoc?.orgId) return;
-      setLoading(true);
-      try {
-        const props = await getProperties(userDoc.orgId);
-        setProperties(props);
-        // Clear cache when properties change
-        cacheRef.current = {};
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadProperties();
-  }, [userDoc]);
-
-  // 2) Load all per-property data ONCE (leases, recurring, one-off, loans)
-  useEffect(() => {
-    const loadPerPropertyData = async () => {
-      if (!userDoc?.orgId || properties.length === 0) {
+    const loadData = async () => {
+      if (!userDoc?.orgId) {
+        setProperties([]);
         setLeasesByProp({});
         setRecurringByProp({});
         setOneOffByProp({});
         setLoansByProp({});
+        setRoomsByProp({});
         setDataLoaded(false);
         return;
       }
@@ -147,81 +127,73 @@ export function CashflowPage() {
       setDataLoaded(false);
 
       try {
-        const leaseEntries = await Promise.all(
-          properties.map(async (prop) => {
-            const leases = await getLeases(prop.id);
-            return [prop.id, leases || []] as const;
-          })
-        );
+        // Single optimized API call instead of N+1 queries
+        const data = await getDashboard();
 
-        const recurringEntries = await Promise.all(
-          properties.map(async (prop) => {
-            const rec = await getRecurringExpenses(prop.id);
-            return [prop.id, rec || []] as const;
-          })
-        );
-
-        const oneOffEntries = await Promise.all(
-          properties.map(async (prop) => {
-            const capex = await getOneOffExpenses(prop.id);
-            return [prop.id, capex || []] as const;
-          })
-        );
-
-        const loanEntries = await Promise.all(
-          properties.map(async (prop) => {
-            const loans = await getLoans(prop.id);
-            return [prop.id, loans || []] as const;
-          })
-        );
-
-        const roomEntries = await Promise.all(
-          properties
-            .filter((prop) => prop.rentalMode === "PER_ROOM")
-            .map(async (prop) => {
-              const rooms = await getRooms(prop.id);
-              return [prop.id, rooms || []] as const;
-            })
-        );
-
+        // Group data by propertyId
         const leasesMap: LeasesByProp = {};
-        leaseEntries.forEach(([id, leases]) => {
-          leasesMap[id] = leases;
-        });
-
         const recurringMap: RecurringByProp = {};
-        recurringEntries.forEach(([id, rec]) => {
-          recurringMap[id] = rec;
-        });
-
         const oneOffMap: OneOffByProp = {};
-        oneOffEntries.forEach(([id, capex]) => {
-          oneOffMap[id] = capex as OneOffExpense[];
-        });
-
         const loansMap: LoansByProp = {};
-        loanEntries.forEach(([id, loans]) => {
-          loansMap[id] = loans;
-        });
-
         const roomsMap: Record<string, Room[]> = {};
-        roomEntries.forEach(([id, rooms]) => {
-          roomsMap[id] = rooms;
+
+        // Initialize maps for all properties
+        data.properties.forEach((prop) => {
+          leasesMap[prop.id] = [];
+          recurringMap[prop.id] = [];
+          oneOffMap[prop.id] = [];
+          loansMap[prop.id] = [];
+          roomsMap[prop.id] = [];
         });
 
+        // Populate maps from dashboard data
+        data.leases.forEach((lease) => {
+          if (leasesMap[lease.propertyId]) {
+            leasesMap[lease.propertyId].push(lease);
+          }
+        });
+
+        data.recurringExpenses.forEach((expense) => {
+          if (recurringMap[expense.propertyId]) {
+            recurringMap[expense.propertyId].push(expense);
+          }
+        });
+
+        data.oneOffExpenses.forEach((expense) => {
+          if (oneOffMap[expense.propertyId]) {
+            oneOffMap[expense.propertyId].push(expense as OneOffExpense);
+          }
+        });
+
+        data.loans.forEach((loan) => {
+          if (loansMap[loan.propertyId]) {
+            loansMap[loan.propertyId].push(loan);
+          }
+        });
+
+        data.rooms.forEach((room) => {
+          if (roomsMap[room.propertyId]) {
+            roomsMap[room.propertyId].push(room);
+          }
+        });
+
+        setProperties(data.properties);
         setLeasesByProp(leasesMap);
         setRecurringByProp(recurringMap);
         setOneOffByProp(oneOffMap);
         setLoansByProp(loansMap);
         setRoomsByProp(roomsMap);
         setDataLoaded(true);
+
+        // Clear cache when data changes
+        cacheRef.current = {};
       } finally {
         setLoading(false);
       }
     };
 
-    loadPerPropertyData();
-  }, [userDoc, properties]);
+    loadData();
+  }, [userDoc]);
 
   // Helper to pick which properties to process
   const propsToProcess = useMemo(

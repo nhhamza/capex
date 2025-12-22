@@ -26,14 +26,8 @@ import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
-import { useOrgLimits } from "@/hooks/useOrgLimits";
-import {
-  getProperties,
-  getOneOffExpenses,
-  getRecurringExpenses,
-  getLeases,
-  getRooms,
-} from "@/modules/properties/api";
+import { useOrgBilling } from "@/hooks/useOrgBilling";
+import { getDashboard } from "@/modules/properties/api";
 import {
   Property,
   OneOffExpense,
@@ -42,12 +36,11 @@ import {
 } from "@/modules/properties/types";
 import { exportToExcel, exportToPDF } from "@/modules/expenses/exportUtils";
 import { exportTaxReportToExcel, exportTaxReportToPDF } from "./taxExportUtils";
-import { getAggregatedRentForMonth } from "@/modules/properties/rentalAggregation";
 import { formatCurrency } from "@/utils/format";
 
 export function ReportsPage() {
   const { userDoc } = useAuth();
-  const { loading: limitsLoading, plan } = useOrgLimits(userDoc?.orgId);
+  const { loading: limitsLoading, plan } = useOrgBilling();
   const [properties, setProperties] = useState<Property[]>([]);
   const [expenses, setExpenses] = useState<OneOffExpense[]>([]);
   const [recurringExpenses, setRecurringExpenses] = useState<
@@ -57,6 +50,9 @@ export function ReportsPage() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+
+  // Store dashboard data for rooms access
+  const [dashboardData, setDashboardData] = useState<any>(null);
 
   // Tax report state
   const [taxReportData, setTaxReportData] = useState<any>(null);
@@ -69,26 +65,14 @@ export function ReportsPage() {
 
     setLoading(true);
     try {
-      const props = await getProperties(userDoc.orgId);
-      setProperties(props);
+      // Single optimized API call instead of sequential loop
+      const data = await getDashboard();
 
-      // Load all expenses from all properties
-      const allExpenses: OneOffExpense[] = [];
-      const allRecurringExpenses: RecurringExpense[] = [];
-      const allLeases: Lease[] = [];
-      for (const prop of props) {
-        const propExpenses = await getOneOffExpenses(prop.id);
-        allExpenses.push(...propExpenses);
-
-        const propRecurringExpenses = await getRecurringExpenses(prop.id);
-        allRecurringExpenses.push(...propRecurringExpenses);
-
-        const propLeases = await getLeases(prop.id);
-        allLeases.push(...propLeases);
-      }
-      setExpenses(allExpenses);
-      setRecurringExpenses(allRecurringExpenses);
-      setLeases(allLeases);
+      setProperties(data.properties);
+      setExpenses(data.oneOffExpenses);
+      setRecurringExpenses(data.recurringExpenses);
+      setLeases(data.leases);
+      setDashboardData(data);
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {
@@ -100,7 +84,8 @@ export function ReportsPage() {
     loadData();
   }, [userDoc]);
 
-  // Calculate tax report data for a specific year
+  // Calculate tax report data for a specific year (for Hacienda)
+  // This calculates ACTUAL rental income received, not projections
   const calculateTaxReport = async (year: string, propertyId?: string) => {
     const reportYear = parseInt(year);
     let totalRentalIncome = 0;
@@ -113,54 +98,69 @@ export function ReportsPage() {
         ? properties.filter((p) => p.id === propertyId)
         : properties;
 
+    // We already have all leases loaded from getDashboard
+    // Group them by propertyId for quick lookup
+    const leasesByProp: Record<string, Lease[]> = {};
+    const roomsByProp: Record<string, any[]> = {};
+
+    // Wait for data to be loaded if needed
+    if (!properties.length || !leases.length) {
+      await loadData();
+    }
+
+    leases.forEach((lease) => {
+      if (!leasesByProp[lease.propertyId]) leasesByProp[lease.propertyId] = [];
+      leasesByProp[lease.propertyId].push(lease);
+    });
+
+    // Group rooms if we have dashboardData
+    if (dashboardData?.rooms) {
+      dashboardData.rooms.forEach((room: any) => {
+        if (!roomsByProp[room.propertyId]) roomsByProp[room.propertyId] = [];
+        roomsByProp[room.propertyId].push(room);
+      });
+    }
+
     for (const property of targetProperties) {
-      // Load property data once
-      const [leases, rooms] = await Promise.all([
-        getLeases(property.id),
-        property.rentalMode === "PER_ROOM"
-          ? getRooms(property.id)
-          : Promise.resolve([]),
-      ]);
+      // Use already-loaded data instead of making new API calls
+      const propertyLeases = leasesByProp[property.id] || [];
 
       let propertyIncome = 0;
 
-      // Calculate income for each month of the fiscal year
-      for (let month = 0; month < 12; month++) {
-        const monthDate = dayjs().year(reportYear).month(month);
+      // For tax purposes: Calculate ACTUAL income from ALL leases that were active during the year
+      // We sum the monthly rent for each month a lease was active, without vacancy adjustments
+      for (const lease of propertyLeases) {
+        const leaseStart = dayjs(lease.startDate);
+        const leaseEnd = lease.endDate ? dayjs(lease.endDate) : null;
 
-        if (property.rentalMode === "PER_ROOM") {
-          // PER_ROOM: Use aggregation helper
-          const agg = getAggregatedRentForMonth({
-            property,
-            leases,
-            rooms,
-            monthDate,
-          });
-          propertyIncome += agg.monthlyNet;
-        } else {
-          // ENTIRE_UNIT: Find active unit lease
-          const activeLease = leases.find(
-            (lease: Lease) =>
-              !lease.roomId &&
-              lease.isActive !== false &&
-              dayjs(lease.startDate).isBefore(monthDate.endOf("month")) &&
-              (!lease.endDate ||
-                dayjs(lease.endDate).isAfter(monthDate.startOf("month")))
-          );
+        // Calculate months this lease was active during the fiscal year
+        for (let month = 0; month < 12; month++) {
+          const monthStart = dayjs()
+            .year(reportYear)
+            .month(month)
+            .startOf("month");
+          const monthEnd = monthStart.endOf("month");
 
-          if (activeLease) {
-            const monthlyNet =
-              activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
-            propertyIncome += monthlyNet;
+          // Check if lease was active during this month
+          const isActiveInMonth =
+            leaseStart.isBefore(monthEnd) &&
+            (!leaseEnd || leaseEnd.isAfter(monthStart));
+
+          if (isActiveInMonth) {
+            // For tax purposes, use the full monthly rent (no vacancy adjustment)
+            // This represents the contracted amount, which is what Hacienda cares about
+            propertyIncome += lease.monthlyRent;
           }
         }
       }
 
       totalRentalIncome += propertyIncome;
 
-      // Calculate deductions for this property
+      // Calculate deductions for this property FOR THE SPECIFIC YEAR
       const propertyExpenses = expenses.filter(
-        (exp) => exp.propertyId === property.id
+        (exp) =>
+          exp.propertyId === property.id &&
+          new Date(exp.date).getFullYear() === reportYear
       );
       const propertyRecurring = recurringExpenses.filter(
         (exp) => exp.propertyId === property.id
@@ -173,12 +173,14 @@ export function ReportsPage() {
         (exp) => exp.isDeductible !== false
       );
 
+      // One-off expenses: just sum them (already filtered by year)
       const oneOffDeductions = deductibleExpenses.reduce(
         (sum, exp) => sum + exp.amount,
         0
       );
+
+      // Recurring expenses: annualize them (these apply every year)
       const recurringDeductions = deductibleRecurring.reduce((sum, exp) => {
-        // Annualize recurring expenses
         switch (exp.periodicity) {
           case "monthly":
             return sum + exp.amount * 12;
@@ -327,7 +329,7 @@ export function ReportsPage() {
         Reportes
       </Typography>
 
-      <Paper sx={{ p: 3 }}>
+      <Paper sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
           Exportar Gastos para Hacienda
         </Typography>
@@ -376,50 +378,54 @@ export function ReportsPage() {
           </Grid>
 
           <Grid item xs={12}>
-            <Stack spacing={2}>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<TableChartIcon />}
-                onClick={handleExportExcel}
-                size="large"
-                disabled={
-                  loading ||
-                  limitsLoading ||
-                  isFreePlan ||
-                  expenses.length === 0
-                }
-                title={
-                  isFreePlan
-                    ? "Mejora tu plan para habilitar exportación a Excel"
-                    : "Exportar a Excel"
-                }
-                fullWidth
-              >
-                Exportar a Excel (.xlsx)
-              </Button>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<TableChartIcon />}
+                  onClick={handleExportExcel}
+                  size="large"
+                  disabled={
+                    loading ||
+                    limitsLoading ||
+                    isFreePlan ||
+                    expenses.length === 0
+                  }
+                  title={
+                    isFreePlan
+                      ? "Mejora tu plan para habilitar exportación a Excel"
+                      : "Exportar a Excel"
+                  }
+                  fullWidth
+                >
+                  Exportar a Excel (.xlsx)
+                </Button>
+              </Grid>
 
-              <Button
-                variant="contained"
-                startIcon={<PictureAsPdfIcon />}
-                onClick={handleExportPDF}
-                size="large"
-                disabled={
-                  loading ||
-                  limitsLoading ||
-                  isFreePlan ||
-                  expenses.length === 0
-                }
-                title={
-                  isFreePlan
-                    ? "Mejora tu plan para habilitar exportación a PDF"
-                    : "Exportar a PDF"
-                }
-                fullWidth
-              >
-                Exportar a PDF
-              </Button>
-            </Stack>
+              <Grid item xs={12} md={6}>
+                <Button
+                  variant="contained"
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={handleExportPDF}
+                  size="large"
+                  disabled={
+                    loading ||
+                    limitsLoading ||
+                    isFreePlan ||
+                    expenses.length === 0
+                  }
+                  title={
+                    isFreePlan
+                      ? "Mejora tu plan para habilitar exportación a PDF"
+                      : "Exportar a PDF"
+                  }
+                  fullWidth
+                >
+                  Exportar a PDF
+                </Button>
+              </Grid>
+            </Grid>
 
             {isFreePlan && (
               <Alert severity="info" sx={{ mt: 2 }}>
@@ -443,7 +449,6 @@ export function ReportsPage() {
           <li>Resumen de gastos totales y deducibles</li>
           <li>Gastos puntuales (reparaciones, mejoras, etc.)</li>
           <li>Gastos fijos anualizados (comunidad, IBI, seguro)</li>
-          <li>Detalle por vivienda con facturas</li>
           <li>Separación entre gastos deducibles y no deducibles</li>
         </Box>
       </Paper>
@@ -455,8 +460,7 @@ export function ReportsPage() {
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           Genera reportes de ingresos por alquiler para tu declaración de
-          impuestos. Incluye cálculo correcto de rentas para propiedades
-          PER_ROOM.
+          impuestos.
         </Typography>
 
         <Grid container spacing={3}>
@@ -591,8 +595,8 @@ export function ReportsPage() {
               <Typography variant="body2">
                 <strong>Nota:</strong> Este reporte calcula los ingresos por
                 alquiler considerando todas las habitaciones ocupadas para
-                propiedades PER_ROOM. Los cálculos respetan períodos de alquiler
-                parciales y tasas de vacancia.
+                propiedades por habitación. Los cálculos respetan períodos de
+                alquiler parciales y tasas de vacancia.
               </Typography>
             </Alert>
 

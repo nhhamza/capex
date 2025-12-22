@@ -2,7 +2,7 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { CircularProgress, Box } from "@mui/material";
 import { useAuth } from "@/auth/authContext";
-import { useBillingStatus } from "@/billing/useBillingStatus";
+import { useOrgBilling } from "@/hooks/useOrgBilling";
 
 /**
  * RequireAuth:
@@ -65,7 +65,7 @@ export function RequireOrg({ children }: { children: React.ReactNode }) {
 export function RequireBilling({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { loading: authLoading } = useAuth();
-  const { billing, loading, isBlocked } = useBillingStatus();
+  const { billing, loading, isBlocked } = useOrgBilling();
 
   // while auth is loading, don't redirect
   if (authLoading || loading) {

@@ -21,7 +21,7 @@ import {
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers";
 import { useAuth } from "@/auth/authContext";
-import { useOrgLimits } from "@/hooks/useOrgLimits";
+import { useOrgBilling } from "@/hooks/useOrgBilling";
 import { createProperty, getProperties } from "../api";
 import { toISOString } from "@/utils/date";
 import dayjs from "dayjs";
@@ -45,7 +45,7 @@ export function PropertyCreate() {
     loading: limitsLoading,
     plan,
     propertyLimit,
-  } = useOrgLimits(userDoc?.orgId);
+  } = useOrgBilling();
   const [loading, setLoading] = useState(false);
   const [propertyCount, setPropertyCount] = useState(0);
   const [checkingLimit, setCheckingLimit] = useState(true);
