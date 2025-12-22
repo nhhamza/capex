@@ -166,6 +166,12 @@ export function ExpenseFormDialog({
   };
 
   const onSubmit = async (data: FormData) => {
+    // Prevent double-submit
+    if (loading) {
+      console.warn("[ExpenseFormDialog] Already submitting, ignoring duplicate request");
+      return;
+    }
+
     setLoading(true);
     setError("");
 

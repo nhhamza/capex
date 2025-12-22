@@ -94,6 +94,12 @@ export function PropertyCreate() {
   });
 
   const onSubmit = async (data: FormData) => {
+    // Prevent double-submit
+    if (loading) {
+      console.warn("[PropertyCreate] Already submitting, ignoring duplicate request");
+      return;
+    }
+
     if (!userDoc?.orgId) {
       console.error(
         "[PropertyCreate] Missing orgId in userDoc; cannot create property"

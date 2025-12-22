@@ -37,18 +37,32 @@ export function OnboardingWizard() {
   const [activeStep, setActiveStep] = useState(0);
   const [orgName, setOrgName] = useState("Mi Cartera Inmobiliaria");
   const [saving, setSaving] = useState(false);
+  const [checkingProperties, setCheckingProperties] = useState(true);
 
   useEffect(() => {
     const run = async () => {
       if (authLoading) return;
-      if (!userDoc?.organizationId && !userDoc?.orgId) return;
+
+      if (!userDoc?.organizationId && !userDoc?.orgId) {
+        setCheckingProperties(false);
+        return;
+      }
 
       const orgId = userDoc.organizationId ?? userDoc.orgId;
-      const props = await getProperties(orgId); // backend call
-      if (props.length > 0) navigate("/dashboard");
+      try {
+        const props = await getProperties(orgId); // backend call
+        if (props.length > 0) {
+          navigate("/dashboard");
+        } else {
+          setCheckingProperties(false);
+        }
+      } catch (err) {
+        console.error("[OnboardingWizard] Error checking properties:", err);
+        setCheckingProperties(false);
+      }
     };
 
-    run().catch(() => {});
+    run();
   }, [authLoading, userDoc, navigate]);
 
   // Local temp state for first property fields
@@ -319,7 +333,7 @@ export function OnboardingWizard() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || checkingProperties) {
     return (
       <Box
         sx={{

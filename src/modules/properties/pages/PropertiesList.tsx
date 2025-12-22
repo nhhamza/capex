@@ -346,6 +346,41 @@ export function PropertiesList() {
         </Alert>
       )}
 
+      {!loading && !rowsLoading && rows.length === 0 && (
+        <Card sx={{ p: 6, textAlign: "center", bgcolor: "background.default" }}>
+          <Box
+            sx={{
+              width: 120,
+              height: 120,
+              borderRadius: "50%",
+              bgcolor: "primary.light",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 3",
+            }}
+          >
+            <HomeIcon sx={{ fontSize: 60, color: "primary.main" }} />
+          </Box>
+          <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+            No tienes viviendas todavía
+          </Typography>
+          <Typography variant="body1" color="text.secondary" paragraph sx={{ maxWidth: 500, margin: "0 auto 3" }}>
+            Añade tu primera vivienda para empezar a gestionar tus
+            ingresos, gastos y contratos de alquiler.
+          </Typography>
+          <Button
+            variant="contained"
+            size="large"
+            startIcon={<AddIcon />}
+            onClick={() => navigate("/properties/new")}
+            sx={{ minWidth: 200, py: 1.5 }}
+          >
+            Añadir Vivienda
+          </Button>
+        </Card>
+      )}
+
       <Grid container spacing={3}>
         {rows.map((row) => (
           <Grid item xs={12} sm={6} lg={4} key={row.id}>
