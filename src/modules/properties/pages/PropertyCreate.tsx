@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -55,6 +55,9 @@ export function PropertyCreate() {
     severity: "error" as const,
   });
 
+  // Ref to prevent double-submit (synchronous check)
+  const isSubmittingRef = useRef(false);
+
   const hasReachedLimit = !limitsLoading && propertyCount >= propertyLimit;
 
   useEffect(() => {
@@ -94,11 +97,14 @@ export function PropertyCreate() {
   });
 
   const onSubmit = async (data: FormData) => {
-    // Prevent double-submit
-    if (loading) {
+    // Prevent double-submit using ref (synchronous check)
+    if (isSubmittingRef.current) {
       console.warn("[PropertyCreate] Already submitting, ignoring duplicate request");
       return;
     }
+
+    // Mark as submitting immediately (synchronous)
+    isSubmittingRef.current = true;
 
     if (!userDoc?.orgId) {
       console.error(
@@ -109,6 +115,7 @@ export function PropertyCreate() {
         message: "Organización no encontrada",
         severity: "error",
       });
+      isSubmittingRef.current = false; // Reset on early return
       return;
     }
 
@@ -119,6 +126,7 @@ export function PropertyCreate() {
           "Has alcanzado el límite de 1 vivienda en el plan Free. Mejora tu plan para agregar más.",
         severity: "error",
       });
+      isSubmittingRef.current = false; // Reset on early return
       return;
     }
 
@@ -141,6 +149,7 @@ export function PropertyCreate() {
       });
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false; // Reset after submission completes
     }
   };
 
