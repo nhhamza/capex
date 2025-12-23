@@ -69,9 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const me = await backendApi.get("/api/me");
               setUserDoc(me.data.user || null);
             } catch (retryErr: any) {
-              console.error("[Auth] Retry failed:", retryErr);
-              // Keep userDoc as null for now, user might need to re-login
-              setUserDoc(null);
+              console.error("[Auth] Retry failed, but keeping existing userDoc:", retryErr);
+              // CRITICAL: Never clear userDoc on errors
+              // User data is too valuable to lose
+              // If there's a real auth issue, user can logout/login manually
             }
           } else if (status === 403) {
             // 403: User profile not initialized - need to bootstrap
@@ -82,17 +83,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const me = await backendApi.get("/api/me");
             setUserDoc(me.data.user || null);
           } else {
-            // Other errors - legitimate failures
-            throw e;
+            // Other errors - log but DON'T clear userDoc
+            console.error("[Auth] Error loading profile, but preserving userDoc:", e);
+            // CRITICAL: Never clear userDoc on errors
+            // Admin will handle account issues manually
           }
         }
       } catch (err: any) {
         console.error("[Auth] Error fetching user doc:", err);
-        const status = err?.response?.status;
-        // Only clear userDoc if it's not a temporary auth issue
-        if (status !== 401) {
-          setUserDoc(null);
-        }
+        // CRITICAL: Never clear userDoc on errors to prevent data loss
+        // If user needs to be removed, admin will do it manually
+        console.warn("[Auth] Preserving userDoc despite errors - admin handles account removal manually");
       } finally {
         setLoading(false);
       }
