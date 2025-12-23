@@ -164,7 +164,35 @@ async function requireOrg(req, res, next) {
       console.error("[org] No user in request");
       return res.status(401).json({ error: "Unauthorized" });
     }
-    const u = await getUserDoc(req.user.uid);
+    let u = await getUserDoc(req.user.uid);
+
+    // Defensive recovery: if the user doc is missing for this UID, try to recover by email.
+    // This prevents accidental "new org" creation flows on refresh/re-login.
+    if (!u && req.user.email) {
+      const byEmailSnap = await db
+        .collection("users")
+        .where("email", "==", req.user.email)
+        .limit(1)
+        .get();
+
+      if (!byEmailSnap.empty) {
+        const prev = { id: byEmailSnap.docs[0].id, ...byEmailSnap.docs[0].data() };
+        const prevOrgId = pickOrgId(prev);
+        if (prevOrgId) {
+          const recoveredDoc = {
+            ...prev,
+            orgId: prevOrgId,
+            organizationId: prevOrgId,
+            updatedAt: nowIso(),
+          };
+          // Do not carry over the old document id field into Firestore.
+          delete recoveredDoc.id;
+          await db.collection("users").doc(req.user.uid).set(recoveredDoc, { merge: true });
+          u = await getUserDoc(req.user.uid);
+        }
+      }
+    }
+
     if (!u) return res.status(403).json({ error: "User profile not initialized" });
     const orgId = pickOrgId(u);
     if (!orgId) return res.status(403).json({ error: "User has no organizationId" });
@@ -535,15 +563,51 @@ const relatedCollections = Object.freeze([
 ]);
 
 // Bootstrap user profile + organization (signup/init)
+// IMPORTANT: This endpoint must be idempotent.
+// We also try to *re-attach* a user to an existing organization if we can find it by email.
+// This prevents the "everything disappeared" experience when a user's UID changes (provider linking,
+// deleting/re-creating the auth user, etc.) or when the user doc was accidentally removed.
 app.post("/api/bootstrap", requireAuth, async (req, res) => {
   try {
     const uid = req.user.uid;
     const email = req.user.email;
     const body = req.body || {};
 
+    // 1) If profile exists for this UID, just return it.
     const existing = await getUserDoc(uid);
-    if (existing) {
-      return res.json({ user: existing, orgId: pickOrgId(existing) });
+    if (existing) return res.json({ user: existing, orgId: pickOrgId(existing) });
+
+    // 2) Defensive recovery: if profile for this UID does NOT exist, try to find a prior profile by email.
+    // This covers cases where the Firebase Auth UID changed between sessions.
+    if (email) {
+      const byEmailSnap = await db
+        .collection("users")
+        .where("email", "==", email)
+        .limit(1)
+        .get();
+
+      if (!byEmailSnap.empty) {
+        const prev = { id: byEmailSnap.docs[0].id, ...byEmailSnap.docs[0].data() };
+        const prevOrgId = pickOrgId(prev);
+
+        if (prevOrgId) {
+          const profile =
+            body.profile && typeof body.profile === "object" ? body.profile : {};
+          const userDoc = {
+            email,
+            ...profile,
+            // keep previous role if present; default to admin
+            role: prev.role || "admin",
+            orgId: prevOrgId,
+            organizationId: prevOrgId,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+          };
+
+          await db.collection("users").doc(uid).set(userDoc);
+          return res.json({ user: { id: uid, ...userDoc }, orgId: prevOrgId, recovered: true });
+        }
+      }
     }
 
     const orgName = body.orgName || "Mi organización";
