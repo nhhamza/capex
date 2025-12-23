@@ -169,6 +169,7 @@ async function requireOrg(req, res, next) {
     // Defensive recovery: if the user doc is missing for this UID, try to recover by email.
     // This prevents accidental "new org" creation flows on refresh/re-login.
     if (!u && req.user.email) {
+      console.log("🔍 [requireOrg] User doc missing for UID:", req.user.uid, "- searching by email:", req.user.email);
       const byEmailSnap = await db
         .collection("users")
         .where("email", "==", req.user.email)
@@ -179,6 +180,7 @@ async function requireOrg(req, res, next) {
         const prev = { id: byEmailSnap.docs[0].id, ...byEmailSnap.docs[0].data() };
         const prevOrgId = pickOrgId(prev);
         if (prevOrgId) {
+          console.log("✅ [requireOrg] RECOVERED! Found previous orgId:", prevOrgId, "for email:", req.user.email);
           const recoveredDoc = {
             ...prev,
             orgId: prevOrgId,
@@ -189,7 +191,12 @@ async function requireOrg(req, res, next) {
           delete recoveredDoc.id;
           await db.collection("users").doc(req.user.uid).set(recoveredDoc, { merge: true });
           u = await getUserDoc(req.user.uid);
+          console.log("✅ [requireOrg] User doc restored for UID:", req.user.uid);
+        } else {
+          console.warn("⚠️ [requireOrg] Found user by email but no orgId in previous doc");
         }
+      } else {
+        console.warn("⚠️ [requireOrg] No previous user found by email:", req.user.email);
       }
     }
 
@@ -580,6 +587,7 @@ app.post("/api/bootstrap", requireAuth, async (req, res) => {
     // 2) Defensive recovery: if profile for this UID does NOT exist, try to find a prior profile by email.
     // This covers cases where the Firebase Auth UID changed between sessions.
     if (email) {
+      console.log("🔍 [BOOTSTRAP] No user doc for UID, searching by email:", email);
       const byEmailSnap = await db
         .collection("users")
         .where("email", "==", email)
@@ -591,6 +599,7 @@ app.post("/api/bootstrap", requireAuth, async (req, res) => {
         const prevOrgId = pickOrgId(prev);
 
         if (prevOrgId) {
+          console.log("✅ [BOOTSTRAP] RECOVERED! Re-using existing orgId:", prevOrgId, "for email:", email);
           const profile =
             body.profile && typeof body.profile === "object" ? body.profile : {};
           const userDoc = {
@@ -605,8 +614,13 @@ app.post("/api/bootstrap", requireAuth, async (req, res) => {
           };
 
           await db.collection("users").doc(uid).set(userDoc);
+          console.log("✅ [BOOTSTRAP] User doc created with recovered orgId for UID:", uid);
           return res.json({ user: { id: uid, ...userDoc }, orgId: prevOrgId, recovered: true });
+        } else {
+          console.warn("⚠️ [BOOTSTRAP] Found user by email but no orgId in previous doc");
         }
+      } else {
+        console.log("ℹ️ [BOOTSTRAP] No previous user found by email - will create new org");
       }
     }
 
