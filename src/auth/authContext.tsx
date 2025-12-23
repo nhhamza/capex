@@ -57,17 +57,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserDoc(me.data.user || null);
         } catch (e: any) {
           const status = e?.response?.status;
-          if (status === 403) {
-            await backendApi.post("/api/bootstrap", { orgName: "Mi organización" });
+          const errorMsg = e?.response?.data?.error || e?.message || "";
+
+          if (status === 401) {
+            // 401: Auth token issue (Missing/Invalid Bearer token)
+            // This is a temporary auth problem, don't clear userDoc
+            // Wait a bit and retry once
+            console.warn("[Auth] 401 error, retrying after delay:", errorMsg);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            try {
+              const me = await backendApi.get("/api/me");
+              setUserDoc(me.data.user || null);
+            } catch (retryErr: any) {
+              console.error("[Auth] Retry failed:", retryErr);
+              // Keep userDoc as null for now, user might need to re-login
+              setUserDoc(null);
+            }
+          } else if (status === 403) {
+            // 403: User profile not initialized - need to bootstrap
+            console.log("[Auth] User profile not initialized, calling bootstrap");
+            await backendApi.post("/api/bootstrap", {
+              orgName: "Mi organización",
+            });
             const me = await backendApi.get("/api/me");
             setUserDoc(me.data.user || null);
           } else {
+            // Other errors - legitimate failures
             throw e;
           }
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("[Auth] Error fetching user doc:", err);
-        setUserDoc(null);
+        const status = err?.response?.status;
+        // Only clear userDoc if it's not a temporary auth issue
+        if (status !== 401) {
+          setUserDoc(null);
+        }
       } finally {
         setLoading(false);
       }

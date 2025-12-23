@@ -5,7 +5,6 @@ import {
   createProperty,
   createLease,
   createLoan,
-  getProperties,
 } from "@/modules/properties/api";
 import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
@@ -43,23 +42,15 @@ export function OnboardingWizard() {
     const run = async () => {
       if (authLoading) return;
 
-      if (!userDoc?.organizationId && !userDoc?.orgId) {
-        setCheckingProperties(false);
+      // If user already has an orgId, they shouldn't be on /setup-org
+      // Redirect immediately to dashboard
+      if (userDoc?.organizationId || userDoc?.orgId) {
+        navigate("/dashboard", { replace: true });
         return;
       }
 
-      const orgId = userDoc.organizationId ?? userDoc.orgId;
-      try {
-        const props = await getProperties(orgId); // backend call
-        if (props.length > 0) {
-          navigate("/dashboard");
-        } else {
-          setCheckingProperties(false);
-        }
-      } catch (err) {
-        console.error("[OnboardingWizard] Error checking properties:", err);
-        setCheckingProperties(false);
-      }
+      // No orgId - user needs to go through onboarding
+      setCheckingProperties(false);
     };
 
     run();
