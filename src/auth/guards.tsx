@@ -29,10 +29,12 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 
 /**
  * RequireOrg:
- * - user must have an orgId
+ * - user must have an initialized profile + orgId.
+ * - IMPORTANT: we NEVER create org/profile here.
+ *   Org/profile creation happens ONLY during SignUp via POST /api/signup/initialize.
  */
 export function RequireOrg({ children }: { children: React.ReactNode }) {
-  const { userDoc, loading } = useAuth();
+  const { userDoc, loading, needsOnboarding } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -43,10 +45,19 @@ export function RequireOrg({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (needsOnboarding) {
+    return <Navigate to="/setup-org" state={{ from: location.pathname }} replace />;
+  }
+
   const orgId = userDoc?.organizationId || userDoc?.orgId;
+
+  // If orgId is missing but we are not explicitly in onboarding state, show a spinner
+  // (this avoids accidental redirects due to transient loading or backend errors).
   if (!orgId) {
     return (
-      <Navigate to="/setup-org" state={{ from: location.pathname }} replace />
+      <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+        <CircularProgress />
+      </Box>
     );
   }
 
@@ -55,20 +66,14 @@ export function RequireOrg({ children }: { children: React.ReactNode }) {
 
 /**
  * RequireBilling:
- * - allows access if billing is OK OR within grace period
- * - blocks only if canceled OR grace expired
- *
- * Important:
- * - We do NOT rely on catching API 403 here.
- * - We proactively read billing from /api/org/limits.
+ * - user must have active subscription to access billing-protected routes
  */
 export function RequireBilling({ children }: { children: React.ReactNode }) {
+  const { loading } = useAuth();
+  const { isLoading, hasActiveSubscription } = useOrgBilling();
   const location = useLocation();
-  const { loading: authLoading } = useAuth();
-  const { billing, loading, isBlocked } = useOrgBilling();
 
-  // while auth is loading, don't redirect
-  if (authLoading || loading) {
+  if (loading || isLoading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
         <CircularProgress />
@@ -76,34 +81,9 @@ export function RequireBilling({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // If blocked:
-  // - redirect to /blocked
-  // - keep original path in state so user can return after payment
-  if (isBlocked) {
-    // store reason if available for BlockedPage
-    sessionStorage.setItem(
-      "billing_blocked_payload",
-      JSON.stringify({
-        error: "billing_blocked",
-        status: billing?.status,
-        reason:
-          billing?.status === "canceled"
-            ? "Subscription canceled"
-            : "Payment overdue",
-        graceUntil: billing?.graceUntil || null,
-      })
-    );
-
-    return (
-      <Navigate
-        to="/blocked"
-        state={{ from: location.pathname, blocked: true }}
-        replace
-      />
-    );
+  if (!hasActiveSubscription) {
+    return <Navigate to="/billing" state={{ from: location.pathname }} replace />;
   }
 
-  // Allowed OR within grace => access
-  // isGrace is only used for UI banners etc (not blocking)
   return <>{children}</>;
 }

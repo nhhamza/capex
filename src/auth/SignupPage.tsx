@@ -82,7 +82,7 @@ export function SignupPage() {
 
     try {
       // Bootstrap profile + organization from backend (Admin SDK)
-      await backendApi.post("/api/bootstrap", {
+      await backendApi.post("/api/signup/initialize", {
         orgName: data.companyName || data.name,
         profile: {
           name: data.name,

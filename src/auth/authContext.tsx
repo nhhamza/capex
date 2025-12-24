@@ -1,4 +1,4 @@
-import {
+import React, {
   createContext,
   useContext,
   useEffect,
@@ -7,8 +7,8 @@ import {
   ReactNode,
 } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { backendApi } from "@/lib/backendApi";
 import { auth } from "@/firebase/client";
+import { backendApi } from "@/lib/backendApi";
 
 // Ajusta este type a tu modelo real si ya lo tienes importado de otro sitio
 export type UserDoc = {
