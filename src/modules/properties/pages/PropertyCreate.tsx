@@ -47,6 +47,8 @@ export function PropertyCreate() {
     propertyLimit,
   } = useOrgBilling();
   const [loading, setLoading] = useState(false);
+  // React state updates are async; use a ref to guarantee we never submit twice.
+  const submittingRef = useRef(false);
   const [propertyCount, setPropertyCount] = useState(0);
   const [checkingLimit, setCheckingLimit] = useState(true);
   const [snackbar, setSnackbar] = useState({
@@ -54,9 +56,6 @@ export function PropertyCreate() {
     message: "",
     severity: "error" as const,
   });
-
-  // Ref to prevent double-submit (synchronous check)
-  const isSubmittingRef = useRef(false);
 
   const hasReachedLimit = !limitsLoading && propertyCount >= propertyLimit;
 
@@ -97,15 +96,6 @@ export function PropertyCreate() {
   });
 
   const onSubmit = async (data: FormData) => {
-    // Prevent double-submit using ref (synchronous check)
-    if (isSubmittingRef.current) {
-      console.warn("[PropertyCreate] Already submitting, ignoring duplicate request");
-      return;
-    }
-
-    // Mark as submitting immediately (synchronous)
-    isSubmittingRef.current = true;
-
     if (!userDoc?.orgId) {
       console.error(
         "[PropertyCreate] Missing orgId in userDoc; cannot create property"
@@ -115,7 +105,6 @@ export function PropertyCreate() {
         message: "Organización no encontrada",
         severity: "error",
       });
-      isSubmittingRef.current = false; // Reset on early return
       return;
     }
 
@@ -126,17 +115,31 @@ export function PropertyCreate() {
           "Has alcanzado el límite de 1 vivienda en el plan Free. Mejora tu plan para agregar más.",
         severity: "error",
       });
-      isSubmittingRef.current = false; // Reset on early return
       return;
     }
 
+    // Prevent double-submit (state can be stale on rapid double click)
+    if (submittingRef.current) {
+      console.warn(
+        "[PropertyCreate] Already submitting (ref lock), ignoring duplicate request"
+      );
+      return;
+    }
+    submittingRef.current = true;
+
     setLoading(true);
     try {
+      const clientRequestId =
+        (globalThis as any).crypto?.randomUUID?.() ??
+        `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
       const property = await createProperty({
         ...data,
         organizationId: userDoc.orgId,
         purchaseDate: toISOString(data.purchaseDate),
-      });
+        // Used by the backend to guarantee idempotency (dedupe double submits)
+        clientRequestId,
+      } as any);
 
       // Navigate based on rental mode
       const tab = data.rentalMode === "PER_ROOM" ? "habitaciones" : "contrato";
@@ -149,7 +152,7 @@ export function PropertyCreate() {
       });
     } finally {
       setLoading(false);
-      isSubmittingRef.current = false; // Reset after submission completes
+      submittingRef.current = false;
     }
   };
 

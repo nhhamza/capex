@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { addDoc, collection, doc, setDoc } from "firebase/firestore/lite";
 import {
@@ -36,6 +36,7 @@ export function OnboardingWizard() {
   const [activeStep, setActiveStep] = useState(0);
   const [orgName, setOrgName] = useState("Mi Cartera Inmobiliaria");
   const [saving, setSaving] = useState(false);
+  const finishingRef = useRef(false);
   const [checkingProperties, setCheckingProperties] = useState(true);
 
   useEffect(() => {
@@ -79,6 +80,14 @@ export function OnboardingWizard() {
 
   const handleNext = async () => {
     if (activeStep === steps.length - 1) {
+      // Prevent duplicate finish (fast double click before React state updates)
+      if (finishingRef.current) {
+        console.warn(
+          "[Onboarding] Finish already in progress; ignoring duplicate click"
+        );
+        return;
+      }
+      finishingRef.current = true;
       // Finish onboarding - create organization if needed
       if (!userDoc?.orgId && user) {
         setSaving(true);
@@ -105,12 +114,16 @@ export function OnboardingWizard() {
             firstPurchasePrice > 0
           ) {
             try {
+              const clientRequestId =
+                (globalThis as any).crypto?.randomUUID?.() ??
+                `${Date.now()}_${Math.random().toString(16).slice(2)}`;
               const newProperty = await createProperty({
                 organizationId: orgId,
                 address: firstAddress,
                 purchasePrice: firstPurchasePrice,
                 purchaseDate: dayjs().toISOString(),
                 notes: "Creado durante onboarding",
+                clientRequestId,
               });
               createdPropertyId = newProperty.id;
 
@@ -193,6 +206,7 @@ export function OnboardingWizard() {
           alert("Error al crear organización. Por favor, intenta de nuevo.");
         } finally {
           setSaving(false);
+          finishingRef.current = false;
         }
       } else {
         // Organization already exists; optionally create property under existing org
@@ -205,12 +219,16 @@ export function OnboardingWizard() {
         ) {
           try {
             setSaving(true);
+            const clientRequestId =
+              (globalThis as any).crypto?.randomUUID?.() ??
+              `${Date.now()}_${Math.random().toString(16).slice(2)}`;
             const newProperty = await createProperty({
               organizationId: userDoc.orgId,
               address: firstAddress,
               purchasePrice: firstPurchasePrice,
               purchaseDate: dayjs().toISOString(),
               notes: "Creado durante onboarding (org existente)",
+              clientRequestId,
             });
             createdPropertyId = newProperty.id;
 
@@ -273,7 +291,14 @@ export function OnboardingWizard() {
             );
           } finally {
             setSaving(false);
+            finishingRef.current = false;
           }
+        }
+
+        // If we didn't hit the saving flow above (e.g. no first property),
+        // ensure we release the finish lock before navigating.
+        if (!saving) {
+          finishingRef.current = false;
         }
 
         // Navigate to the created property or properties list

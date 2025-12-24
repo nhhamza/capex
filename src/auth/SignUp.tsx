@@ -82,6 +82,7 @@ export default function SignUp() {
     try {
       await createUserWithEmailAndPassword(auth, data.email, data.password);
       await backendApi.post("/api/bootstrap", {
+        createOrg: true,
         orgName: data.orgName,
         profile: {
           name: data.name,

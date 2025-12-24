@@ -25,6 +25,7 @@ type AuthCtx = {
   user: User | null;
   userDoc: UserDoc;
   loading: boolean;
+  needsOnboarding: boolean;
   logout: () => Promise<void>;
   refreshUserDoc: () => Promise<void>;
 };
@@ -33,6 +34,7 @@ const Ctx = createContext<AuthCtx>({
   user: null,
   userDoc: null,
   loading: true,
+  needsOnboarding: false,
   logout: async () => {},
   refreshUserDoc: async () => {},
 });
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userDoc, setUserDoc] = useState<UserDoc>(null);
   const [loading, setLoading] = useState(true);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   useEffect(() => {
     const off = onAuthStateChanged(auth, async (u) => {
@@ -51,12 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        // Load profile from backend
-        // IMPORTANT: We do NOT create new orgs here anymore
-        // New orgs are only created during explicit signup
+        // Load profile from backend. If profile is missing (first signup), bootstrap then retry.
         try {
           const me = await backendApi.get("/api/me");
           setUserDoc(me.data.user || null);
+          setNeedsOnboarding(false);
         } catch (e: any) {
           const status = e?.response?.status;
           const errorMsg = e?.response?.data?.error || e?.message || "";
@@ -77,13 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // If there's a real auth issue, user can logout/login manually
             }
           } else if (status === 403) {
-            // 403: User profile not initialized
-            // DO NOT create new org automatically!
-            // The requireOrg middleware will try to recover by email
-            // If that fails, user needs to contact support
-            console.error("[Auth] User profile not found - recovery will be attempted by backend");
-            console.error("[Auth] If this is a new user, they should complete signup flow");
-            // Don't clear userDoc - keep any existing data
+            // 403: Profile/org missing. DO NOT auto-bootstrap here (can fork users into a new org).
+            console.warn("[Auth] User profile/org missing (403). Redirect user to signup/onboarding instead of auto-creating.");
+            setNeedsOnboarding(true);
+            setUserDoc(null);
           } else {
             // Other errors - log but DON'T clear userDoc
             console.error("[Auth] Error loading profile, but preserving userDoc:", e);
@@ -123,8 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ user, userDoc, loading, logout, refreshUserDoc }),
-    [user, userDoc, loading]
+    () => ({ user, userDoc, loading, needsOnboarding, logout, refreshUserDoc }),
+    [user, userDoc, loading, needsOnboarding]
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

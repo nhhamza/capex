@@ -164,42 +164,7 @@ async function requireOrg(req, res, next) {
       console.error("[org] No user in request");
       return res.status(401).json({ error: "Unauthorized" });
     }
-    let u = await getUserDoc(req.user.uid);
-
-    // Defensive recovery: if the user doc is missing for this UID, try to recover by email.
-    // This prevents accidental "new org" creation flows on refresh/re-login.
-    if (!u && req.user.email) {
-      console.log("🔍 [requireOrg] User doc missing for UID:", req.user.uid, "- searching by email:", req.user.email);
-      const byEmailSnap = await db
-        .collection("users")
-        .where("email", "==", req.user.email)
-        .limit(1)
-        .get();
-
-      if (!byEmailSnap.empty) {
-        const prev = { id: byEmailSnap.docs[0].id, ...byEmailSnap.docs[0].data() };
-        const prevOrgId = pickOrgId(prev);
-        if (prevOrgId) {
-          console.log("✅ [requireOrg] RECOVERED! Found previous orgId:", prevOrgId, "for email:", req.user.email);
-          const recoveredDoc = {
-            ...prev,
-            orgId: prevOrgId,
-            organizationId: prevOrgId,
-            updatedAt: nowIso(),
-          };
-          // Do not carry over the old document id field into Firestore.
-          delete recoveredDoc.id;
-          await db.collection("users").doc(req.user.uid).set(recoveredDoc, { merge: true });
-          u = await getUserDoc(req.user.uid);
-          console.log("✅ [requireOrg] User doc restored for UID:", req.user.uid);
-        } else {
-          console.warn("⚠️ [requireOrg] Found user by email but no orgId in previous doc");
-        }
-      } else {
-        console.warn("⚠️ [requireOrg] No previous user found by email:", req.user.email);
-      }
-    }
-
+    const u = await getUserDoc(req.user.uid);
     if (!u) return res.status(403).json({ error: "User profile not initialized" });
     const orgId = pickOrgId(u);
     if (!orgId) return res.status(403).json({ error: "User has no organizationId" });
@@ -570,70 +535,32 @@ const relatedCollections = Object.freeze([
 ]);
 
 // Bootstrap user profile + organization (signup/init)
-// IMPORTANT: This endpoint must be idempotent.
-// We also try to *re-attach* a user to an existing organization if we can find it by email.
-// This prevents the "everything disappeared" experience when a user's UID changes (provider linking,
-// deleting/re-creating the auth user, etc.) or when the user doc was accidentally removed.
 app.post("/api/bootstrap", requireAuth, async (req, res) => {
   try {
     const uid = req.user.uid;
     const email = req.user.email;
     const body = req.body || {};
 
-    // 1) If profile exists for this UID, just return it.
     const existing = await getUserDoc(uid);
-    if (existing) return res.json({ user: existing, orgId: pickOrgId(existing) });
-
-    // 2) Defensive recovery: if profile for this UID does NOT exist, try to find a prior profile by email.
-    // This covers cases where the Firebase Auth UID changed between sessions.
-    if (email) {
-      console.log("🔍 [BOOTSTRAP] No user doc for UID, searching by email:", email);
-      const byEmailSnap = await db
-        .collection("users")
-        .where("email", "==", email)
-        .limit(1)
-        .get();
-
-      if (!byEmailSnap.empty) {
-        const prev = { id: byEmailSnap.docs[0].id, ...byEmailSnap.docs[0].data() };
-        const prevOrgId = pickOrgId(prev);
-
-        if (prevOrgId) {
-          console.log("✅ [BOOTSTRAP] RECOVERED! Re-using existing orgId:", prevOrgId, "for email:", email);
-          const profile =
-            body.profile && typeof body.profile === "object" ? body.profile : {};
-          const userDoc = {
-            email,
-            ...profile,
-            // keep previous role if present; default to admin
-            role: prev.role || "admin",
-            orgId: prevOrgId,
-            organizationId: prevOrgId,
-            createdAt: nowIso(),
-            updatedAt: nowIso(),
-          };
-
-          await db.collection("users").doc(uid).set(userDoc);
-          console.log("✅ [BOOTSTRAP] User doc created with recovered orgId for UID:", uid);
-          return res.json({ user: { id: uid, ...userDoc }, orgId: prevOrgId, recovered: true });
-        } else {
-          console.warn("⚠️ [BOOTSTRAP] Found user by email but no orgId in previous doc");
-        }
-      } else {
-        console.log("ℹ️ [BOOTSTRAP] No previous user found by email - will create new org");
-      }
+    if (existing) {
+      return res.json({ user: existing, orgId: pickOrgId(existing) });
     }
 
-    // 3) If we reach here, we're creating a NEW organization
-    // This should ONLY happen during explicit signup, not during normal login
-    console.warn("⚠️ [BOOTSTRAP] Creating NEW organization for user:", uid, email);
-    console.warn("⚠️ [BOOTSTRAP] This should only happen during signup! If user is existing, data loss may occur!");
+
+    // IMPORTANT: only create org/user doc during explicit signup / onboarding.
+    // Auto-creating here on login can "fork" a user into a new org and make their existing data look lost.
+    const createOrg = body.createOrg === true;
+    if (!createOrg) {
+      return res.status(409).json({
+        error: "not_initialized",
+        message:
+          "User profile is not initialized. Create organization only during signup/onboarding.",
+      });
+    }
 
     const orgName = body.orgName || "Mi organización";
     const orgRef = db.collection("organizations").doc();
     const orgId = orgRef.id;
-
-    console.log("📝 [BOOTSTRAP] New orgId:", orgId, "for user:", email);
 
     await orgRef.set({
       name: orgName,
@@ -839,6 +766,57 @@ app.post("/api/properties", requireAuth, requireOrg, requireBillingOk, async (re
   try {
     const payload = req.body || {};
     payload.organizationId = req.orgId;
+    // ------------------------------
+    // Idempotency guard
+    // ------------------------------
+    // Creating a property is a critical write. In real life we can receive
+    // duplicate requests (double click, mobile retries, flaky networks,
+    // StrictMode dev tools, etc.). If the client sends an idempotency key,
+    // we guarantee this endpoint is safe to retry.
+    const rawKey =
+      (req.headers["idempotency-key"] || req.headers["Idempotency-Key"]) ??
+      payload.clientRequestId;
+    const idempotencyKey = typeof rawKey === "string" && rawKey.trim() ? rawKey.trim() : null;
+
+    // Never persist client-side idempotency metadata on the property doc.
+    if (payload && Object.prototype.hasOwnProperty.call(payload, "clientRequestId")) {
+      delete payload.clientRequestId;
+    }
+
+    if (idempotencyKey) {
+      const lockId = `${req.orgId}_properties_${idempotencyKey}`;
+      const lockRef = db.collection("idempotencyKeys").doc(lockId);
+
+      const result = await db.runTransaction(async (tx) => {
+        const lockSnap = await tx.get(lockRef);
+        if (lockSnap.exists) {
+          const existingPropertyId = lockSnap.data()?.propertyId;
+          if (existingPropertyId) {
+            const existingRef = db.collection("properties").doc(existingPropertyId);
+            const existingSnap = await tx.get(existingRef);
+            if (existingSnap.exists) {
+              return { id: existingRef.id, ...existingSnap.data() };
+            }
+          }
+          // Lock exists but target is missing; fall through and create a new property.
+        }
+
+        const ref = db.collection("properties").doc();
+        tx.set(ref, { ...payload, createdAt: nowIso(), updatedAt: nowIso() });
+        tx.set(lockRef, {
+          orgId: req.orgId,
+          scope: "properties",
+          key: idempotencyKey,
+          propertyId: ref.id,
+          createdAt: nowIso(),
+        });
+        return { id: ref.id, ...payload, createdAt: nowIso(), updatedAt: nowIso() };
+      });
+
+      return res.json({ property: result });
+    }
+
+    // No idempotency key provided; proceed normally.
     const ref = db.collection("properties").doc();
     await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
     const snap = await ref.get();
