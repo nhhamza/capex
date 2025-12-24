@@ -51,7 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        // Load profile from backend. If profile is missing (first signup), bootstrap then retry.
+        // Load profile from backend
+        // IMPORTANT: We do NOT create new orgs here anymore
+        // New orgs are only created during explicit signup
         try {
           const me = await backendApi.get("/api/me");
           setUserDoc(me.data.user || null);
@@ -75,13 +77,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // If there's a real auth issue, user can logout/login manually
             }
           } else if (status === 403) {
-            // 403: User profile not initialized - need to bootstrap
-            console.log("[Auth] User profile not initialized, calling bootstrap");
-            await backendApi.post("/api/bootstrap", {
-              orgName: "Mi organización",
-            });
-            const me = await backendApi.get("/api/me");
-            setUserDoc(me.data.user || null);
+            // 403: User profile not initialized
+            // DO NOT create new org automatically!
+            // The requireOrg middleware will try to recover by email
+            // If that fails, user needs to contact support
+            console.error("[Auth] User profile not found - recovery will be attempted by backend");
+            console.error("[Auth] If this is a new user, they should complete signup flow");
+            // Don't clear userDoc - keep any existing data
           } else {
             // Other errors - log but DON'T clear userDoc
             console.error("[Auth] Error loading profile, but preserving userDoc:", e);

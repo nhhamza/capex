@@ -624,9 +624,16 @@ app.post("/api/bootstrap", requireAuth, async (req, res) => {
       }
     }
 
+    // 3) If we reach here, we're creating a NEW organization
+    // This should ONLY happen during explicit signup, not during normal login
+    console.warn("⚠️ [BOOTSTRAP] Creating NEW organization for user:", uid, email);
+    console.warn("⚠️ [BOOTSTRAP] This should only happen during signup! If user is existing, data loss may occur!");
+
     const orgName = body.orgName || "Mi organización";
     const orgRef = db.collection("organizations").doc();
     const orgId = orgRef.id;
+
+    console.log("📝 [BOOTSTRAP] New orgId:", orgId, "for user:", email);
 
     await orgRef.set({
       name: orgName,
