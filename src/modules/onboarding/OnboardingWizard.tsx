@@ -163,8 +163,7 @@ export function OnboardingWizard() {
             startDate: dayjs().toISOString(),
             interestOnlyMonths: 0,
             upFrontFees: 0,
-            bank: financingBank || undefined,
-            loanType: financingLoanType as any,
+            notes: financingBank ? `Banco: ${financingBank}, Tipo: ${financingLoanType}` : `Tipo: ${financingLoanType}`,
           });
         } catch (loanErr) {
           console.warn("[Onboarding] Loan creation failed:", loanErr);

@@ -66,14 +66,15 @@ export function RequireOrg({ children }: { children: React.ReactNode }) {
 
 /**
  * RequireBilling:
- * - user must have active subscription to access billing-protected routes
+ * - blocks access if billing is blocked (canceled or past_due beyond grace period)
+ * - allows access for active, trialing, or grace period
  */
 export function RequireBilling({ children }: { children: React.ReactNode }) {
-  const { loading } = useAuth();
-  const { isLoading, hasActiveSubscription } = useOrgBilling();
+  const { loading: authLoading } = useAuth();
+  const { loading: billingLoading, isBlocked } = useOrgBilling();
   const location = useLocation();
 
-  if (loading || isLoading) {
+  if (authLoading || billingLoading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
         <CircularProgress />
@@ -81,8 +82,8 @@ export function RequireBilling({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!hasActiveSubscription) {
-    return <Navigate to="/billing" state={{ from: location.pathname }} replace />;
+  if (isBlocked) {
+    return <Navigate to="/blocked" state={{ from: location.pathname, blocked: true }} replace />;
   }
 
   return <>{children}</>;
