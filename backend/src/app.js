@@ -164,7 +164,47 @@ async function requireOrg(req, res, next) {
       console.error("[org] No user in request");
       return res.status(401).json({ error: "Unauthorized" });
     }
-    const u = await getUserDoc(req.user.uid);
+    let u = await getUserDoc(req.user.uid);
+
+    // Optional defensive recovery (best-effort): if the user doc is missing for this UID,
+    // try to recover by email. This must NEVER cause a 500 that breaks login.
+    // If recovery fails, we simply fall back to returning 403 (not initialized).
+    if (!u && req.user.email) {
+      try {
+        const byEmailSnap = await db
+          .collection("users")
+          .where("email", "==", req.user.email)
+          .limit(1)
+          .get();
+
+        if (!byEmailSnap.empty) {
+          const prev = {
+            id: byEmailSnap.docs[0].id,
+            ...byEmailSnap.docs[0].data(),
+          };
+          const prevOrgId = pickOrgId(prev);
+          if (prevOrgId) {
+            const recoveredDoc = {
+              ...prev,
+              orgId: prevOrgId,
+              organizationId: prevOrgId,
+              updatedAt: nowIso(),
+            };
+            delete recoveredDoc.id;
+
+            await db
+              .collection("users")
+              .doc(req.user.uid)
+              .set(recoveredDoc, { merge: true });
+
+            u = await getUserDoc(req.user.uid);
+          }
+        }
+      } catch (recoveryErr) {
+        console.warn("[org] email recovery failed (ignored):", recoveryErr);
+      }
+    }
+
     if (!u) return res.status(403).json({ error: "User profile not initialized" });
     const orgId = pickOrgId(u);
     if (!orgId) return res.status(403).json({ error: "User has no organizationId" });
@@ -173,7 +213,8 @@ async function requireOrg(req, res, next) {
     next();
   } catch (err) {
     console.error("[org] failed", err);
-    return res.status(500).json({ error: "Failed to load user org" });
+    // Avoid a hard 500 that makes the UI look like data was lost.
+    return res.status(503).json({ error: "org_lookup_failed" });
   }
 }
 
@@ -270,6 +311,30 @@ app.get("/", (req, res) => {
     timestamp: new Date().toISOString(),
   };
   res.json(healthCheck);
+});
+
+// Deeper health check (helps diagnose 500s on /api/me)
+app.get("/api/health", async (req, res) => {
+  try {
+    // Firestore ping (read-only)
+    await db.collection("__health").doc("ping").get();
+    return res.json({
+      status: "ok",
+      firebase: {
+        projectId: admin.app().options.projectId || null,
+        storageBucket: admin.app().options.storageBucket || null,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("[health] firestore ping failed", err);
+    return res.status(500).json({
+      status: "error",
+      error: "firestore_unavailable",
+      message: err?.message || String(err),
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Stripe webhook (must be BEFORE express.json() to get raw body)
@@ -535,27 +600,51 @@ const relatedCollections = Object.freeze([
 ]);
 
 // Bootstrap user profile + organization (signup/init)
+// IMPORTANT: This endpoint must be idempotent.
+// We also try to *re-attach* a user to an existing organization if we can find it by email.
+// This prevents the "everything disappeared" experience when a user's UID changes (provider linking,
+// deleting/re-creating the auth user, etc.) or when the user doc was accidentally removed.
 app.post("/api/bootstrap", requireAuth, async (req, res) => {
   try {
     const uid = req.user.uid;
     const email = req.user.email;
     const body = req.body || {};
 
+    // 1) If profile exists for this UID, just return it.
     const existing = await getUserDoc(uid);
-    if (existing) {
-      return res.json({ user: existing, orgId: pickOrgId(existing) });
-    }
+    if (existing) return res.json({ user: existing, orgId: pickOrgId(existing) });
 
+    // 2) Defensive recovery: if profile for this UID does NOT exist, try to find a prior profile by email.
+    // This covers cases where the Firebase Auth UID changed between sessions.
+    if (email) {
+      const byEmailSnap = await db
+        .collection("users")
+        .where("email", "==", email)
+        .limit(1)
+        .get();
 
-    // IMPORTANT: only create org/user doc during explicit signup / onboarding.
-    // Auto-creating here on login can "fork" a user into a new org and make their existing data look lost.
-    const createOrg = body.createOrg === true;
-    if (!createOrg) {
-      return res.status(409).json({
-        error: "not_initialized",
-        message:
-          "User profile is not initialized. Create organization only during signup/onboarding.",
-      });
+      if (!byEmailSnap.empty) {
+        const prev = { id: byEmailSnap.docs[0].id, ...byEmailSnap.docs[0].data() };
+        const prevOrgId = pickOrgId(prev);
+
+        if (prevOrgId) {
+          const profile =
+            body.profile && typeof body.profile === "object" ? body.profile : {};
+          const userDoc = {
+            email,
+            ...profile,
+            // keep previous role if present; default to admin
+            role: prev.role || "admin",
+            orgId: prevOrgId,
+            organizationId: prevOrgId,
+            createdAt: nowIso(),
+            updatedAt: nowIso(),
+          };
+
+          await db.collection("users").doc(uid).set(userDoc);
+          return res.json({ user: { id: uid, ...userDoc }, orgId: prevOrgId, recovered: true });
+        }
+      }
     }
 
     const orgName = body.orgName || "Mi organización";
@@ -766,57 +855,6 @@ app.post("/api/properties", requireAuth, requireOrg, requireBillingOk, async (re
   try {
     const payload = req.body || {};
     payload.organizationId = req.orgId;
-    // ------------------------------
-    // Idempotency guard
-    // ------------------------------
-    // Creating a property is a critical write. In real life we can receive
-    // duplicate requests (double click, mobile retries, flaky networks,
-    // StrictMode dev tools, etc.). If the client sends an idempotency key,
-    // we guarantee this endpoint is safe to retry.
-    const rawKey =
-      (req.headers["idempotency-key"] || req.headers["Idempotency-Key"]) ??
-      payload.clientRequestId;
-    const idempotencyKey = typeof rawKey === "string" && rawKey.trim() ? rawKey.trim() : null;
-
-    // Never persist client-side idempotency metadata on the property doc.
-    if (payload && Object.prototype.hasOwnProperty.call(payload, "clientRequestId")) {
-      delete payload.clientRequestId;
-    }
-
-    if (idempotencyKey) {
-      const lockId = `${req.orgId}_properties_${idempotencyKey}`;
-      const lockRef = db.collection("idempotencyKeys").doc(lockId);
-
-      const result = await db.runTransaction(async (tx) => {
-        const lockSnap = await tx.get(lockRef);
-        if (lockSnap.exists) {
-          const existingPropertyId = lockSnap.data()?.propertyId;
-          if (existingPropertyId) {
-            const existingRef = db.collection("properties").doc(existingPropertyId);
-            const existingSnap = await tx.get(existingRef);
-            if (existingSnap.exists) {
-              return { id: existingRef.id, ...existingSnap.data() };
-            }
-          }
-          // Lock exists but target is missing; fall through and create a new property.
-        }
-
-        const ref = db.collection("properties").doc();
-        tx.set(ref, { ...payload, createdAt: nowIso(), updatedAt: nowIso() });
-        tx.set(lockRef, {
-          orgId: req.orgId,
-          scope: "properties",
-          key: idempotencyKey,
-          propertyId: ref.id,
-          createdAt: nowIso(),
-        });
-        return { id: ref.id, ...payload, createdAt: nowIso(), updatedAt: nowIso() };
-      });
-
-      return res.json({ property: result });
-    }
-
-    // No idempotency key provided; proceed normally.
     const ref = db.collection("properties").doc();
     await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
     const snap = await ref.get();

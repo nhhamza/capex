@@ -1,4 +1,4 @@
-import {
+import React, {
   createContext,
   useContext,
   useEffect,
@@ -10,14 +10,14 @@ import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "@/firebase/client";
 import { backendApi } from "@/lib/backendApi";
 
-type UserDoc =
+export type UserDoc =
   | {
-      email: string | null;
+      id?: string;
+      email?: string | null;
       orgId?: string;
       organizationId?: string;
-      role: "owner" | "member" | "admin";
-      createdAt?: string;
-      updatedAt?: string;
+      role?: string;
+      [k: string]: any;
     }
   | null;
 
@@ -25,12 +25,18 @@ type AuthCtx = {
   user: User | null;
   userDoc: UserDoc;
   loading: boolean;
+
+  /**
+   * True when the backend indicates the user profile/org is not initialized.
+   * IMPORTANT: we do NOT auto-create anything on login.
+   */
   needsOnboarding: boolean;
+
   logout: () => Promise<void>;
   refreshUserDoc: () => Promise<void>;
 };
 
-const Ctx = createContext<AuthCtx>({
+const AuthContext = createContext<AuthCtx>({
   user: null,
   userDoc: null,
   loading: true,
@@ -39,93 +45,127 @@ const Ctx = createContext<AuthCtx>({
   refreshUserDoc: async () => {},
 });
 
+export function useAuth() {
+  return useContext(AuthContext);
+}
+
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userDoc, setUserDoc] = useState<UserDoc>(null);
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  useEffect(() => {
-    const off = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (!u) {
+  const fetchMe = async (): Promise<UserDoc> => {
+    const r = await backendApi.get("/api/me");
+    return (r.data?.user ?? null) as UserDoc;
+  };
+
+  const refreshUserDoc = async () => {
+    if (!auth.currentUser) return;
+
+    try {
+      const me = await fetchMe();
+      setUserDoc(me);
+      setNeedsOnboarding(false);
+    } catch (e: any) {
+      const status = e?.response?.status;
+      const code = e?.response?.data?.error;
+
+      if (status === 403 || (status === 409 && code === "not_initialized")) {
         setUserDoc(null);
-        setLoading(false);
+        setNeedsOnboarding(true);
         return;
       }
-      try {
-        // Load profile from backend. If profile is missing (first signup), bootstrap then retry.
-        try {
-          const me = await backendApi.get("/api/me");
-          setUserDoc(me.data.user || null);
-          setNeedsOnboarding(false);
-        } catch (e: any) {
-          const status = e?.response?.status;
-          const errorMsg = e?.response?.data?.error || e?.message || "";
 
-          if (status === 401) {
-            // 401: Auth token issue (Missing/Invalid Bearer token)
-            // This is a temporary auth problem, don't clear userDoc
-            // Wait a bit and retry once
-            console.warn("[Auth] 401 error, retrying after delay:", errorMsg);
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            try {
-              const me = await backendApi.get("/api/me");
-              setUserDoc(me.data.user || null);
-            } catch (retryErr: any) {
-              console.error("[Auth] Retry failed, but keeping existing userDoc:", retryErr);
-              // CRITICAL: Never clear userDoc on errors
-              // User data is too valuable to lose
-              // If there's a real auth issue, user can logout/login manually
-            }
-          } else if (status === 403) {
-            // 403: Profile/org missing. DO NOT auto-bootstrap here (can fork users into a new org).
-            console.warn("[Auth] User profile/org missing (403). Redirect user to signup/onboarding instead of auto-creating.");
-            setNeedsOnboarding(true);
-            setUserDoc(null);
-          } else {
-            // Other errors - log but DON'T clear userDoc
-            console.error("[Auth] Error loading profile, but preserving userDoc:", e);
-            // CRITICAL: Never clear userDoc on errors
-            // Admin will handle account issues manually
-          }
-        }
-      } catch (err: any) {
-        console.error("[Auth] Error fetching user doc:", err);
-        // CRITICAL: Never clear userDoc on errors to prevent data loss
-        // If user needs to be removed, admin will do it manually
-        console.warn("[Auth] Preserving userDoc despite errors - admin handles account removal manually");
-      } finally {
-        setLoading(false);
-      }
-    });
-    return off;
-  }, []);
+      console.error(
+        "[Auth] refreshUserDoc failed:",
+        status,
+        e?.response?.data || e
+      );
+    }
+  };
 
-  async function logout() {
+  const logout = async () => {
     try {
       await auth.signOut();
     } catch (err) {
       console.error("[Auth] logout failed", err);
     }
-  }
+  };
 
-  async function refreshUserDoc() {
-    if (!user) return;
-    try {
-      const me = await backendApi.get("/api/me");
-      setUserDoc(me.data.user || null);
-      console.log("✅ User doc refreshed");
-    } catch (err) {
-      console.error("[Auth] Error refreshing user doc:", err);
-    }
-  }
+  useEffect(() => {
+    const off = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      setUserDoc(null);
+      setNeedsOnboarding(false);
 
-  const value = useMemo(
-    () => ({ user, userDoc, loading, needsOnboarding, logout, refreshUserDoc }),
+      if (!u) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        // First attempt
+        try {
+          const me = await fetchMe();
+          setUserDoc(me);
+          setNeedsOnboarding(false);
+          return;
+        } catch (e: any) {
+          const status = e?.response?.status;
+          const code = e?.response?.data?.error;
+
+          // Token timing issue after login (common on cold starts)
+          if (status === 401) {
+            for (const delay of [250, 750, 1250]) {
+              await sleep(delay);
+              try {
+                const me = await fetchMe();
+                setUserDoc(me);
+                setNeedsOnboarding(false);
+                return;
+              } catch {}
+            }
+          }
+
+          // IMPORTANT: never bootstrap here. Only flag onboarding.
+          if (status === 403 || (status === 409 && code === "not_initialized")) {
+            setUserDoc(null);
+            setNeedsOnboarding(true);
+            return;
+          }
+
+          console.error(
+            "[Auth] /api/me failed:",
+            status,
+            e?.response?.data || e
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => off();
+  }, []);
+
+  const value = useMemo<AuthCtx>(
+    () => ({
+      user,
+      userDoc,
+      loading,
+      needsOnboarding,
+      logout,
+      refreshUserDoc,
+    }),
     [user, userDoc, loading, needsOnboarding]
   );
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
-}
 
-export const useAuth = () => useContext(Ctx);
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
