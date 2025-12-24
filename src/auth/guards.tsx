@@ -32,7 +32,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
  * - user must have an orgId
  */
 export function RequireOrg({ children }: { children: React.ReactNode }) {
-  const { userDoc, loading, needsOnboarding } = useAuth();
+  const { userDoc, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -43,28 +43,15 @@ export function RequireOrg({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Only send to onboarding if the auth layer explicitly flagged it.
-  if (needsOnboarding) {
+  const orgId = userDoc?.organizationId || userDoc?.orgId;
+  if (!orgId) {
     return (
       <Navigate to="/setup-org" state={{ from: location.pathname }} replace />
     );
   }
 
-  const orgId = userDoc?.organizationId || userDoc?.orgId;
-
-  // If orgId is missing but we weren't flagged for onboarding, treat it as a transient
-  // loading/error state (prevents accidental redirects/forks).
-  if (!orgId) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return <>{children}</>;
 }
-
 
 /**
  * RequireBilling:

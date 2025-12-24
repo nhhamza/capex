@@ -1,4 +1,4 @@
-import React, {
+import {
   createContext,
   useContext,
   useEffect,
@@ -7,19 +7,18 @@ import React, {
   ReactNode,
 } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "@/firebase/client";
 import { backendApi } from "@/lib/backendApi";
+import { auth } from "@/firebase/client";
 
-export type UserDoc =
-  | {
-      id?: string;
-      email?: string | null;
-      orgId?: string;
-      organizationId?: string;
-      role?: string;
-      [k: string]: any;
-    }
-  | null;
+// Ajusta este type a tu modelo real si ya lo tienes importado de otro sitio
+export type UserDoc = {
+  id?: string;
+  email?: string | null;
+  orgId?: string;
+  organizationId?: string;
+  role?: string;
+  [k: string]: any;
+} | null;
 
 type AuthCtx = {
   user: User | null;
@@ -27,8 +26,9 @@ type AuthCtx = {
   loading: boolean;
 
   /**
-   * True when the backend indicates the user profile/org is not initialized.
-   * IMPORTANT: we do NOT auto-create anything on login.
+   * True cuando el backend indica que el usuario no tiene perfil/org inicializado
+   * (o el perfil no se puede resolver). La UI puede enviar a /setup-org,
+   * pero OJO: setup-org solo debe crear org en signup/onboarding.
    */
   needsOnboarding: boolean;
 
@@ -60,12 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   const fetchMe = async (): Promise<UserDoc> => {
-    const r = await backendApi.get("/api/me");
-    return (r.data?.user ?? null) as UserDoc;
+    const me = await backendApi.get("/api/me");
+    return (me.data?.user ?? null) as UserDoc;
   };
 
   const refreshUserDoc = async () => {
-    if (!auth.currentUser) return;
+    if (!user) return;
 
     try {
       const me = await fetchMe();
@@ -81,11 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      console.error(
-        "[Auth] refreshUserDoc failed:",
-        status,
-        e?.response?.data || e
-      );
+      console.error("[Auth] refreshUserDoc failed:", e);
     }
   };
 
@@ -100,6 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const off = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+
+      // reset session state
       setUserDoc(null);
       setNeedsOnboarding(false);
 
@@ -111,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
 
       try {
-        // First attempt
+        // 1) Try normal /api/me
         try {
           const me = await fetchMe();
           setUserDoc(me);
@@ -121,9 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const status = e?.response?.status;
           const code = e?.response?.data?.error;
 
-          // Token timing issue after login (common on cold starts)
+          // 401: token timing issue -> retry a couple times
           if (status === 401) {
-            for (const delay of [250, 750, 1250]) {
+            for (const delay of [300, 800]) {
               await sleep(delay);
               try {
                 const me = await fetchMe();
@@ -134,18 +132,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
 
-          // IMPORTANT: never bootstrap here. Only flag onboarding.
-          if (status === 403 || (status === 409 && code === "not_initialized")) {
+          // ✅ IMPORTANT: NO BOOTSTRAP ON LOGIN
+          // If profile/org missing, just flag onboarding.
+          if (
+            status === 403 ||
+            (status === 409 && code === "not_initialized")
+          ) {
             setUserDoc(null);
             setNeedsOnboarding(true);
             return;
           }
 
-          console.error(
-            "[Auth] /api/me failed:",
-            status,
-            e?.response?.data || e
-          );
+          console.error("[Auth] /api/me failed:", e);
         }
       } finally {
         setLoading(false);
