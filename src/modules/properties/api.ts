@@ -27,6 +27,10 @@ export type PropertyDocMeta = {
 // ------------------------------
 // Dashboard (parallel backend)
 // ------------------------------
+// types.ts (or wherever Property lives)
+export type CreatePropertyRequest = Omit<Property, "id"> & {
+  clientRequestId?: string;
+};
 
 export async function getDashboard(): Promise<{
   properties: Property[];
@@ -71,7 +75,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 }
 
 export async function createProperty(
-  data: Omit<Property, "id">
+  data: CreatePropertyRequest
 ): Promise<Property> {
   const r = await backendApi.post("/api/properties", data);
   return r.data?.property as Property;
