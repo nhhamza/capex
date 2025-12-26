@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import dayjs from "dayjs";
+import dayjs, { Dayjs } from "dayjs";
 import { useAuth } from "@/auth/authContext";
 import { getProperties, createProperty, createLease, createLoan } from "@/modules/properties/api";
 import {
@@ -20,6 +20,7 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
+import { DatePicker } from "@mui/x-date-pickers";
 
 /**
  * IMPORTANT:
@@ -48,8 +49,7 @@ export function OnboardingWizard() {
 
   // Lease (optional)
   const [contractTenantName, setContractTenantName] = useState("");
-  const [contractStartDate, setContractStartDate] = useState("");
-  const [contractEndDate, setContractEndDate] = useState("");
+  const [contractStartDate, setContractStartDate] = useState<Dayjs | null>(null);
 
   // Loan (optional)
   const [financingLoanAmount, setFinancingLoanAmount] = useState<number | "">("");
@@ -139,8 +139,7 @@ export function OnboardingWizard() {
           await createLease({
             propertyId,
             tenantName: contractTenantName || "Inquilino",
-            startDate: contractStartDate || dayjs().toISOString(),
-            endDate: contractEndDate || undefined,
+            startDate: contractStartDate ? contractStartDate.toISOString() : dayjs().toISOString(),
             monthlyRent: typeof firstMonthlyRent === "number" ? firstMonthlyRent : 0,
           });
         } catch (leaseErr) {
@@ -280,19 +279,15 @@ export function OnboardingWizard() {
               onChange={(e) => setContractTenantName(e.target.value)}
               fullWidth
             />
-            <TextField
-              label="Inicio contrato (opcional)"
+            <DatePicker
+              label="Fecha de inicio del contrato (opcional)"
               value={contractStartDate}
-              onChange={(e) => setContractStartDate(e.target.value)}
-              placeholder="YYYY-MM-DD"
-              fullWidth
-            />
-            <TextField
-              label="Fin contrato (opcional)"
-              value={contractEndDate}
-              onChange={(e) => setContractEndDate(e.target.value)}
-              placeholder="YYYY-MM-DD"
-              fullWidth
+              onChange={(newValue) => setContractStartDate(newValue)}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                },
+              }}
             />
           </Stack>
         ) : null}

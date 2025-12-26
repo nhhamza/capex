@@ -3,6 +3,7 @@ import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/firebase/client";
 import { backendApi } from "@/lib/backendApi";
+import { useAuth } from "@/auth/authContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -60,6 +61,7 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 export default function SignUp() {
   const navigate = useNavigate();
+  const { refreshUserDoc } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -80,7 +82,13 @@ export default function SignUp() {
     setLoading(true);
 
     try {
+      // 1. Create Firebase user
       await createUserWithEmailAndPassword(auth, data.email, data.password);
+
+      // 2. Wait for Firebase auth state to propagate
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // 3. Initialize organization and profile in backend
       await backendApi.post("/api/signup/initialize", {
         createOrg: true,
         orgName: data.orgName,
@@ -92,7 +100,11 @@ export default function SignUp() {
         },
       });
 
-      navigate("/dashboard");
+      // 4. Refresh auth context to get the new userDoc with orgId
+      await refreshUserDoc();
+
+      // 5. Navigate to onboarding to create first property
+      navigate("/setup-org");
     } catch (err: any) {
       setError(err.message || "Error al crear cuenta");
     } finally {

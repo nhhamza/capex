@@ -24,6 +24,8 @@ import { BillingSuccessPage } from "@/modules/billing/BillingSuccessPage";
 import { BillingCancelPage } from "@/modules/billing/BillingCancelPage";
 import { DealAnalyzerPage } from "@/modules/deal-analyzer/DealAnalyzerPage";
 import { BlockedPage } from "@/pages/BlockedPage";
+import { TermsPage } from "@/pages/TermsPage";
+import { PrivacyPage } from "@/pages/PrivacyPage";
 import { isNative } from "./isNative";
 
 const makeRouter = () => (isNative() ? createHashRouter : createBrowserRouter);
@@ -40,6 +42,14 @@ export const router = makeRouter()([
   {
     path: "/forgot-password",
     element: <ForgotPasswordPage />,
+  },
+  {
+    path: "/terms",
+    element: <TermsPage />,
+  },
+  {
+    path: "/privacy",
+    element: <PrivacyPage />,
   },
   {
     path: "/blocked",

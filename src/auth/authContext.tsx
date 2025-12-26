@@ -65,7 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshUserDoc = async () => {
-    if (!user) return;
+    // Check if there's a current Firebase user (even if context state hasn't updated yet)
+    const currentUser = auth.currentUser;
+    if (!currentUser && !user) return;
 
     try {
       const me = await fetchMe();
