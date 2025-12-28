@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Grid, Typography, Box, Alert, Button, Collapse } from "@mui/material";
+import { Grid, Typography, Box, Alert, Button, Collapse, TextField, Divider } from "@mui/material";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,6 +15,7 @@ import { KPI } from "@/components/KPI";
 import { computeLeveredMetrics, sumClosingCosts } from "../calculations";
 import { formatPercent, formatCurrency } from "@/utils/format";
 import { getAggregatedRentForMonth } from "../rentalAggregation";
+import { updateProperty } from "../api";
 
 // Register Chart.js components
 ChartJS.register(
@@ -34,6 +35,7 @@ interface PropertySummaryTabProps {
   // 👇 NUEVOS (opcionales para compat)
   leases?: Lease[];
   rooms?: Room[];
+  onSave: () => void;
 }
 
 export function PropertySummaryTab({
@@ -43,8 +45,11 @@ export function PropertySummaryTab({
   recurring,
   leases,
   rooms,
+  onSave,
 }: PropertySummaryTabProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [notes, setNotes] = useState(property.notes || '');
+  const [savingNotes, setSavingNotes] = useState(false);
 
   // Si no hay lease y tampoco leases de habitaciones, mostramos aviso
   const hasAnyLease =
@@ -452,6 +457,43 @@ export function PropertySummaryTab({
           inversión total y métricas.
         </Alert>
       )}
+
+      {/* --- NOTAS SECTION --- */}
+      <Divider sx={{ my: 4 }} />
+
+      <Typography variant="h6" gutterBottom>
+        Notas
+      </Typography>
+
+      <Box>
+        <TextField
+          fullWidth
+          label="Notas de la propiedad"
+          multiline
+          rows={8}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Añade notas personales sobre esta propiedad..."
+        />
+        <Button
+          variant="contained"
+          onClick={async () => {
+            setSavingNotes(true);
+            try {
+              await updateProperty(property.id, { notes });
+              onSave();
+            } catch (error) {
+              console.error('Error saving notes:', error);
+            } finally {
+              setSavingNotes(false);
+            }
+          }}
+          disabled={savingNotes}
+          sx={{ mt: 2 }}
+        >
+          {savingNotes ? 'Guardando...' : 'Guardar Notas'}
+        </Button>
+      </Box>
     </Box>
   );
 }

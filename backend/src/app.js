@@ -64,7 +64,18 @@ try {
 }
 
 const db = firebaseReady ? admin.firestore() : null;
-const bucket = firebaseReady ? admin.storage().bucket() : null;
+
+let bucket = null;
+if (firebaseReady) {
+  try {
+    bucket = admin.storage().bucket();
+    console.log("Firebase Storage bucket initialized:", bucket.name);
+  } catch (err) {
+    console.error("Failed to initialize Firebase Storage bucket:", err?.message);
+    console.error("Make sure FIREBASE_STORAGE_BUCKET is set in environment variables");
+    firebaseReady = false;
+  }
+}
 
 // -------------------- Helpers --------------------
 function nowIso() {
@@ -417,6 +428,54 @@ app.get("/api/health/firestore", async (req, res) => {
     return res.json({ status: "ok" });
   } catch (err) {
     return res.status(503).json({ status: "error", message: err?.message || String(err) });
+  }
+});
+
+// Firebase Storage health check
+app.get("/api/health/storage", async (req, res) => {
+  const diagnostics = {
+    firebaseReady,
+    hasBucket: !!bucket,
+    bucketName: bucket?.name || null,
+    storageBucketEnv: process.env.FIREBASE_STORAGE_BUCKET || null,
+    projectId: admin.app()?.options?.projectId || null,
+    configuredStorageBucket: admin.app()?.options?.storageBucket || null,
+  };
+
+  if (!firebaseReady) {
+    return res.status(503).json({
+      status: "error",
+      message: "Firebase is not initialized",
+      diagnostics,
+    });
+  }
+
+  if (!bucket) {
+    return res.status(503).json({
+      status: "error",
+      message: "Storage bucket is not configured. Check FIREBASE_STORAGE_BUCKET environment variable.",
+      diagnostics,
+    });
+  }
+
+  try {
+    // Try to list files to verify bucket access
+    await bucket.getFiles({ maxResults: 1 });
+    return res.json({
+      status: "ok",
+      message: "Firebase Storage is working correctly",
+      diagnostics,
+    });
+  } catch (err) {
+    return res.status(503).json({
+      status: "error",
+      message: `Storage bucket access failed: ${err?.message || String(err)}`,
+      diagnostics,
+      error: {
+        code: err?.code,
+        message: err?.message,
+      },
+    });
   }
 });
 
@@ -916,17 +975,44 @@ app.delete("/api/collection/:collection/:id", requireAuth, requireOrg, requireBi
 // -------------------- Uploads --------------------
 app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, upload.single("file"), async (req, res) => {
   try {
-    if (!bucket) return res.status(503).json({ error: "firebase_not_configured" });
+    console.log("[propertyDocs/upload] Starting upload...", {
+      hasFile: !!req.file,
+      propertyId: req.body?.propertyId,
+      orgId: req.orgId,
+    });
+
+    if (!firebaseReady) {
+      console.error("[propertyDocs/upload] Firebase not ready");
+      return res.status(503).json({ error: "firebase_not_configured", message: "Firebase is not initialized" });
+    }
+
+    if (!bucket) {
+      console.error("[propertyDocs/upload] Storage bucket not configured");
+      return res.status(503).json({ error: "storage_not_configured", message: "Firebase Storage bucket is not configured" });
+    }
 
     const file = req.file;
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
+    if (!file) {
+      console.error("[propertyDocs/upload] No file in request");
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
     const { propertyId, name } = req.body;
-    if (!propertyId) return res.status(400).json({ error: "propertyId required" });
+    if (!propertyId) {
+      console.error("[propertyDocs/upload] No propertyId provided");
+      return res.status(400).json({ error: "propertyId required" });
+    }
 
+    console.log("[propertyDocs/upload] Checking property ownership...");
     const propSnap = await db.collection("properties").doc(propertyId).get();
-    if (!propSnap.exists) return res.status(404).json({ error: "property not found" });
-    if (propSnap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
+    if (!propSnap.exists) {
+      console.error("[propertyDocs/upload] Property not found:", propertyId);
+      return res.status(404).json({ error: "property not found" });
+    }
+    if (propSnap.data().organizationId !== req.orgId) {
+      console.error("[propertyDocs/upload] Property doesn't belong to org");
+      return res.status(403).json({ error: "forbidden" });
+    }
 
     const docRef = db.collection("propertyDocs").doc();
     const docId = docRef.id;
@@ -934,6 +1020,7 @@ app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, 
     const safeName = (name || file.originalname || "document").replace(/[^a-zA-Z0-9._-]/g, "_");
     const storagePath = `organizations/${req.orgId}/properties/${propertyId}/docs/${docId}_${safeName}`;
 
+    console.log("[propertyDocs/upload] Uploading to storage:", storagePath);
     const gcsFile = bucket.file(storagePath);
     await gcsFile.save(file.buffer, {
       contentType: file.mimetype,
@@ -941,9 +1028,15 @@ app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, 
       metadata: { cacheControl: "public, max-age=3600" },
     });
 
-    await gcsFile.makePublic();
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+    console.log("[propertyDocs/upload] Generating signed URL...");
+    // Generate signed URL valid for 7 days (instead of makePublic)
+    const [signedUrl] = await gcsFile.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    const publicUrl = signedUrl;
 
+    console.log("[propertyDocs/upload] Saving to Firestore...");
     await docRef.set({
       organizationId: req.orgId,
       propertyId,
@@ -952,31 +1045,66 @@ app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, 
       storagePath,
       contentType: file.mimetype,
       size: file.size,
+      uploadedAt: nowIso(),
       createdAt: nowIso(),
       updatedAt: nowIso(),
     });
 
     const snap = await docRef.get();
+    console.log("[propertyDocs/upload] Upload successful:", docId);
     return res.json({ doc: { id: docId, ...snap.data() } });
   } catch (err) {
-    console.error("[propertyDocs/upload] failed", err);
-    return res.status(500).json({ error: "failed to upload doc" });
+    console.error("[propertyDocs/upload] failed:", {
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+    });
+    return res.status(500).json({
+      error: "failed to upload doc",
+      message: err?.message || "Unknown error",
+      code: err?.code,
+    });
   }
 });
 
 app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.single("file"), async (req, res) => {
   try {
-    if (!bucket) return res.status(503).json({ error: "firebase_not_configured" });
+    console.log("[capex/upload] Starting upload...", {
+      hasFile: !!req.file,
+      propertyId: req.body?.propertyId,
+      orgId: req.orgId,
+    });
+
+    if (!firebaseReady) {
+      console.error("[capex/upload] Firebase not ready");
+      return res.status(503).json({ error: "firebase_not_configured", message: "Firebase is not initialized" });
+    }
+
+    if (!bucket) {
+      console.error("[capex/upload] Storage bucket not configured");
+      return res.status(503).json({ error: "storage_not_configured", message: "Firebase Storage bucket is not configured" });
+    }
 
     const file = req.file;
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
+    if (!file) {
+      console.error("[capex/upload] No file in request");
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
     const { propertyId, name } = req.body;
-    if (!propertyId) return res.status(400).json({ error: "propertyId required" });
+    if (!propertyId) {
+      console.error("[capex/upload] No propertyId provided");
+      return res.status(400).json({ error: "propertyId required" });
+    }
 
+    console.log("[capex/upload] Checking property ownership...");
     const propSnap = await db.collection("properties").doc(propertyId).get();
-    if (!propSnap.exists) return res.status(404).json({ error: "property not found" });
+    if (!propSnap.exists) {
+      console.error("[capex/upload] Property not found:", propertyId);
+      return res.status(404).json({ error: "property not found" });
+    }
     if (propSnap.data().organizationId !== req.orgId) {
+      console.error("[capex/upload] Property doesn't belong to org");
       return res.status(403).json({ error: "forbidden - property does not belong to organization" });
     }
 
@@ -984,6 +1112,7 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
     const safeName = (name || file.originalname || "attachment").replace(/[^a-zA-Z0-9._-]/g, "_");
     const storagePath = `organizations/${req.orgId}/properties/${propertyId}/capex/${timestamp}_${safeName}`;
 
+    console.log("[capex/upload] Uploading to storage:", storagePath);
     const gcsFile = bucket.file(storagePath);
     await gcsFile.save(file.buffer, {
       contentType: file.mimetype,
@@ -991,19 +1120,34 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
       metadata: { cacheControl: "public, max-age=3600" },
     });
 
-    await gcsFile.makePublic();
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+    console.log("[capex/upload] Generating signed URL...");
+    // Generate signed URL valid for 7 days (instead of makePublic)
+    const [signedUrl] = await gcsFile.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    const publicUrl = signedUrl;
 
+    console.log("[capex/upload] Upload successful");
     return res.json({
-      success: true,
-      url: publicUrl,
-      storagePath,
-      contentType: file.mimetype,
-      size: file.size,
+      attachment: {
+        name: safeName,
+        url: publicUrl,
+        storagePath,
+        mimeType: file.mimetype,
+      },
     });
   } catch (err) {
-    console.error("[capex/upload] failed", err);
-    return res.status(500).json({ error: "failed to upload capex file" });
+    console.error("[capex/upload] failed:", {
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+    });
+    return res.status(500).json({
+      error: "failed to upload capex file",
+      message: err?.message || "Unknown error",
+      code: err?.code,
+    });
   }
 });
 

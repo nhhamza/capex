@@ -13,10 +13,8 @@ import DescriptionIcon from "@mui/icons-material/Assessment";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import PaymentsIcon from "@mui/icons-material/Payments";
-import BuildIcon from "@mui/icons-material/Build";
 import FolderIcon from "@mui/icons-material/Folder";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
-import NotesIcon from "@mui/icons-material/Notes";
 import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
 import { ReactElement } from "react";
 import { RentalMode } from "../types";
@@ -46,6 +44,11 @@ const getTabs = (rentalMode?: RentalMode): PropertyTabConfig[] => [
     icon: <ShoppingCartIcon fontSize="small" />,
   },
   {
+    value: "financiacion",
+    label: "Financiación (Hipotecas)",
+    icon: <AccountBalanceIcon fontSize="small" />,
+  },
+  {
     value: "habitaciones",
     label: "Habitaciones",
     icon: <MeetingRoomIcon fontSize="small" />,
@@ -57,22 +60,11 @@ const getTabs = (rentalMode?: RentalMode): PropertyTabConfig[] => [
     icon: <AssignmentIcon fontSize="small" />,
   },
   {
-    value: "gastos-fijos",
-    label: "Gastos Fijos",
+    value: "gastos",
+    label: "Gastos",
     icon: <PaymentsIcon fontSize="small" />,
   },
-  {
-    value: "capex",
-    label: "Gastos Puntuales",
-    icon: <BuildIcon fontSize="small" />,
-  },
   { value: "docs", label: "Documentos", icon: <FolderIcon fontSize="small" /> },
-  {
-    value: "financiacion",
-    label: "Financiación (Hipotecas)",
-    icon: <AccountBalanceIcon fontSize="small" />,
-  },
-  { value: "notas", label: "Notas", icon: <NotesIcon fontSize="small" /> },
 ];
 
 export function ResponsivePropertyTabs({

@@ -32,11 +32,9 @@ import {
 import { PropertySummaryTab } from "./PropertySummaryTab";
 import { PropertyPurchaseTab } from "./PropertyPurchaseTab";
 import { PropertyLeaseTab } from "./PropertyLeaseTab";
-import { PropertyRecurringTab } from "./PropertyRecurringTab";
-import { PropertyCapexTab } from "./PropertyCapexTab";
+import { PropertyExpensesTab } from "./PropertyExpensesTab";
 import { PropertyDocsTab } from "./PropertyDocsTab";
 import { PropertyLoanTab } from "./PropertyLoanTab";
-import { PropertyNotesTab } from "./PropertyNotesTab";
 import { PropertyRoomsTab } from "./PropertyRoomsTab";
 import { ResponsivePropertyTabs } from "../components/ResponsivePropertyTabs";
 
@@ -281,6 +279,7 @@ export function PropertyDetail() {
               recurring={recurring}
               leases={leases} // 👈 NUEVO
               rooms={rooms} // 👈 NUEVO
+              onSave={handleDataChanged}
             />
           )}
           {currentTab === "compra" && (
@@ -304,17 +303,11 @@ export function PropertyDetail() {
               roomId={roomIdFromUrl}
             />
           )}
-          {currentTab === "gastos-fijos" && (
-            <PropertyRecurringTab
+          {currentTab === "gastos" && (
+            <PropertyExpensesTab
               propertyId={property.id}
-              expenses={recurring}
-              onSave={handleDataChanged}
-            />
-          )}
-          {currentTab === "capex" && (
-            <PropertyCapexTab
-              propertyId={property.id}
-              expenses={capex}
+              recurring={recurring}
+              capex={capex}
               onSave={handleDataChanged}
             />
           )}
@@ -328,9 +321,6 @@ export function PropertyDetail() {
               lease={lease}
               onSave={handleDataChanged}
             />
-          )}
-          {currentTab === "notas" && (
-            <PropertyNotesTab property={property} onSave={handleDataChanged} />
           )}
         </Box>
       </Paper>
