@@ -403,10 +403,17 @@ async function requireBillingOk(req, res, next) {
 function mapPrice(priceId) {
   if (!priceId) return { plan: "free", propertyLimit: 2, seatLimit: 1 };
 
-  if (priceId === "price_1SRy7v1Ooy6ryYPn2mc6FKfu") return { plan: "solo", propertyLimit: 10, seatLimit: 1 };
-  if (priceId === "price_1SRyIm1Ooy6ryYPnczGBTB7g") return { plan: "pro", propertyLimit: 50, seatLimit: 3 };
-  if (priceId === "price_1SRyMA1Ooy6ryYPnzPLHOkWt") return { plan: "agency", propertyLimit: 200, seatLimit: 10 };
+  // Read price IDs from environment variables
+  const PRICE_SOLO = process.env.STRIPE_PRICE_SOLO;
+  const PRICE_PRO = process.env.STRIPE_PRICE_PRO;
+  const PRICE_AGENCY = process.env.STRIPE_PRICE_AGENCY;
 
+  if (priceId === PRICE_SOLO) return { plan: "solo", propertyLimit: 10, seatLimit: 1 };
+  if (priceId === PRICE_PRO) return { plan: "pro", propertyLimit: 50, seatLimit: 3 };
+  if (priceId === PRICE_AGENCY) return { plan: "agency", propertyLimit: 200, seatLimit: 10 };
+
+  // Fallback to free if price not recognized
+  console.warn(`[mapPrice] Unknown priceId: ${priceId}, defaulting to free plan`);
   return { plan: "free", propertyLimit: 2, seatLimit: 1 };
 }
 
