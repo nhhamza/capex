@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import {
+  Outlet,
+  useNavigate,
+  useLocation,
+  Link as RouterLink,
+} from "react-router-dom";
 import {
   AppBar,
   Box,
@@ -20,7 +25,11 @@ import {
   Paper,
   Chip,
   Divider,
+  Alert,
+  Tooltip,
+  Skeleton,
 } from "@mui/material";
+
 import MenuIcon from "@mui/icons-material/Menu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import HomeWorkIcon from "@mui/icons-material/HomeWork";
@@ -34,10 +43,10 @@ import UpgradeIcon from "@mui/icons-material/Upgrade";
 import CalculateIcon from "@mui/icons-material/Calculate";
 import ApartmentIcon from "@mui/icons-material/Apartment";
 import ContactMailIcon from "@mui/icons-material/ContactMail";
+import WarningIcon from "@mui/icons-material/Warning";
+
 import { useAuth } from "@/auth/authContext";
 import { useOrgBilling } from "@/hooks/useOrgBilling";
-import WarningIcon from "@mui/icons-material/Warning";
-import { Alert } from "@mui/material";
 
 const DRAWER_WIDTH = 240;
 const BOTTOM_NAV_HEIGHT = 56;
@@ -61,11 +70,16 @@ export function Layout() {
     isGrace,
     refresh,
   } = useOrgBilling();
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
   const isAdmin = userDoc?.role === "admin";
+
+  const appName = "PropietarioPlus";
+  const hasOrg = Boolean(userDoc?.orgId);
+  const homePath = "/dashboard";
 
   const formatDate = (isoDate: string | undefined) => {
     if (!isoDate) return "";
@@ -86,9 +100,9 @@ export function Layout() {
       location.pathname === "/billing" ||
       location.pathname.includes("/billing")
     ) {
-      console.log("🔄 Layout: Refreshing org limits due to billing navigation");
       refresh();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   const getPlanColor = (planName?: string | null) => {
@@ -130,7 +144,7 @@ export function Layout() {
   ];
 
   const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
+    setMobileOpen((v) => !v);
   };
 
   const handleLogout = () => {
@@ -145,11 +159,6 @@ export function Layout() {
 
   const drawer = (
     <Box>
-      <Toolbar>
-        <Typography variant="h6" noWrap>
-          Gestión
-        </Typography>
-      </Toolbar>
       <List>
         {menuItems.map((item) => (
           <ListItem key={item.path} disablePadding>
@@ -163,6 +172,7 @@ export function Layout() {
             </ListItemButton>
           </ListItem>
         ))}
+
         {/* Upgrade button for free plan users */}
         {!planLoading && plan === "free" && (
           <ListItem disablePadding>
@@ -172,9 +182,7 @@ export function Layout() {
                 minHeight: 48,
                 bgcolor: "primary.main",
                 color: "primary.contrastText",
-                "&:hover": {
-                  bgcolor: "primary.dark",
-                },
+                "&:hover": { bgcolor: "primary.dark" },
                 mt: 1,
               }}
             >
@@ -232,7 +240,7 @@ export function Layout() {
       <AppBar
         position="fixed"
         sx={{
-          zIndex: (theme) => theme.zIndex.drawer + 1,
+          zIndex: (t) => t.zIndex.drawer + 1,
         }}
       >
         <Toolbar>
@@ -240,14 +248,72 @@ export function Layout() {
             color="inherit"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { md: "none" } }}
+            sx={{ mr: 1, display: { md: "none" } }}
           >
             <MenuIcon />
           </IconButton>
-          <ApartmentIcon sx={{ mr: 1, fontSize: 28 }} />
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {userDoc?.orgId ? "PropGes" : "Cargando..."}
-          </Typography>
+
+          {/* Brand: clickable logo + nicer title */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              flexGrow: 1,
+              minWidth: 0,
+            }}
+          >
+            <Tooltip title="Ir al inicio">
+              <IconButton
+                component={RouterLink}
+                to={homePath}
+                color="inherit"
+                edge="start"
+                sx={{
+                  mr: 1,
+                  borderRadius: 2,
+                  "&:hover": { bgcolor: "rgba(255,255,255,0.12)" },
+                }}
+              >
+                <ApartmentIcon sx={{ fontSize: 26 }} />
+              </IconButton>
+            </Tooltip>
+
+            <Box sx={{ minWidth: 0 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 1,
+                  minWidth: 0,
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  noWrap
+                  sx={{ fontWeight: 800, letterSpacing: 0.2, lineHeight: 1.1 }}
+                >
+                  {appName}
+                </Typography>
+              </Box>
+
+              {hasOrg ? (
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{ opacity: 0.85, display: "block", lineHeight: 1.1 }}
+                >
+                  Gestión de alquileres • {userDoc?.orgId}
+                </Typography>
+              ) : (
+                <Skeleton
+                  variant="text"
+                  width={160}
+                  sx={{ transform: "none", opacity: 0.35, mt: 0.2 }}
+                />
+              )}
+            </Box>
+          </Box>
+
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {!planLoading && (
               <>
@@ -259,9 +325,7 @@ export function Layout() {
                   sx={{
                     display: { xs: "none", sm: "inline-flex" },
                     cursor: "pointer",
-                    "&:hover": {
-                      opacity: 0.8,
-                    },
+                    "&:hover": { opacity: 0.85 },
                   }}
                 />
                 {plan === "free" && (
@@ -281,12 +345,14 @@ export function Layout() {
                 )}
               </>
             )}
+
             <Typography
               variant="body2"
               sx={{ mr: 2, display: { xs: "none", sm: "block" } }}
             >
               {user?.email}
             </Typography>
+
             <Button
               color="inherit"
               startIcon={<LogoutIcon />}
@@ -295,6 +361,7 @@ export function Layout() {
             >
               Salir
             </Button>
+
             <IconButton
               color="inherit"
               onClick={handleLogout}
@@ -364,6 +431,7 @@ export function Layout() {
         }}
       >
         <Toolbar />
+
         {/* Grace period warning banner */}
         {isGrace && billing?.graceUntil && (
           <Alert
@@ -391,6 +459,7 @@ export function Layout() {
             </Typography>
           </Alert>
         )}
+
         <Outlet />
       </Box>
 
@@ -402,16 +471,14 @@ export function Layout() {
             bottom: 0,
             left: 0,
             right: 0,
-            zIndex: (theme) => theme.zIndex.appBar,
+            zIndex: (t) => t.zIndex.appBar,
             display: { xs: "block", md: "none" },
           }}
           elevation={8}
         >
           <BottomNavigation
             value={location.pathname}
-            onChange={(_, newValue) => {
-              navigate(newValue);
-            }}
+            onChange={(_, newValue) => navigate(newValue)}
             showLabels
             sx={{ height: BOTTOM_NAV_HEIGHT }}
           >
@@ -423,9 +490,7 @@ export function Layout() {
                 icon={item.icon}
                 sx={{
                   minWidth: "auto",
-                  "& .MuiBottomNavigationAction-label": {
-                    fontSize: "0.75rem",
-                  },
+                  "& .MuiBottomNavigationAction-label": { fontSize: "0.75rem" },
                 }}
               />
             ))}
