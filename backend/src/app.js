@@ -154,9 +154,7 @@ const allowedOrigins = new Set(
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:3002",
-    "http://localhost:5173",
-     "https://propietarioplus.com",
-    "https://www.propietarioplus.com",
+    "http://localhost:5173",    
     ...envOrigins,
   ].map((s) => s.replace(/\/$/, ""))
 );
@@ -191,14 +189,20 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization", "Stripe-Signature"],
   optionsSuccessStatus: 204,
 };
-
 app.use(cors(corsOptions));
-console.log("[PREFLIGHT CHECK]", {
-  origin,
-  normalized: String(origin).replace(/\/$/, ""),
-  envOrigins,
-  allowedOrigins: Array.from(allowedOrigins),
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  console.log("[PREFLIGHT CHECK]", {
+    origin,
+    normalized: origin ? String(origin).replace(/\/$/, "") : null,
+    envOrigins,
+    allowedOrigins: Array.from(allowedOrigins),
+    method: req.method,
+    path: req.path,
+  });
+  next();
 });
+
 
 // (C) Preflight manual universal (control total para Authorization header)
 app.options("*", (req, res) => {
