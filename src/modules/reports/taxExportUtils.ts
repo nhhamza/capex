@@ -39,7 +39,7 @@ export function exportTaxReportToExcel(taxReportData: TaxReportData) {
     ["Base Imponible:", netTaxableIncome.toFixed(2) + " €"],
     [""],
     [
-      "Nota: Los cálculos consideran todas las habitaciones ocupadas para propiedades PER_ROOM.",
+      "Nota: Los cálculos consideran todas las habitaciones ocupadas para propiedades por habitaciones.",
     ],
   ];
 
@@ -170,7 +170,7 @@ export function exportTaxReportToPDF(taxReportData: TaxReportData) {
   finalY = (doc as any).lastAutoTable.finalY + 15;
   doc.setFontSize(8);
   doc.text(
-    "Nota: Los cálculos consideran todas las habitaciones ocupadas para propiedades PER_ROOM.",
+    "Nota: Los cálculos consideran todas las habitaciones ocupadas para propiedades por habitaciones.",
     20,
     finalY
   );
