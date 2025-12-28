@@ -148,31 +148,62 @@ const envOrigins = (process.env.FRONTEND_URL || "")
   .map((s) => s.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:3002",
-  "http://localhost:5173",
-  ...envOrigins,
-];
+const allowedOrigins = new Set(
+  [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:5173",
+    ...envOrigins,
+  ].map((s) => s.replace(/\/$/, ""))
+);
 
 const corsOptions = {
-  origin: function (origin, callback) {
+  origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
-    const normalized = origin.replace(/\/$/, ""); // quita slash final si existe
-    if (allowedOrigins.includes(normalized)) return callback(null, true);
+    const normalized = origin.replace(/\/$/, "");
+    const allowed = allowedOrigins.has(normalized);
 
-    console.log("[CORS BLOCKED]", { origin, normalized, allowedOrigins });
-    return callback(new Error("Not allowed by CORS"));
+    if (!allowed) {
+      console.log("[CORS BLOCKED]", {
+        origin,
+        normalized,
+        envOrigins,
+      });
+    }
+
+    // ✅ clave: NUNCA devolver Error aquí (eso genera 500 en preflight)
+    return callback(null, allowed);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "Stripe-Signature"],
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin) return next();
+
+  const normalized = origin.replace(/\/$/, "");
+  const envOrigins = (process.env.FRONTEND_URL || "")
+    .split(",")
+    .map((s) => s.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+
+  const allowed = new Set(envOrigins).has(normalized);
+
+  // Solo aplicarlo en Vercel / prod si quieres:
+  // if (process.env.VERCEL && !allowed) return res.status(403).send("CORS blocked");
+
+  return next();
+});
+
 
 // Stripe webhook MUST be before express.json()
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
