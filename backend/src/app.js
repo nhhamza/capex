@@ -142,11 +142,12 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 });
 
-// -------------------- CORS --------------------
+// -------------------- CORS (robusto en Vercel, sin 500 en preflight) --------------------
 const envOrigins = (process.env.FRONTEND_URL || "")
   .split(",")
-  .map((s) => s.trim().replace(/\/$/, ""))
-  .filter(Boolean);
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => s.replace(/\/$/, "")); // quita slash final
 
 const allowedOrigins = new Set(
   [
@@ -158,23 +159,30 @@ const allowedOrigins = new Set(
   ].map((s) => s.replace(/\/$/, ""))
 );
 
+function isAllowedOrigin(origin) {
+  if (!origin) return true; // server-to-server / curl
+  const normalized = String(origin).replace(/\/$/, "");
+  return allowedOrigins.has(normalized);
+}
+
+// (A) Middleware que SIEMPRE setea headers si el origin es allowed
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+  return next();
+});
+
+// (B) CORS package (no lanza error -> evita 500). Si no allowed, no pone header y el browser lo bloquea.
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-
-    const normalized = origin.replace(/\/$/, "");
-    const allowed = allowedOrigins.has(normalized);
-
-    if (!allowed) {
-      console.log("[CORS BLOCKED]", {
-        origin,
-        normalized,
-        envOrigins,
-      });
-    }
-
-    // ✅ clave: NUNCA devolver Error aquí (eso genera 500 en preflight)
-    return callback(null, allowed);
+    // ✅ clave: NUNCA devolver Error aquí
+    // - Si es allowed => true
+    // - Si no es allowed => false (sin error)
+    return callback(null, isAllowedOrigin(origin));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -184,30 +192,29 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// ✅ Preflight manual (evita el auto-OPTIONS de Express sin headers CORS)
+// (C) Preflight manual universal (control total para Authorization header)
 app.options("*", (req, res) => {
   const origin = req.headers.origin;
 
-  // Si no hay origin, no es CORS real
   if (!origin) return res.sendStatus(204);
 
-  const normalized = String(origin).replace(/\/$/, "");
-
-  // Importante: usa la MISMA lista/Set que arriba (allowedOrigins)
-  if (!allowedOrigins.has(normalized)) {
-    console.log("[CORS PRELIGHT BLOCKED]", { origin, normalized });
+  if (!isAllowedOrigin(origin)) {
+    console.log("[CORS PREFLIGHT BLOCKED]", {
+      origin,
+      allowedOrigins: Array.from(allowedOrigins),
+      envOrigins,
+    });
+    // Sin ACAO => el browser lo bloqueará igualmente
     return res.sendStatus(403);
   }
 
-  // ✅ CORS headers obligatorios para preflight
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // Deja pasar lo que el browser pidió (p.ej. authorization)
   res.setHeader(
     "Access-Control-Allow-Headers",
-    req.headers["access-control-request-headers"] || "Authorization,Content-Type"
+    req.headers["access-control-request-headers"] || "Authorization,Content-Type,Stripe-Signature"
   );
 
   res.setHeader(
@@ -218,26 +225,23 @@ app.options("*", (req, res) => {
   return res.sendStatus(204);
 });
 
-
-
+// (D) Bloque extra que ya tenías: lo dejamos sin “regresiones”, pero sin efectos colaterales.
+//     (No bloquea ni re-define listas: solo loguea si quieres auditar.)
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (!origin) return next();
 
-  const normalized = origin.replace(/\/$/, "");
-  const envOrigins = (process.env.FRONTEND_URL || "")
-    .split(",")
-    .map((s) => s.trim().replace(/\/$/, ""))
-    .filter(Boolean);
+  const normalized = String(origin).replace(/\/$/, "");
+  const allowed = allowedOrigins.has(normalized);
 
-  const allowed = new Set(envOrigins).has(normalized);
-
-  // Solo aplicarlo en Vercel / prod si quieres:
-  // if (process.env.VERCEL && !allowed) return res.status(403).send("CORS blocked");
+  // Solo log para depurar
+  if (!allowed) {
+    // Puedes comentar esto si hace ruido
+    // console.log("[CORS OBSERVE - not allowed]", { origin, normalized });
+  }
 
   return next();
 });
-
 
 // Stripe webhook MUST be before express.json()
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
@@ -1108,7 +1112,7 @@ app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, 
     console.log("[propertyDocs/upload] Generating signed URL...");
     // Generate signed URL valid for 7 days (instead of makePublic)
     const [signedUrl] = await gcsFile.getSignedUrl({
-      action: 'read',
+      action: "read",
       expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
     });
     const publicUrl = signedUrl;
@@ -1200,7 +1204,7 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
     console.log("[capex/upload] Generating signed URL...");
     // Generate signed URL valid for 7 days (instead of makePublic)
     const [signedUrl] = await gcsFile.getSignedUrl({
-      action: 'read',
+      action: "read",
       expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
     });
     const publicUrl = signedUrl;
