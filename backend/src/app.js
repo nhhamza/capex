@@ -183,7 +183,41 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+
+// ✅ Preflight manual (evita el auto-OPTIONS de Express sin headers CORS)
+app.options("*", (req, res) => {
+  const origin = req.headers.origin;
+
+  // Si no hay origin, no es CORS real
+  if (!origin) return res.sendStatus(204);
+
+  const normalized = String(origin).replace(/\/$/, "");
+
+  // Importante: usa la MISMA lista/Set que arriba (allowedOrigins)
+  if (!allowedOrigins.has(normalized)) {
+    console.log("[CORS PRELIGHT BLOCKED]", { origin, normalized });
+    return res.sendStatus(403);
+  }
+
+  // ✅ CORS headers obligatorios para preflight
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  // Deja pasar lo que el browser pidió (p.ej. authorization)
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    req.headers["access-control-request-headers"] || "Authorization,Content-Type"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    req.headers["access-control-request-method"] || "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
+
+  return res.sendStatus(204);
+});
+
 
 
 app.use((req, res, next) => {
