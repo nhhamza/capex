@@ -145,7 +145,7 @@ const upload = multer({
 // -------------------- CORS --------------------
 const envOrigins = (process.env.FRONTEND_URL || "")
   .split(",")
-  .map((s) => s.trim())
+  .map((s) => s.trim().replace(/\/$/, ""))
   .filter(Boolean);
 
 const allowedOrigins = [
@@ -156,18 +156,23 @@ const allowedOrigins = [
   ...envOrigins,
 ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    const normalized = origin.replace(/\/$/, ""); // quita slash final si existe
+    if (allowedOrigins.includes(normalized)) return callback(null, true);
+
+    console.log("[CORS BLOCKED]", { origin, normalized, allowedOrigins });
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Stripe-Signature"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 // Stripe webhook MUST be before express.json()
 app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
