@@ -76,6 +76,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e: any) {
       const status = e?.response?.status;
       const code = e?.response?.data?.error;
+      const isNetworkError = !e?.response || e?.code === 'ERR_NETWORK' || e?.code === 'ERR_CONNECTION_RESET';
+
+      // Network error or invalid token - logout
+      if (isNetworkError || status === 401) {
+        console.error("[Auth] Network error or invalid token in refreshUserDoc. Logging out...", {
+          code: e?.code,
+          status,
+        });
+        await auth.signOut();
+        setUserDoc(null);
+        setNeedsOnboarding(false);
+        return;
+      }
 
       if (status === 403 || (status === 409 && code === "not_initialized")) {
         setUserDoc(null);
@@ -120,6 +133,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e: any) {
           const status = e?.response?.status;
           const code = e?.response?.data?.error;
+          const isNetworkError = !e?.response || e?.code === 'ERR_NETWORK' || e?.code === 'ERR_CONNECTION_RESET';
+
+          // Network error (backend down, connection lost, etc) - logout and clear state
+          if (isNetworkError) {
+            console.error("[Auth] Network error - backend unreachable. Logging out...", {
+              code: e?.code,
+              message: e?.message,
+            });
+            // Sign out to clear invalid/stale token
+            await auth.signOut();
+            setUserDoc(null);
+            setNeedsOnboarding(false);
+            return;
+          }
 
           // 401: token timing issue -> retry a couple times
           if (status === 401) {
@@ -130,8 +157,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUserDoc(me);
                 setNeedsOnboarding(false);
                 return;
-              } catch {}
+              } catch (retryErr: any) {
+                // If retry also fails with network error, logout
+                const retryIsNetworkError = !retryErr?.response || retryErr?.code === 'ERR_NETWORK';
+                if (retryIsNetworkError) {
+                  console.error("[Auth] Network error during retry. Logging out...");
+                  await auth.signOut();
+                  setUserDoc(null);
+                  setNeedsOnboarding(false);
+                  return;
+                }
+              }
             }
+
+            // After retries, if still 401, token is invalid - logout
+            console.error("[Auth] Token invalid after retries. Logging out...");
+            await auth.signOut();
+            setUserDoc(null);
+            setNeedsOnboarding(false);
+            return;
           }
 
           // ✅ IMPORTANT: NO BOOTSTRAP ON LOGIN
@@ -145,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
+          // Other errors - log but don't logout (could be temporary backend issue)
           console.error("[Auth] /api/me failed:", e);
         }
       } finally {

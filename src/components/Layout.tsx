@@ -54,7 +54,13 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, userDoc, logout } = useAuth();
-  const { loading: planLoading, plan, billing, isGrace, refresh } = useOrgBilling();
+  const {
+    loading: planLoading,
+    plan,
+    billing,
+    isGrace,
+    refresh,
+  } = useOrgBilling();
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
@@ -240,7 +246,7 @@ export function Layout() {
           </IconButton>
           <ApartmentIcon sx={{ mr: 1, fontSize: 28 }} />
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {userDoc?.orgId ? "TY Gestión Inmobiliaria" : "Cargando..."}
+            {userDoc?.orgId ? "PropGes" : "Cargando..."}
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {!planLoading && (
@@ -365,7 +371,11 @@ export function Layout() {
             icon={<WarningIcon />}
             sx={{ mb: 3 }}
             action={
-              <Button color="inherit" size="small" onClick={() => navigate("/billing")}>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => navigate("/billing")}
+              >
                 Actualizar
               </Button>
             }
@@ -374,8 +384,10 @@ export function Layout() {
               Problema con el pago
             </Typography>
             <Typography variant="body2">
-              Tu suscripción tiene un problema de pago. Por favor, actualiza tu método de pago antes del{" "}
-              <strong>{formatDate(billing.graceUntil)}</strong> para evitar la interrupción del servicio.
+              Tu suscripción tiene un problema de pago. Por favor, actualiza tu
+              método de pago antes del{" "}
+              <strong>{formatDate(billing.graceUntil)}</strong> para evitar la
+              interrupción del servicio.
             </Typography>
           </Alert>
         )}
