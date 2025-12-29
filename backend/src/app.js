@@ -875,6 +875,33 @@ app.get("/api/dashboard", requireAuth, requireOrg, requireBillingOk, async (req,
   }
 });
 
+// -------------------- Stripe Mode Check --------------------
+app.get("/api/stripe-mode", requireAuth, async (req, res) => {
+  try {
+    const key = process.env.STRIPE_SECRET_KEY || "";
+    const prefix = key.startsWith("sk_live_")
+      ? "sk_live_"
+      : key.startsWith("sk_test_")
+      ? "sk_test_"
+      : "unknown";
+
+    // Llamada real a Stripe para confirmar el modo
+    const account = await stripe.accounts.retrieve();
+
+    return res.json({
+      ok: true,
+      keyPrefix: prefix,
+      livemode: !!account.livemode,
+      accountId: account.id,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || String(err),
+    });
+  }
+});
+
 // -------------------- Generic collection CRUD --------------------
 app.get("/api/:collection", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
   try {
@@ -1210,33 +1237,5 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
     });
   }
 });
-
-app.get("/api/stripe-mode", requireAuth, async (req, res) => {
-  try {
-    const key = process.env.STRIPE_SECRET_KEY || "";
-    const prefix = key.startsWith("sk_live_")
-      ? "sk_live_"
-      : key.startsWith("sk_test_")
-      ? "sk_test_"
-      : "unknown";
-
-    // Llamada real a Stripe para confirmar el modo
-    const account = await stripe.accounts.retrieve();
-
-    return res.json({
-      ok: true,
-      keyPrefix: prefix,
-      livemode: !!account.livemode,
-      accountId: account.id,
-    });
-  } catch (err) {
-    return res.status(500).json({
-      ok: false,
-      error: err?.message || String(err),
-    });
-  }
-});
-
-
 
 export default app;
