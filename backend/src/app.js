@@ -1211,17 +1211,32 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
   }
 });
 
-app.get("/api/stripe-mode", async (req, res) => {
+app.get("/api/stripe-mode", requireAuth, async (req, res) => {
   try {
-    const bal = await stripe.balance.retrieve();
+    const key = process.env.STRIPE_SECRET_KEY || "";
+    const prefix = key.startsWith("sk_live_")
+      ? "sk_live_"
+      : key.startsWith("sk_test_")
+      ? "sk_test_"
+      : "unknown";
+
+    // Llamada real a Stripe para confirmar el modo
+    const account = await stripe.accounts.retrieve();
+
     return res.json({
-      livemode: bal.livemode,
-      keyPrefix: (process.env.STRIPE_SECRET_KEY || "").slice(0, 7), // sk_live_ o sk_test_
+      ok: true,
+      keyPrefix: prefix,
+      livemode: !!account.livemode,
+      accountId: account.id,
     });
-  } catch (e) {
-    return res.status(500).json({ error: e.message });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || String(err),
+    });
   }
 });
+
 
 
 export default app;
