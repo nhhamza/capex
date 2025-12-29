@@ -169,7 +169,18 @@ function isAllowedOrigin(origin) {
 
 // (A) Middleware que SIEMPRE setea headers si el origin es allowed
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
+  let origin = req.headers.origin;
+
+  // Si no hay Origin header, intentar extraerlo del Referer
+  if (!origin && req.headers.referer) {
+    try {
+      const refererUrl = new URL(req.headers.referer);
+      origin = refererUrl.origin;
+    } catch (e) {
+      // Ignore invalid referer
+    }
+  }
+
   if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
