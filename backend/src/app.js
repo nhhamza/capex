@@ -701,10 +701,23 @@ app.post("/checkout", requireAuth, requireOrg, async (req, res) => {
     const billing = await readBilling(orgId);
     let customerId = billing.stripeCustomerId;
 
+    // Validar si el customer existe en el modo actual de Stripe
+    if (customerId) {
+      try {
+        await stripe.customers.retrieve(customerId);
+      } catch (err) {
+        // Customer no existe (probablemente de otro modo - test vs live)
+        console.log(`[checkout] Customer ${customerId} no existe, creando uno nuevo...`);
+        customerId = null;
+      }
+    }
+
+    // Crear customer si no existe o era inválido
     if (!customerId) {
       const customer = await stripe.customers.create({ metadata: { orgId } });
       customerId = customer.id;
       await writeBilling(orgId, { stripeCustomerId: customerId });
+      console.log(`[checkout] Nuevo customer creado: ${customerId}`);
     }
 
     const session = await stripe.checkout.sessions.create({
