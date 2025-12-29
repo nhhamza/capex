@@ -1211,4 +1211,17 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
   }
 });
 
+app.get("/api/stripe-mode", async (req, res) => {
+  try {
+    const bal = await stripe.balance.retrieve();
+    return res.json({
+      livemode: bal.livemode,
+      keyPrefix: (process.env.STRIPE_SECRET_KEY || "").slice(0, 7), // sk_live_ o sk_test_
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+
 export default app;
