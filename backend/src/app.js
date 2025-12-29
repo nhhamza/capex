@@ -95,7 +95,7 @@ const billingDocRef = (orgId) => db.doc(billingDocPath(orgId));
 async function readBilling(orgId) {
   const snap = await billingDocRef(orgId).get();
   if (snap.exists) return snap.data() || {};
-  return { plan: "free", status: "active", propertyLimit: 2, seatLimit: 1 };
+  return { plan: "free", status: "active", propertyLimit: 1, seatLimit: 1 };
 }
 
 async function writeBilling(orgId, data) {
@@ -192,18 +192,7 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 app.use(cors(corsOptions));
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  console.log("[PREFLIGHT CHECK]", {
-    origin,
-    normalized: origin ? String(origin).replace(/\/$/, "") : null,
-    envOrigins,
-    allowedOrigins: Array.from(allowedOrigins),
-    method: req.method,
-    path: req.path,
-  });
-  next();
-});
+
 
 
 // (C) Preflight manual universal (control total para Authorization header)

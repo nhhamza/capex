@@ -16,7 +16,8 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(cat:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(python -m json.tool:*)"
     ],
     "deny": [],
     "ask": []
