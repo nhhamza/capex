@@ -4,7 +4,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { RootShell } from "@/app/RootShell";
-import { RequireAuth, RequireOrg, RequireBilling } from "@/auth/guards";
+import { RequireAuth, RequireBilling } from "@/auth/guards";
 import { RequireAdmin } from "@/auth/RequireAdmin";
 import { LoginPage } from "@/auth/LoginPage";
 import SignUp from "@/auth/SignUp";
