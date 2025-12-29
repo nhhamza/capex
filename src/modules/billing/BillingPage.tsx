@@ -100,9 +100,9 @@ export function BillingPage() {
 
     try {
       const planToPrice: Record<string, string> = {
-        solo: "price_1SRy7v1Ooy6ryYPn2mc6FKfu",
-        pro: "price_1SRyIm1Ooy6ryYPnczGBTB7g",
-        agency: "price_1SRyMA1Ooy6ryYPnzPLHOkWt",
+        solo: import.meta.env.VITE_STRIPE_PRICE_SOLO || "",
+        pro: import.meta.env.VITE_STRIPE_PRICE_PRO || "",
+        agency: import.meta.env.VITE_STRIPE_PRICE_AGENCY || "",
       };
 
       const priceId = planToPrice[planId];
