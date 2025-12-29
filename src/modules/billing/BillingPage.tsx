@@ -64,20 +64,20 @@ const plans = [
       "API access",
     ],
   },
-  {
-    id: "agency",
-    name: "Agency",
-    price: 19.99,
-    period: "mes",
-    color: "error" as const,
-    features: [
-      "Viviendas ilimitadas",
-      "Todo de Pro +",
-      "Multi-organización",
-      "Gestión de clientes",
-      "Onboarding personalizado",
-    ],
-  },
+  // {
+  //   id: "agency",
+  //   name: "Agency",
+  //   price: 19.99,
+  //   period: "mes",
+  //   color: "error" as const,
+  //   features: [
+  //     "Viviendas ilimitadas",
+  //     "Todo de Pro +",
+  //     "Multi-organización",
+  //     "Gestión de clientes",
+  //     "Onboarding personalizado",
+  //   ],
+  // },
 ];
 
 export function BillingPage() {

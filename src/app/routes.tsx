@@ -3,7 +3,7 @@ import {
   createHashRouter,
   Navigate,
 } from "react-router-dom";
-import { Layout } from "@/components/Layout";
+import { RootShell } from "@/app/RootShell";
 import { RequireAuth, RequireOrg, RequireBilling } from "@/auth/guards";
 import { RequireAdmin } from "@/auth/RequireAdmin";
 import { LoginPage } from "@/auth/LoginPage";
@@ -69,13 +69,7 @@ export const router = makeRouter()([
   },
   {
     path: "/",
-    element: (
-      <RequireAuth>
-        <RequireOrg>
-          <Layout />
-        </RequireOrg>
-      </RequireAuth>
-    ),
+    element: <RootShell />,
     children: [
       {
         index: true,
