@@ -169,18 +169,7 @@ function isAllowedOrigin(origin) {
 
 // (A) Middleware que SIEMPRE setea headers si el origin es allowed
 app.use((req, res, next) => {
-  let origin = req.headers.origin;
-
-  // Si no hay Origin header, intentar extraerlo del Referer
-  if (!origin && req.headers.referer) {
-    try {
-      const refererUrl = new URL(req.headers.referer);
-      origin = refererUrl.origin;
-    } catch (e) {
-      // Ignore invalid referer
-    }
-  }
-
+  const origin = req.headers.origin;
   if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
@@ -284,8 +273,21 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
     // --- Checkout complete ---
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
+
+      // Only process if payment was successful
+      if (session.payment_status !== "paid") {
+        console.log("[Webhook] Checkout session not paid, skipping", {
+          sessionId: session.id,
+          paymentStatus: session.payment_status,
+        });
+        return res.status(200).send("OK");
+      }
+
       const customerId = session.customer;
-      if (!session.subscription) return res.status(200).send("OK");
+      if (!session.subscription) {
+        console.log("[Webhook] No subscription in session, skipping");
+        return res.status(200).send("OK");
+      }
 
       const subscriptionId =
         typeof session.subscription === "string" ? session.subscription : session.subscription.id;
@@ -662,54 +664,6 @@ app.get("/api/org/limits", requireAuth, requireOrg, async (req, res) => {
   } catch (err) {
     console.error("[org/limits] failed", err);
     return res.status(500).json({ error: "failed to read org limits" });
-  }
-});
-
-app.post("/api/billing/portal", requireAuth, requireOrg, async (req, res) => {
-  try {
-    const billing = await readBilling(req.orgId);
-    const customerId = billing.stripeCustomerId;
-    if (!customerId) return res.status(400).json({ error: "No Stripe customer found" });
-
-    const returnUrl = req.body?.returnUrl || (envOrigins[0] || "http://localhost:5173");
-
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: returnUrl,
-    });
-
-    return res.json({ url: session.url });
-  } catch (err) {
-    console.error("[billing/portal] failed", err);
-    return res.status(500).json({ error: "Failed to create portal session" });
-  }
-});
-
-app.get("/api/invoices", requireAuth, requireOrg, async (req, res) => {
-  try {
-    const billing = await readBilling(req.orgId);
-    const customerId = billing.stripeCustomerId;
-    if (!customerId) return res.json({ invoices: [] });
-
-    const invoices = await stripe.invoices.list({ customer: customerId, limit: 100 });
-
-    const formatted = invoices.data.map((inv) => ({
-      id: inv.id,
-      number: inv.number,
-      amount: inv.amount_paid / 100,
-      currency: inv.currency,
-      status: inv.status,
-      created: inv.created,
-      hostedInvoiceUrl: inv.hosted_invoice_url,
-      invoicePdf: inv.invoice_pdf,
-      periodStart: inv.period_start,
-      periodEnd: inv.period_end,
-    }));
-
-    return res.json({ invoices: formatted });
-  } catch (err) {
-    console.error("[invoices] list failed", err);
-    return res.status(500).json({ error: "Failed to fetch invoices" });
   }
 });
 

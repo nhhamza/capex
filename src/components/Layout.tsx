@@ -302,7 +302,7 @@ export function Layout() {
                   noWrap
                   sx={{ opacity: 0.85, display: "block", lineHeight: 1.1 }}
                 >
-                  Gestión de alquileres • {userDoc?.orgId}
+                  Gestión de alquileres
                 </Typography>
               ) : (
                 <Skeleton
