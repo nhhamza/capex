@@ -37,7 +37,11 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import PersonIcon from "@mui/icons-material/Person";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DownloadIcon from "@mui/icons-material/Download";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import TrendingDownIcon from "@mui/icons-material/TrendingDown";
+import HistoryIcon from "@mui/icons-material/History";
 import { Lease, Room, Property } from "../types";
+import { getMonthlyRentForDate } from "../calculations";
 import {
   getLeases,
   createLease,
@@ -102,6 +106,16 @@ export function PropertyLeaseTab({
   const [existingContract, setExistingContract] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Rent adjustment dialog states
+  const [rentAdjustmentDialogOpen, setRentAdjustmentDialogOpen] = useState(false);
+  const [rentAdjustmentLease, setRentAdjustmentLease] = useState<Lease | null>(null);
+  const [rentAdjustmentData, setRentAdjustmentData] = useState({
+    effectiveDate: null as any,
+    newMonthlyRent: 0,
+    reason: "",
+    notes: "",
+  });
 
   const loadLeases = async () => {
     const allLeases = await getLeases(propertyId);
@@ -212,6 +226,59 @@ export function PropertyLeaseTab({
     link.href = url;
     link.download = `contrato-${tenantName.replace(/\s/g, "-")}`;
     link.click();
+  };
+
+  const handleOpenRentAdjustmentDialog = (lease: Lease) => {
+    setRentAdjustmentLease(lease);
+    const currentRent = getMonthlyRentForDate(lease, new Date());
+    setRentAdjustmentData({
+      effectiveDate: null,
+      newMonthlyRent: currentRent,
+      reason: "",
+      notes: "",
+    });
+    setRentAdjustmentDialogOpen(true);
+  };
+
+  const handleSaveRentAdjustment = async () => {
+    if (!rentAdjustmentLease) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const effectiveDateIso = toISOString(rentAdjustmentData.effectiveDate);
+      if (!effectiveDateIso) {
+        setError("Fecha efectiva inválida");
+        setLoading(false);
+        return;
+      }
+
+      const newAdjustment = {
+        effectiveDate: effectiveDateIso,
+        newMonthlyRent: rentAdjustmentData.newMonthlyRent,
+        reason: rentAdjustmentData.reason,
+        notes: rentAdjustmentData.notes,
+      };
+
+      const updatedAdjustments = [
+        ...(rentAdjustmentLease.rentAdjustments || []),
+        newAdjustment,
+      ];
+
+      await updateLease(rentAdjustmentLease.id, {
+        rentAdjustments: updatedAdjustments,
+      });
+
+      setRentAdjustmentDialogOpen(false);
+      loadLeases();
+      onSave();
+    } catch (err) {
+      setError("Error al guardar el ajuste de renta. Por favor, inténtalo de nuevo.");
+      console.error("Error saving rent adjustment:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -439,6 +506,18 @@ export function PropertyLeaseTab({
                           </IconButton>
                         </Tooltip>
                       )}
+                      <Tooltip title="Añadir ajuste de renta">
+                        <IconButton
+                          size="small"
+                          color="success"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenRentAdjustmentDialog(activeUnitLease);
+                          }}
+                        >
+                          <TrendingUpIcon />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Editar">
                         <IconButton
                           size="small"
@@ -452,6 +531,147 @@ export function PropertyLeaseTab({
                   </Card>
                 </Grid>
               </Grid>
+
+              {/* Historial de Ajustes de Renta */}
+              {activeUnitLease?.rentAdjustments && activeUnitLease.rentAdjustments.length > 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                    <HistoryIcon color="primary" />
+                    <Typography variant="h6">
+                      Historial de Ajustes de Renta
+                    </Typography>
+                  </Box>
+                  <Card>
+                    <CardContent>
+                      <Stack spacing={2}>
+                        {/* Renta inicial */}
+                        <Box
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            pb: 2,
+                            borderBottom: "1px solid",
+                            borderColor: "divider",
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">
+                              Renta inicial
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatDate(activeUnitLease.startDate)}
+                            </Typography>
+                          </Box>
+                          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                            {formatCurrency(activeUnitLease.monthlyRent)}
+                          </Typography>
+                        </Box>
+
+                        {/* Ajustes ordenados por fecha */}
+                        {[...activeUnitLease.rentAdjustments]
+                          .sort((a, b) =>
+                            new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime()
+                          )
+                          .map((adjustment, index) => {
+                            const prevRent = index === 0
+                              ? activeUnitLease.monthlyRent
+                              : activeUnitLease.rentAdjustments![index - 1].newMonthlyRent;
+                            const difference = adjustment.newMonthlyRent - prevRent;
+                            const percentChange = (difference / prevRent) * 100;
+                            const isIncrease = difference > 0;
+
+                            return (
+                              <Box
+                                key={index}
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  pb: 2,
+                                  borderBottom: index < activeUnitLease.rentAdjustments!.length - 1
+                                    ? "1px solid"
+                                    : "none",
+                                  borderColor: "divider",
+                                }}
+                              >
+                                <Box sx={{ flex: 1 }}>
+                                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                                    {isIncrease ? (
+                                      <TrendingUpIcon sx={{ fontSize: 20, color: "success.main" }} />
+                                    ) : (
+                                      <TrendingDownIcon sx={{ fontSize: 20, color: "error.main" }} />
+                                    )}
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {formatDate(adjustment.effectiveDate)}
+                                    </Typography>
+                                  </Box>
+                                  {adjustment.reason && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      {adjustment.reason}
+                                    </Typography>
+                                  )}
+                                  {adjustment.notes && (
+                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ fontStyle: "italic" }}>
+                                      {adjustment.notes}
+                                    </Typography>
+                                  )}
+                                </Box>
+                                <Box sx={{ textAlign: "right" }}>
+                                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                    {formatCurrency(adjustment.newMonthlyRent)}
+                                  </Typography>
+                                  <Box
+                                    sx={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 0.5,
+                                      px: 1,
+                                      py: 0.25,
+                                      borderRadius: 1,
+                                      bgcolor: isIncrease
+                                        ? "rgba(46, 125, 50, 0.08)"
+                                        : "rgba(211, 47, 47, 0.08)",
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        fontWeight: 600,
+                                        color: isIncrease ? "success.dark" : "error.dark",
+                                      }}
+                                    >
+                                      {isIncrease ? "+" : ""}
+                                      {formatCurrency(Math.abs(difference))}
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        fontWeight: 500,
+                                        color: isIncrease ? "success.main" : "error.main",
+                                        fontSize: "0.7rem",
+                                      }}
+                                    >
+                                      ({isIncrease ? "+" : ""}
+                                      {percentChange.toFixed(2)}%)
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              </Box>
+                            );
+                          })}
+
+                        {/* Renta actual */}
+                        <Alert severity="info" sx={{ mt: 1 }}>
+                          <Typography variant="body2">
+                            <strong>Renta actual:</strong> {formatCurrency(getMonthlyRentForDate(activeUnitLease, new Date()))}
+                          </Typography>
+                        </Alert>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Box>
+              )}
             </>
           ) : leases.length === 0 ? (
             <Alert severity="info">
@@ -824,6 +1044,18 @@ export function PropertyLeaseTab({
                               </IconButton>
                             </Tooltip>
                           )}
+                          <Tooltip title="Añadir ajuste de renta">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenRentAdjustmentDialog(activeLease);
+                              }}
+                            >
+                              <TrendingUpIcon />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="Editar">
                             <IconButton
                               size="small"
@@ -837,6 +1069,147 @@ export function PropertyLeaseTab({
                       </Card>
                     </Grid>
                   </Grid>
+
+                  {/* Historial de Ajustes de Renta - Habitación */}
+                  {activeLease?.rentAdjustments && activeLease.rentAdjustments.length > 0 && (
+                    <Box sx={{ mt: 3 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+                        <HistoryIcon color="primary" />
+                        <Typography variant="h6">
+                          Historial de Ajustes de Renta
+                        </Typography>
+                      </Box>
+                      <Card>
+                        <CardContent>
+                          <Stack spacing={2}>
+                            {/* Renta inicial */}
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                pb: 2,
+                                borderBottom: "1px solid",
+                                borderColor: "divider",
+                              }}
+                            >
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  Renta inicial
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatDate(activeLease.startDate)}
+                                </Typography>
+                              </Box>
+                              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                {formatCurrency(activeLease.monthlyRent)}
+                              </Typography>
+                            </Box>
+
+                            {/* Ajustes ordenados por fecha */}
+                            {[...activeLease.rentAdjustments]
+                              .sort((a, b) =>
+                                new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime()
+                              )
+                              .map((adjustment, index) => {
+                                const prevRent = index === 0
+                                  ? activeLease.monthlyRent
+                                  : activeLease.rentAdjustments![index - 1].newMonthlyRent;
+                                const difference = adjustment.newMonthlyRent - prevRent;
+                                const percentChange = (difference / prevRent) * 100;
+                                const isIncrease = difference > 0;
+
+                                return (
+                                  <Box
+                                    key={index}
+                                    sx={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      pb: 2,
+                                      borderBottom: index < activeLease.rentAdjustments!.length - 1
+                                        ? "1px solid"
+                                        : "none",
+                                      borderColor: "divider",
+                                    }}
+                                  >
+                                    <Box sx={{ flex: 1 }}>
+                                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                                        {isIncrease ? (
+                                          <TrendingUpIcon sx={{ fontSize: 20, color: "success.main" }} />
+                                        ) : (
+                                          <TrendingDownIcon sx={{ fontSize: 20, color: "error.main" }} />
+                                        )}
+                                        <Typography variant="body2" fontWeight={600}>
+                                          {formatDate(adjustment.effectiveDate)}
+                                        </Typography>
+                                      </Box>
+                                      {adjustment.reason && (
+                                        <Typography variant="caption" color="text.secondary" display="block">
+                                          {adjustment.reason}
+                                        </Typography>
+                                      )}
+                                      {adjustment.notes && (
+                                        <Typography variant="caption" color="text.secondary" display="block" sx={{ fontStyle: "italic" }}>
+                                          {adjustment.notes}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                    <Box sx={{ textAlign: "right" }}>
+                                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                        {formatCurrency(adjustment.newMonthlyRent)}
+                                      </Typography>
+                                      <Box
+                                        sx={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 0.5,
+                                          px: 1,
+                                          py: 0.25,
+                                          borderRadius: 1,
+                                          bgcolor: isIncrease
+                                            ? "rgba(46, 125, 50, 0.08)"
+                                            : "rgba(211, 47, 47, 0.08)",
+                                        }}
+                                      >
+                                        <Typography
+                                          variant="caption"
+                                          sx={{
+                                            fontWeight: 600,
+                                            color: isIncrease ? "success.dark" : "error.dark",
+                                          }}
+                                        >
+                                          {isIncrease ? "+" : ""}
+                                          {formatCurrency(Math.abs(difference))}
+                                        </Typography>
+                                        <Typography
+                                          variant="caption"
+                                          sx={{
+                                            fontWeight: 500,
+                                            color: isIncrease ? "success.main" : "error.main",
+                                            fontSize: "0.7rem",
+                                          }}
+                                        >
+                                          ({isIncrease ? "+" : ""}
+                                          {percentChange.toFixed(2)}%)
+                                        </Typography>
+                                      </Box>
+                                    </Box>
+                                  </Box>
+                                );
+                              })}
+
+                            {/* Renta actual */}
+                            <Alert severity="info" sx={{ mt: 1 }}>
+                              <Typography variant="body2">
+                                <strong>Renta actual:</strong> {formatCurrency(getMonthlyRentForDate(activeLease, new Date()))}
+                              </Typography>
+                            </Alert>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Box>
+                  )}
                 </>
               ) : (
                 <Alert severity="info" sx={{ mb: 2 }}>
@@ -1386,6 +1759,155 @@ export function PropertyLeaseTab({
             </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Dialog para Añadir Ajuste de Renta */}
+      <Dialog
+        open={rentAdjustmentDialogOpen}
+        onClose={() => setRentAdjustmentDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Añadir Ajuste de Renta</DialogTitle>
+        <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          {rentAdjustmentLease && (
+            <Box sx={{ mb: 2 }}>
+              <Alert severity="info">
+                <Typography variant="body2">
+                  <strong>Renta actual:</strong>{" "}
+                  {formatCurrency(getMonthlyRentForDate(rentAdjustmentLease, new Date()))}
+                </Typography>
+              </Alert>
+            </Box>
+          )}
+
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <DatePicker
+                label="Fecha Efectiva *"
+                value={rentAdjustmentData.effectiveDate}
+                onChange={(newValue) =>
+                  setRentAdjustmentData({
+                    ...rentAdjustmentData,
+                    effectiveDate: newValue,
+                  })
+                }
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    required: true,
+                    helperText: "Fecha a partir de la cual entra en vigor el nuevo precio",
+                  },
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Nueva Renta Mensual (€) *"
+                type="number"
+                value={rentAdjustmentData.newMonthlyRent}
+                onChange={(e) =>
+                  setRentAdjustmentData({
+                    ...rentAdjustmentData,
+                    newMonthlyRent: parseFloat(e.target.value) || 0,
+                  })
+                }
+                inputProps={{ step: 0.01, min: 0 }}
+                required
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Razón del Ajuste"
+                value={rentAdjustmentData.reason}
+                onChange={(e) =>
+                  setRentAdjustmentData({
+                    ...rentAdjustmentData,
+                    reason: e.target.value,
+                  })
+                }
+                placeholder="Ej: IPC 2024 (+3.5%), Renovación contrato, Acuerdo con inquilino"
+                helperText="Motivo del cambio de renta"
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Notas Adicionales"
+                value={rentAdjustmentData.notes}
+                onChange={(e) =>
+                  setRentAdjustmentData({
+                    ...rentAdjustmentData,
+                    notes: e.target.value,
+                  })
+                }
+                multiline
+                rows={2}
+                placeholder="Información adicional sobre el ajuste"
+              />
+            </Grid>
+
+            {rentAdjustmentLease && rentAdjustmentData.newMonthlyRent > 0 && (
+              <Grid item xs={12}>
+                <Alert
+                  severity={
+                    rentAdjustmentData.newMonthlyRent >
+                    getMonthlyRentForDate(rentAdjustmentLease, new Date())
+                      ? "success"
+                      : "warning"
+                  }
+                >
+                  <Typography variant="body2">
+                    <strong>
+                      {rentAdjustmentData.newMonthlyRent >
+                      getMonthlyRentForDate(rentAdjustmentLease, new Date())
+                        ? "Incremento"
+                        : "Reducción"}
+                      :
+                    </strong>{" "}
+                    {(() => {
+                      const currentRent = getMonthlyRentForDate(
+                        rentAdjustmentLease,
+                        new Date()
+                      );
+                      const diff =
+                        rentAdjustmentData.newMonthlyRent - currentRent;
+                      const percentChange = (diff / currentRent) * 100;
+                      return `${diff > 0 ? "+" : ""}${formatCurrency(diff)} (${diff > 0 ? "+" : ""}${percentChange.toFixed(2)}%)`;
+                    })()}
+                  </Typography>
+                </Alert>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={() => setRentAdjustmentDialogOpen(false)}
+            disabled={loading}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSaveRentAdjustment}
+            variant="contained"
+            disabled={loading || !rentAdjustmentData.effectiveDate || !rentAdjustmentData.newMonthlyRent}
+          >
+            {loading ? "Guardando..." : "Guardar Ajuste"}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

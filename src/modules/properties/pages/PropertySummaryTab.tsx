@@ -12,7 +12,7 @@ import { Bar } from "react-chartjs-2";
 import dayjs from "dayjs";
 import { Property, Lease, Loan, RecurringExpense, Room } from "../types";
 import { KPI } from "@/components/KPI";
-import { computeLeveredMetrics, sumClosingCosts } from "../calculations";
+import { computeLeveredMetrics, sumClosingCosts, getMonthlyRentForDate } from "../calculations";
 import { formatPercent, formatCurrency } from "@/utils/format";
 import { getAggregatedRentForMonth } from "../rentalAggregation";
 import { updateProperty } from "../api";
@@ -88,7 +88,7 @@ export function PropertySummaryTab({
     vacancyPctForMetrics = agg.effectiveVacancyPct; // 0..1
   } else if (lease) {
     // Modo vivienda completa (actual)
-    monthlyRentForMetrics = lease.monthlyRent;
+    monthlyRentForMetrics = getMonthlyRentForDate(lease, dayjs());
     vacancyPctForMetrics = lease.vacancyPct || 0;
   }
 
@@ -122,7 +122,7 @@ export function PropertySummaryTab({
           return agg.monthlyNet;
         })()
       : lease
-        ? lease.monthlyRent * (1 - (lease.vacancyPct || 0))
+        ? getMonthlyRentForDate(lease, dayjs()) * (1 - (lease.vacancyPct || 0))
         : 0;
 
   const chartData = Array.from({ length: 12 }, (_, i) => ({

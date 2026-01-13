@@ -27,6 +27,13 @@ export interface Property {
   rentalMode?: RentalMode; // "ENTIRE_UNIT" (por defecto) o "PER_ROOM"
 }
 
+export interface RentAdjustment {
+  effectiveDate: string; // ISO date string - Fecha de entrada en vigor
+  newMonthlyRent: number; // Nueva renta mensual a partir de esta fecha
+  reason?: string; // Razón del ajuste: "IPC 2024 (+3.5%)", "Renovación contrato", etc.
+  notes?: string; // Notas adicionales sobre el ajuste
+}
+
 export interface Lease {
   id: string;
   propertyId: string;
@@ -45,6 +52,7 @@ export interface Lease {
   notes?: string;
   isActive?: boolean; // To mark current active lease
   createdAt?: number; // Timestamp de creación del contrato
+  rentAdjustments?: RentAdjustment[]; // Historial de ajustes de renta durante el contrato
 }
 
 export interface RecurringExpense {

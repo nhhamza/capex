@@ -37,6 +37,7 @@ import {
   computeLeveredMetrics,
   sumClosingCosts,
   buildAmortizationSchedule,
+  getMonthlyRentForDate,
 } from "../calculations";
 import { getAggregatedRentForMonth } from "../rentalAggregation";
 import { formatPercent, formatCurrency } from "@/utils/format";
@@ -234,10 +235,11 @@ export function PropertiesList() {
                 monthlyRentGross = 0;
                 occupancy = 0;
               } else {
+                const currentRent = getMonthlyRentForDate(activeUnitLease, monthDate);
                 monthlyRentNet =
-                  activeUnitLease.monthlyRent *
+                  currentRent *
                   (1 - (activeUnitLease.vacancyPct || 0));
-                monthlyRentGross = activeUnitLease.monthlyRent;
+                monthlyRentGross = currentRent;
                 occupancy = (1 - (activeUnitLease.vacancyPct || 0)) * 100;
               }
             }
@@ -277,11 +279,11 @@ export function PropertiesList() {
 
         if (!cancelled) setRows(enriched);
       } catch (error) {
-        console.error(error);
+        console.error("Error calculating metrics:", error);
         if (!cancelled) {
           setSnackbar({
             open: true,
-            message: "Error al calcular métricas",
+            message: `Error al calcular métricas: ${error instanceof Error ? error.message : 'Error desconocido'}`,
             severity: "error",
           });
           setRows([]);

@@ -9,8 +9,64 @@ import {
   Lease,
   Room,
   AggregatedRentResult,
+  RentAdjustment,
 } from "./types";
 import dayjs, { Dayjs } from "dayjs";
+
+/**
+ * Get the applicable monthly rent for a lease at a specific date
+ * Takes into account rent adjustments over time
+ * @param lease - The lease contract
+ * @param date - The date to get the rent for (Date, Dayjs, or ISO string)
+ * @returns The monthly rent applicable on that date
+ */
+export function getMonthlyRentForDate(
+  lease: Lease,
+  date: Date | Dayjs | string
+): number {
+  // If no adjustments exist, return the base rent
+  if (!lease.rentAdjustments || lease.rentAdjustments.length === 0) {
+    return lease.monthlyRent;
+  }
+
+  const targetDate = dayjs(date);
+
+  // Validate target date
+  if (!targetDate.isValid()) {
+    return lease.monthlyRent;
+  }
+
+  // Find all adjustments that are effective on or before the target date
+  const applicableAdjustments = lease.rentAdjustments
+    .filter((adj) => {
+      // Skip invalid adjustments
+      if (!adj.effectiveDate) {
+        return false;
+      }
+
+      const effectiveDate = dayjs(adj.effectiveDate);
+
+      // Validate the effective date
+      if (!effectiveDate.isValid()) {
+        return false;
+      }
+
+      // Check if effective date is before or same as target date
+      return !effectiveDate.isAfter(targetDate, "day");
+    })
+    .sort((a, b) => {
+      // Sort by effective date descending (most recent first)
+      return dayjs(b.effectiveDate).diff(dayjs(a.effectiveDate));
+    });
+
+  // If there are applicable adjustments, return the most recent one
+  if (applicableAdjustments.length > 0) {
+    return applicableAdjustments[0].newMonthlyRent;
+  }
+
+  // Otherwise, return the base rent
+  return lease.monthlyRent;
+}
 
 /**
  * Calculate monthly payment for French amortization (constant payment)
@@ -294,7 +350,7 @@ export function getAggregatedRentForMonth(
       };
     }
 
-    const monthlyGross = activeLease.monthlyRent;
+    const monthlyGross = getMonthlyRentForDate(activeLease, monthDate);
     const vacancyPct = activeLease.vacancyPct || 0;
     const monthlyNet = monthlyGross * (1 - vacancyPct);
     const effectiveVacancyPct =
@@ -329,13 +385,13 @@ export function getAggregatedRentForMonth(
 
   // Calculate aggregated rent
   const monthlyGross = activeLeases.reduce(
-    (sum, lease) => sum + (lease.monthlyRent || 0),
+    (sum, lease) => sum + getMonthlyRentForDate(lease, monthDate),
     0
   );
 
   const monthlyNet = activeLeases.reduce((sum, lease) => {
     const vacancyPct = lease.vacancyPct || 0;
-    return sum + (lease.monthlyRent || 0) * (1 - vacancyPct);
+    return sum + getMonthlyRentForDate(lease, monthDate) * (1 - vacancyPct);
   }, 0);
 
   const effectiveVacancyPct =

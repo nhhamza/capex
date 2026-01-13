@@ -33,6 +33,7 @@ import {
   RecurringExpense,
   Lease,
 } from "@/modules/properties/types";
+import { getMonthlyRentForDate } from "@/modules/properties/calculations";
 import { exportToExcel, exportToPDF } from "@/modules/expenses/exportUtils";
 import { exportTaxReportToExcel, exportTaxReportToPDF } from "./taxExportUtils";
 import { formatCurrency } from "@/utils/format";
@@ -148,7 +149,8 @@ export function ReportsPage() {
           if (isActiveInMonth) {
             // For tax purposes, use the full monthly rent (no vacancy adjustment)
             // This represents the contracted amount, which is what Hacienda cares about
-            propertyIncome += lease.monthlyRent;
+            // Use getMonthlyRentForDate to get the correct rent for this specific month
+            propertyIncome += getMonthlyRentForDate(lease, monthStart);
           }
         }
       }

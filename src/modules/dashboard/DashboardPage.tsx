@@ -51,6 +51,7 @@ import { Property, Room } from "@/modules/properties/types";
 import {
   computeLeveredMetrics,
   sumClosingCosts,
+  getMonthlyRentForDate,
 } from "@/modules/properties/calculations";
 import { getAggregatedRentForMonth } from "@/modules/properties/rentalAggregation";
 import { formatCurrency } from "@/utils/format";
@@ -266,7 +267,7 @@ export function DashboardPage() {
             monthlyRentForMetrics = aggNow.monthlyGross;
             vacancyPctForMetrics = aggNow.effectiveVacancyPct;
           } else if (lease) {
-            monthlyRentForMetrics = lease.monthlyRent;
+            monthlyRentForMetrics = getMonthlyRentForDate(lease, dayjs());
             vacancyPctForMetrics = lease.vacancyPct || 0;
           }
 
@@ -298,7 +299,12 @@ export function DashboardPage() {
               yearlyRent += agg.monthlyNet;
             }
           } else if (lease) {
-            yearlyRent = lease.monthlyRent * 12 * (1 - (lease.vacancyPct || 0));
+            // Calculate month by month to account for rent adjustments throughout the year
+            for (let month = 0; month < 12; month++) {
+              const monthDate = dayjs().year(currentYear).month(month);
+              const monthlyRent = getMonthlyRentForDate(lease, monthDate);
+              yearlyRent += monthlyRent * (1 - (lease.vacancyPct || 0));
+            }
           }
           annualIncome += yearlyRent;
 
@@ -330,7 +336,7 @@ export function DashboardPage() {
               });
               monthlyRent = agg.monthlyNet;
             } else if (lease) {
-              monthlyRent = lease.monthlyRent * (1 - (lease.vacancyPct || 0));
+              monthlyRent = getMonthlyRentForDate(lease, monthDate) * (1 - (lease.vacancyPct || 0));
             }
 
             const monthlyExpenses =

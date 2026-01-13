@@ -54,6 +54,7 @@ import {
 import {
   computeLeveredMetrics,
   sumClosingCosts,
+  getMonthlyRentForDate,
 } from "@/modules/properties/calculations";
 import { getAggregatedRentForMonth } from "@/modules/properties/rentalAggregation";
 import { Money } from "@/components/Money";
@@ -278,7 +279,7 @@ export function CashflowPage() {
 
           if (activeLease) {
             rentIncome +=
-              activeLease.monthlyRent * (1 - (activeLease.vacancyPct || 0));
+              getMonthlyRentForDate(activeLease, monthDate) * (1 - (activeLease.vacancyPct || 0));
           }
         }
 
@@ -357,7 +358,7 @@ export function CashflowPage() {
                 return startsOnOrBefore && endsOnOrAfter;
               });
               if (activeLease) {
-                monthlyRentForMetrics = activeLease.monthlyRent;
+                monthlyRentForMetrics = getMonthlyRentForDate(activeLease, monthDate);
                 vacancyPctForMetrics = activeLease.vacancyPct || 0;
               }
             }
@@ -444,8 +445,14 @@ export function CashflowPage() {
             rentIncome += agg.monthlyGross;
           }
         } else {
-          rentIncome +=
-            activeLease.monthlyRent * 12 * (1 - (activeLease.vacancyPct || 0));
+          // Calculate month by month to account for rent adjustments throughout the year
+          for (let month = 1; month <= 12; month++) {
+            const monthDate = dayjs(
+              `${year}-${month.toString().padStart(2, "0")}-01`
+            );
+            const monthlyRent = getMonthlyRentForDate(activeLease, monthDate);
+            rentIncome += monthlyRent * (1 - (activeLease.vacancyPct || 0));
+          }
         }
 
         // Recurring expenses
@@ -497,7 +504,15 @@ export function CashflowPage() {
             avgMonthlyRent = totalGross / 12;
             avgVacancyPct = totalVacancyPct / 12;
           } else {
-            avgMonthlyRent = activeLease.monthlyRent;
+            // Calculate average rent across all months to account for adjustments
+            let totalRent = 0;
+            for (let month = 1; month <= 12; month++) {
+              const monthDate = dayjs(
+                `${year}-${month.toString().padStart(2, "0")}-01`
+              );
+              totalRent += getMonthlyRentForDate(activeLease, monthDate);
+            }
+            avgMonthlyRent = totalRent / 12;
             avgVacancyPct = activeLease.vacancyPct || 0;
           }
 

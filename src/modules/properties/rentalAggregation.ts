@@ -1,6 +1,7 @@
 // src/modules/properties/rentalAggregation.ts
 import dayjs, { Dayjs } from "dayjs";
 import { Property, Lease, Room } from "./types";
+import { getMonthlyRentForDate } from "./calculations";
 
 export interface AggregatedRentResult {
   monthlyGross: number; // suma de rentas brutas (sin vacancia)
@@ -58,7 +59,7 @@ export function getAggregatedRentForMonth(
       };
     }
 
-    const gross = activeLease.monthlyRent || 0;
+    const gross = getMonthlyRentForDate(activeLease, monthDate);
     const net = gross * (1 - (activeLease.vacancyPct || 0));
     const effVac = gross > 0 ? 1 - net / gross : 0;
 
@@ -82,7 +83,7 @@ export function getAggregatedRentForMonth(
   const occupiedRoomIds = new Set<string>();
 
   for (const lease of roomLeases) {
-    const gross = lease.monthlyRent || 0;
+    const gross = getMonthlyRentForDate(lease, monthDate);
     const net = gross * (1 - (lease.vacancyPct || 0));
 
     monthlyGross += gross;
