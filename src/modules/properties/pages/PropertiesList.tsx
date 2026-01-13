@@ -23,6 +23,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import HomeIcon from "@mui/icons-material/Home";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 
 import { useAuth } from "@/auth/authContext";
 import { useOrgBilling } from "@/hooks/useOrgBilling";
@@ -472,6 +473,7 @@ export function PropertiesList() {
                         variant="caption"
                         color="text.secondary"
                         display="block"
+                        sx={{ mb: 0.5 }}
                       >
                         Valor Actual
                       </Typography>
@@ -479,9 +481,77 @@ export function PropertiesList() {
                         variant="body1"
                         fontWeight={600}
                         color="secondary.main"
+                        sx={{ mb: 0.5 }}
                       >
                         {formatCurrency(row.currentValue)}
                       </Typography>
+                      {(() => {
+                        const difference = row.currentValue - row.purchasePrice;
+                        const percentChange = (difference / row.purchasePrice) * 100;
+                        const isPositive = difference >= 0;
+
+                        if (difference === 0) return null;
+
+                        return (
+                          <Box
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 0.5,
+                              px: 1,
+                              py: 0.5,
+                              borderRadius: 1,
+                              bgcolor: isPositive
+                                ? "rgba(46, 125, 50, 0.08)"
+                                : "rgba(211, 47, 47, 0.08)",
+                              border: "1px solid",
+                              borderColor: isPositive
+                                ? "rgba(46, 125, 50, 0.2)"
+                                : "rgba(211, 47, 47, 0.2)",
+                            }}
+                          >
+                            {isPositive ? (
+                              <TrendingUpIcon
+                                sx={{
+                                  fontSize: 16,
+                                  color: "success.main",
+                                  fontWeight: 700
+                                }}
+                              />
+                            ) : (
+                              <TrendingDownIcon
+                                sx={{
+                                  fontSize: 16,
+                                  color: "error.main",
+                                  fontWeight: 700
+                                }}
+                              />
+                            )}
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 700,
+                                color: isPositive ? "success.dark" : "error.dark",
+                                letterSpacing: "0.02em",
+                              }}
+                            >
+                              {isPositive ? "+" : ""}
+                              {formatCurrency(Math.abs(difference))}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                fontWeight: 600,
+                                color: isPositive ? "success.main" : "error.main",
+                                fontSize: "0.7rem",
+                              }}
+                            >
+                              ({isPositive ? "+" : ""}
+                              {percentChange.toFixed(2)}%)
+                            </Typography>
+                          </Box>
+                        );
+                      })()}
                     </Box>
                   </Box>
 

@@ -352,7 +352,8 @@ export function DashboardPage() {
         // Calculate flujo neto for each month
         Object.keys(monthlyData).forEach((month) => {
           const m = parseInt(month);
-          monthlyData[m].flujoNeto = monthlyData[m].ingresos - monthlyData[m].gastos;
+          monthlyData[m].flujoNeto =
+            monthlyData[m].ingresos - monthlyData[m].gastos;
         });
 
         setTotalCFAF(cfaf);
@@ -407,10 +408,13 @@ export function DashboardPage() {
 
   // Calculate derived metrics
   const noi = totalIncome - totalRecurringExpenses - totalOneOffExpenses;
-  const rentabilidadBruta = totalCurrentValue > 0 ? (totalIncome / totalCurrentValue) * 100 : 0;
-  const rentabilidadNeta = totalCurrentValue > 0 ? (noi / totalCurrentValue) * 100 : 0;
+  const rentabilidadBruta =
+    totalCurrentValue > 0 ? (totalIncome / totalCurrentValue) * 100 : 0;
+  const rentabilidadNeta =
+    totalCurrentValue > 0 ? (noi / totalCurrentValue) * 100 : 0;
   const plusvalia = totalCurrentValue - totalPurchasePrice;
-  const plusvaliaPercent = totalPurchasePrice > 0 ? (plusvalia / totalPurchasePrice) * 100 : 0;
+  const plusvaliaPercent =
+    totalPurchasePrice > 0 ? (plusvalia / totalPurchasePrice) * 100 : 0;
 
   return (
     <Box>
@@ -451,7 +455,14 @@ export function DashboardPage() {
 
       {/* Loading State */}
       {loading && (
-        <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 8 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            py: 8,
+          }}
+        >
           <CircularProgress size={48} />
         </Box>
       )}
@@ -463,8 +474,8 @@ export function DashboardPage() {
             ¡Bienvenido a tu Panel de Inversión!
           </Typography>
           <Typography variant="body1" color="text.secondary" paragraph>
-            Comienza añadiendo tu primera vivienda para ver aquí todas las métricas
-            de rentabilidad y rendimiento de tu portfolio inmobiliario.
+            Comienza añadiendo tu primera vivienda para ver aquí todas las
+            métricas de rentabilidad y rendimiento de tu portfolio inmobiliario.
           </Typography>
           <Button
             variant="contained"
@@ -479,553 +490,712 @@ export function DashboardPage() {
 
       {/* Hero Section - Métricas Principales */}
       {properties.length > 0 && (
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.9)} 0%, ${alpha(theme.palette.success.dark, 0.9)} 100%)`,
-              color: "white",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            <Box
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
               sx={{
-                position: "absolute",
-                top: -20,
-                right: -20,
-                width: 120,
-                height: 120,
-                borderRadius: "50%",
-                background: alpha("#fff", 0.1),
+                background: `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.9)} 0%, ${alpha(theme.palette.success.dark, 0.9)} 100%)`,
+                color: "white",
+                position: "relative",
+                overflow: "hidden",
               }}
-            />
-            <CardContent sx={{ position: "relative", zIndex: 1 }}>
-              <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                <PaidIcon sx={{ fontSize: 24, mr: 1 }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, opacity: 0.9 }}>
-                  VALOR DEL PORTFOLIO
-                </Typography>
-              </Box>
-              {loading ? (
-                <Skeleton variant="text" width={140} height={40} sx={{ bgcolor: alpha("#fff", 0.2) }} />
-              ) : (
-                <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                  {formatCurrency(totalCurrentValue)}
-                </Typography>
-              )}
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                <Chip
-                  size="small"
-                  label={`${properties.length} ${properties.length === 1 ? "propiedad" : "propiedades"}`}
-                  sx={{
-                    bgcolor: alpha("#fff", 0.2),
-                    color: "white",
-                    fontWeight: 600,
-                    fontSize: "0.7rem",
-                  }}
-                />
-                {plusvalia !== 0 && (
-                  <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 600 }}>
-                    {plusvaliaPercent > 0 ? "+" : ""}{plusvaliaPercent.toFixed(1)}% plusvalía
+            >
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: -20,
+                  right: -20,
+                  width: 120,
+                  height: 120,
+                  borderRadius: "50%",
+                  background: alpha("#fff", 0.1),
+                }}
+              />
+              <CardContent sx={{ position: "relative", zIndex: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+                  <PaidIcon sx={{ fontSize: 22, mr: 1 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 600, opacity: 0.9 }}
+                  >
+                    VALOR DEL PORTFOLIO
+                  </Typography>
+                </Box>
+                {loading ? (
+                  <Skeleton
+                    variant="text"
+                    width={140}
+                    height={40}
+                    sx={{ bgcolor: alpha("#fff", 0.2) }}
+                  />
+                ) : (
+                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
+                    {formatCurrency(totalCurrentValue)}
                   </Typography>
                 )}
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Chip
+                    size="small"
+                    label={`${properties.length} ${properties.length === 1 ? "propiedad" : "propiedades"}`}
+                    sx={{
+                      bgcolor: alpha("#fff", 0.2),
+                      color: "white",
+                      fontWeight: 600,
+                      fontSize: "0.7rem",
+                    }}
+                  />
+                  {plusvalia !== 0 && (
+                    <Typography
+                      variant="caption"
+                      sx={{ opacity: 0.9, fontWeight: 600 }}
+                    >
+                      {plusvaliaPercent > 0 ? "+" : ""}
+                      {plusvaliaPercent.toFixed(1)}% plusvalía
+                    </Typography>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha("#2196f3", 0.9)} 0%, ${alpha("#1976d2", 0.9)} 100%)`,
-              color: "white",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            <Box
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
               sx={{
-                position: "absolute",
-                top: -20,
-                right: -20,
-                width: 120,
-                height: 120,
-                borderRadius: "50%",
-                background: alpha("#fff", 0.1),
+                background: `linear-gradient(135deg, ${alpha("#2196f3", 0.9)} 0%, ${alpha("#1976d2", 0.9)} 100%)`,
+                color: "white",
+                position: "relative",
+                overflow: "hidden",
               }}
-            />
-            <CardContent sx={{ position: "relative", zIndex: 1 }}>
-              <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                <TrendingUpIcon sx={{ fontSize: 24, mr: 1 }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, opacity: 0.9 }}>
-                  INGRESOS ANUALES
+            >
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: -20,
+                  right: -20,
+                  width: 120,
+                  height: 120,
+                  borderRadius: "50%",
+                  background: alpha("#fff", 0.1),
+                }}
+              />
+              <CardContent sx={{ position: "relative", zIndex: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+                  <TrendingUpIcon sx={{ fontSize: 24, mr: 1 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 600, opacity: 0.9 }}
+                  >
+                    INGRESOS ANUALES
+                  </Typography>
+                </Box>
+                {loading ? (
+                  <Skeleton
+                    variant="text"
+                    width={140}
+                    height={40}
+                    sx={{ bgcolor: alpha("#fff", 0.2) }}
+                  />
+                ) : (
+                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
+                    {formatCurrency(totalIncome)}
+                  </Typography>
+                )}
+                <Typography
+                  variant="caption"
+                  sx={{ opacity: 0.9, fontWeight: 600 }}
+                >
+                  {formatCurrency(totalIncome / 12)} mensuales
                 </Typography>
-              </Box>
-              {loading ? (
-                <Skeleton variant="text" width={140} height={40} sx={{ bgcolor: alpha("#fff", 0.2) }} />
-              ) : (
-                <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                  {formatCurrency(totalIncome)}
-                </Typography>
-              )}
-              <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 600 }}>
-                {formatCurrency(totalIncome / 12)} mensuales
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha("#ff9800", 0.9)} 0%, ${alpha("#f57c00", 0.9)} 100%)`,
-              color: "white",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            <Box
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
               sx={{
-                position: "absolute",
-                top: -20,
-                right: -20,
-                width: 120,
-                height: 120,
-                borderRadius: "50%",
-                background: alpha("#fff", 0.1),
+                background: `linear-gradient(135deg, ${alpha("#ff9800", 0.9)} 0%, ${alpha("#f57c00", 0.9)} 100%)`,
+                color: "white",
+                position: "relative",
+                overflow: "hidden",
               }}
-            />
-            <CardContent sx={{ position: "relative", zIndex: 1 }}>
-              <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                <ShowChartIcon sx={{ fontSize: 24, mr: 1 }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, opacity: 0.9 }}>
-                  FLUJO DE CAJA ANUAL
+            >
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: -20,
+                  right: -20,
+                  width: 120,
+                  height: 120,
+                  borderRadius: "50%",
+                  background: alpha("#fff", 0.1),
+                }}
+              />
+              <CardContent sx={{ position: "relative", zIndex: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+                  <ShowChartIcon sx={{ fontSize: 24, mr: 1 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 600, opacity: 0.9 }}
+                  >
+                    FLUJO DE CAJA ANUAL
+                  </Typography>
+                </Box>
+                {loading ? (
+                  <Skeleton
+                    variant="text"
+                    width={140}
+                    height={40}
+                    sx={{ bgcolor: alpha("#fff", 0.2) }}
+                  />
+                ) : (
+                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
+                    {formatCurrency(totalCFAF)}
+                  </Typography>
+                )}
+                <Typography
+                  variant="caption"
+                  sx={{ opacity: 0.9, fontWeight: 600 }}
+                >
+                  {formatCurrency(totalCFAF / 12)} mensuales
                 </Typography>
-              </Box>
-              {loading ? (
-                <Skeleton variant="text" width={140} height={40} sx={{ bgcolor: alpha("#fff", 0.2) }} />
-              ) : (
-                <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                  {formatCurrency(totalCFAF)}
-                </Typography>
-              )}
-              <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 600 }}>
-                {formatCurrency(totalCFAF / 12)} mensuales
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha("#9c27b0", 0.9)} 0%, ${alpha("#7b1fa2", 0.9)} 100%)`,
-              color: "white",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            <Box
+          <Grid item xs={12} sm={6} md={3}>
+            <Card
               sx={{
-                position: "absolute",
-                top: -20,
-                right: -20,
-                width: 120,
-                height: 120,
-                borderRadius: "50%",
-                background: alpha("#fff", 0.1),
+                background: `linear-gradient(135deg, ${alpha("#9c27b0", 0.9)} 0%, ${alpha("#7b1fa2", 0.9)} 100%)`,
+                color: "white",
+                position: "relative",
+                overflow: "hidden",
               }}
-            />
-            <CardContent sx={{ position: "relative", zIndex: 1 }}>
-              <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                <AccountBalanceWalletIcon sx={{ fontSize: 24, mr: 1 }} />
-                <Typography variant="caption" sx={{ fontWeight: 600, opacity: 0.9 }}>
-                  BENEFICIO NETO (NOI)
+            >
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: -20,
+                  right: -20,
+                  width: 120,
+                  height: 120,
+                  borderRadius: "50%",
+                  background: alpha("#fff", 0.1),
+                }}
+              />
+              <CardContent sx={{ position: "relative", zIndex: 1 }}>
+                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+                  <AccountBalanceWalletIcon sx={{ fontSize: 24, mr: 1 }} />
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 600, opacity: 0.9 }}
+                  >
+                    BENEFICIO NETO (NOI)
+                  </Typography>
+                </Box>
+                {loading ? (
+                  <Skeleton
+                    variant="text"
+                    width={140}
+                    height={40}
+                    sx={{ bgcolor: alpha("#fff", 0.2) }}
+                  />
+                ) : (
+                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
+                    {formatCurrency(noi)}
+                  </Typography>
+                )}
+                <Typography
+                  variant="caption"
+                  sx={{ opacity: 0.9, fontWeight: 600 }}
+                >
+                  {rentabilidadNeta.toFixed(2)}% rentabilidad neta
                 </Typography>
-              </Box>
-              {loading ? (
-                <Skeleton variant="text" width={140} height={40} sx={{ bgcolor: alpha("#fff", 0.2) }} />
-              ) : (
-                <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                  {formatCurrency(noi)}
-                </Typography>
-              )}
-              <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 600 }}>
-                {rentabilidadNeta.toFixed(2)}% rentabilidad neta
-              </Typography>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-      </Grid>
       )}
 
       {/* Métricas de Rentabilidad */}
       {properties.length > 0 && (
-      <Paper sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
-          Métricas de Rentabilidad
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Tasa de Capitalización
-              </Typography>
-              {loading ? (
-                <Skeleton variant="text" width={100} height={40} />
-              ) : (
-                <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: "#2196f3" }}>
-                    {avgCapRate.toFixed(2)}%
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Cap Rate
-                  </Typography>
-                </Box>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                Retorno sobre la inversión inicial
-              </Typography>
-            </Box>
-          </Grid>
+        <Paper sx={{ p: 3, mb: 4 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+            Métricas de Rentabilidad
+          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Box>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600 }}
+                >
+                  Tasa de Capitalización
+                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={100} height={40} />
+                ) : (
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+                    <Typography
+                      variant="h4"
+                      sx={{ fontWeight: 700, color: "#2196f3" }}
+                    >
+                      {avgCapRate.toFixed(2)}%
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Cap Rate
+                    </Typography>
+                  </Box>
+                )}
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mt: 0.5 }}
+                >
+                  Retorno sobre la inversión inicial
+                </Typography>
+              </Box>
+            </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Retorno sobre Capital
-              </Typography>
-              {loading ? (
-                <Skeleton variant="text" width={100} height={40} />
-              ) : (
-                <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: "#00bcd4" }}>
-                    {avgCashOnCash.toFixed(2)}%
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    CoC
-                  </Typography>
-                </Box>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                Rendimiento del capital invertido
-              </Typography>
-            </Box>
-          </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Box>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600 }}
+                >
+                  Retorno sobre Capital
+                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={100} height={40} />
+                ) : (
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+                    <Typography
+                      variant="h4"
+                      sx={{ fontWeight: 700, color: "#00bcd4" }}
+                    >
+                      {avgCashOnCash.toFixed(2)}%
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      CoC
+                    </Typography>
+                  </Box>
+                )}
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mt: 0.5 }}
+                >
+                  Rendimiento del capital invertido
+                </Typography>
+              </Box>
+            </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Rentabilidad Bruta
-              </Typography>
-              {loading ? (
-                <Skeleton variant="text" width={100} height={40} />
-              ) : (
-                <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: "#4caf50" }}>
-                    {rentabilidadBruta.toFixed(2)}%
-                  </Typography>
-                </Box>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                Ingresos / Valor actual
-              </Typography>
-            </Box>
-          </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Box>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600 }}
+                >
+                  Rentabilidad Bruta
+                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={100} height={40} />
+                ) : (
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+                    <Typography
+                      variant="h4"
+                      sx={{ fontWeight: 700, color: "#4caf50" }}
+                    >
+                      {rentabilidadBruta.toFixed(2)}%
+                    </Typography>
+                  </Box>
+                )}
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mt: 0.5 }}
+                >
+                  Ingresos / Valor actual
+                </Typography>
+              </Box>
+            </Grid>
 
-          <Grid item xs={12} sm={6} md={3}>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Ratio de Endeudamiento
-              </Typography>
-              {loading ? (
-                <Skeleton variant="text" width={100} height={40} />
-              ) : (
-                <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                  <Typography
-                    variant="h4"
-                    sx={{
-                      fontWeight: 700,
-                      color:
-                        portfolioDebtRatio < 50
-                          ? "#4caf50"
-                          : portfolioDebtRatio < 70
-                            ? "#ff9800"
-                            : "#f44336",
-                    }}
-                  >
-                    {portfolioDebtRatio.toFixed(1)}%
-                  </Typography>
-                </Box>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
-                {formatCurrency(totalPrincipal)} deuda total
-              </Typography>
-            </Box>
+            <Grid item xs={12} sm={6} md={3}>
+              <Box>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600 }}
+                >
+                  Ratio de Endeudamiento
+                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={100} height={40} />
+                ) : (
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+                    <Typography
+                      variant="h4"
+                      sx={{
+                        fontWeight: 700,
+                        color:
+                          portfolioDebtRatio < 50
+                            ? "#4caf50"
+                            : portfolioDebtRatio < 70
+                              ? "#ff9800"
+                              : "#f44336",
+                      }}
+                    >
+                      {portfolioDebtRatio.toFixed(1)}%
+                    </Typography>
+                  </Box>
+                )}
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mt: 0.5 }}
+                >
+                  {formatCurrency(totalPrincipal)} deuda total
+                </Typography>
+              </Box>
+            </Grid>
           </Grid>
-        </Grid>
-      </Paper>
+        </Paper>
       )}
 
       {/* Gráficos */}
       {properties.length > 0 && (
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={8}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
-              Evolución Mensual del Flujo de Caja
-            </Typography>
-
-            <Box sx={{ height: 350 }}>
-              {loading ? (
-                <Box
-                  sx={{
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <CircularProgress />
-                </Box>
-              ) : (
-                <Line
-                  data={{
-                    labels: chartData.map((d) => d.month),
-                    datasets: [
-                      {
-                        label: "Ingresos",
-                        data: chartData.map((d) => d.ingresos),
-                        borderColor: "#4caf50",
-                        backgroundColor: "rgba(76, 175, 80, 0.1)",
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 5,
-                        pointHoverRadius: 7,
-                        pointBackgroundColor: "#4caf50",
-                      },
-                      {
-                        label: "Gastos",
-                        data: chartData.map((d) => d.gastos),
-                        borderColor: "#ff9800",
-                        backgroundColor: "rgba(255, 152, 0, 0.1)",
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 5,
-                        pointHoverRadius: 7,
-                        pointBackgroundColor: "#ff9800",
-                      },
-                      {
-                        label: "Flujo Neto",
-                        data: chartData.map((d) => d.flujoNeto),
-                        borderColor: "#2196f3",
-                        backgroundColor: "rgba(33, 150, 243, 0.1)",
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 5,
-                        pointHoverRadius: 7,
-                        pointBackgroundColor: "#2196f3",
-                      },
-                    ],
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                      mode: "index",
-                      intersect: false,
-                    },
-                    plugins: {
-                      legend: {
-                        display: true,
-                        position: "top",
-                        labels: {
-                          usePointStyle: true,
-                          padding: 20,
-                          font: {
-                            size: 12,
-                            weight: 600,
-                          },
-                        },
-                      },
-                      tooltip: {
-                        enabled: true,
-                        backgroundColor: theme.palette.background.paper,
-                        titleColor: theme.palette.text.primary,
-                        bodyColor: theme.palette.text.secondary,
-                        borderColor: theme.palette.divider,
-                        borderWidth: 1,
-                        padding: 12,
-                        displayColors: true,
-                        callbacks: {
-                          label: (context) => {
-                            return `${context.dataset.label}: ${formatCurrency(
-                              context.parsed.y ?? 0
-                            )}`;
-                          },
-                        },
-                      },
-                    },
-                    scales: {
-                      x: {
-                        grid: {
-                          display: false,
-                        },
-                        ticks: {
-                          color: theme.palette.text.secondary,
-                          font: {
-                            size: 11,
-                          },
-                        },
-                      },
-                      y: {
-                        grid: {
-                          color: alpha(theme.palette.divider, 0.2),
-                        },
-                        ticks: {
-                          color: theme.palette.text.secondary,
-                          callback: (value) => formatCurrency(value as number),
-                          font: {
-                            size: 11,
-                          },
-                        },
-                      },
-                    },
-                  }}
-                />
-              )}
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 3, height: "100%" }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
-              Desglose Financiero
-            </Typography>
-
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                Capital Invertido
+        <Grid container spacing={3}>
+          <Grid item xs={12} lg={8}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+                Evolución Mensual del Flujo de Caja
               </Typography>
-              {loading ? (
-                <Skeleton variant="text" width={160} height={35} />
-              ) : (
-                <Typography variant="h5" sx={{ fontWeight: 700, color: "#2196f3" }}>
-                  {formatCurrency(totalEquity)}
-                </Typography>
-              )}
-            </Box>
 
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              <Box>
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    Ingresos
-                  </Typography>
-                  {loading ? (
-                    <Skeleton variant="text" width={100} />
-                  ) : (
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: "#4caf50" }}>
-                      {formatCurrency(totalIncome)}
-                    </Typography>
-                  )}
-                </Box>
-                <Box
-                  sx={{
-                    height: 8,
-                    bgcolor: alpha("#4caf50", 0.2),
-                    borderRadius: 1,
-                    overflow: "hidden",
-                  }}
-                >
+              <Box sx={{ height: 350 }}>
+                {loading ? (
                   <Box
                     sx={{
                       height: "100%",
-                      width: "100%",
-                      bgcolor: "#4caf50",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <CircularProgress />
+                  </Box>
+                ) : (
+                  <Line
+                    data={{
+                      labels: chartData.map((d) => d.month),
+                      datasets: [
+                        {
+                          label: "Ingresos",
+                          data: chartData.map((d) => d.ingresos),
+                          borderColor: "#4caf50",
+                          backgroundColor: "rgba(76, 175, 80, 0.1)",
+                          fill: true,
+                          tension: 0.4,
+                          borderWidth: 3,
+                          pointRadius: 5,
+                          pointHoverRadius: 7,
+                          pointBackgroundColor: "#4caf50",
+                        },
+                        {
+                          label: "Gastos",
+                          data: chartData.map((d) => d.gastos),
+                          borderColor: "#ff9800",
+                          backgroundColor: "rgba(255, 152, 0, 0.1)",
+                          fill: true,
+                          tension: 0.4,
+                          borderWidth: 3,
+                          pointRadius: 5,
+                          pointHoverRadius: 7,
+                          pointBackgroundColor: "#ff9800",
+                        },
+                        {
+                          label: "Flujo Neto",
+                          data: chartData.map((d) => d.flujoNeto),
+                          borderColor: "#2196f3",
+                          backgroundColor: "rgba(33, 150, 243, 0.1)",
+                          fill: true,
+                          tension: 0.4,
+                          borderWidth: 3,
+                          pointRadius: 5,
+                          pointHoverRadius: 7,
+                          pointBackgroundColor: "#2196f3",
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      interaction: {
+                        mode: "index",
+                        intersect: false,
+                      },
+                      plugins: {
+                        legend: {
+                          display: true,
+                          position: "top",
+                          labels: {
+                            usePointStyle: true,
+                            padding: 20,
+                            font: {
+                              size: 12,
+                              weight: 600,
+                            },
+                          },
+                        },
+                        tooltip: {
+                          enabled: true,
+                          backgroundColor: theme.palette.background.paper,
+                          titleColor: theme.palette.text.primary,
+                          bodyColor: theme.palette.text.secondary,
+                          borderColor: theme.palette.divider,
+                          borderWidth: 1,
+                          padding: 12,
+                          displayColors: true,
+                          callbacks: {
+                            label: (context) => {
+                              return `${context.dataset.label}: ${formatCurrency(
+                                context.parsed.y ?? 0
+                              )}`;
+                            },
+                          },
+                        },
+                      },
+                      scales: {
+                        x: {
+                          grid: {
+                            display: false,
+                          },
+                          ticks: {
+                            color: theme.palette.text.secondary,
+                            font: {
+                              size: 11,
+                            },
+                          },
+                        },
+                        y: {
+                          grid: {
+                            color: alpha(theme.palette.divider, 0.2),
+                          },
+                          ticks: {
+                            color: theme.palette.text.secondary,
+                            callback: (value) =>
+                              formatCurrency(value as number),
+                            font: {
+                              size: 11,
+                            },
+                          },
+                        },
+                      },
                     }}
                   />
-                </Box>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} lg={4}>
+            <Paper sx={{ p: 3, height: "100%" }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+                Desglose Financiero
+              </Typography>
+
+              <Box sx={{ mb: 4 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 600 }}
+                >
+                  Capital Invertido
+                </Typography>
+                {loading ? (
+                  <Skeleton variant="text" width={160} height={35} />
+                ) : (
+                  <Typography
+                    variant="h5"
+                    sx={{ fontWeight: 700, color: "#2196f3" }}
+                  >
+                    {formatCurrency(totalEquity)}
+                  </Typography>
+                )}
               </Box>
 
-              <Box>
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    Gastos Totales
-                  </Typography>
-                  {loading ? (
-                    <Skeleton variant="text" width={100} />
-                  ) : (
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: "#ff9800" }}>
-                      {formatCurrency(totalRecurringExpenses + totalOneOffExpenses)}
-                    </Typography>
-                  )}
-                </Box>
-                <Box
-                  sx={{
-                    height: 8,
-                    bgcolor: alpha("#ff9800", 0.2),
-                    borderRadius: 1,
-                    overflow: "hidden",
-                  }}
-                >
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <Box>
                   <Box
                     sx={{
-                      height: "100%",
-                      width: totalIncome > 0 ? `${((totalRecurringExpenses + totalOneOffExpenses) / totalIncome) * 100}%` : "0%",
-                      bgcolor: "#ff9800",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      mb: 1,
                     }}
-                  />
-                </Box>
-              </Box>
-
-              <Box>
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    Beneficio Neto (NOI)
-                  </Typography>
-                  {loading ? (
-                    <Skeleton variant="text" width={100} />
-                  ) : (
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: "#9c27b0" }}>
-                      {formatCurrency(noi)}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      Ingresos
                     </Typography>
-                  )}
-                </Box>
-                <Box
-                  sx={{
-                    height: 8,
-                    bgcolor: alpha("#9c27b0", 0.2),
-                    borderRadius: 1,
-                    overflow: "hidden",
-                  }}
-                >
+                    {loading ? (
+                      <Skeleton variant="text" width={100} />
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{ fontWeight: 700, color: "#4caf50" }}
+                      >
+                        {formatCurrency(totalIncome)}
+                      </Typography>
+                    )}
+                  </Box>
                   <Box
                     sx={{
-                      height: "100%",
-                      width: totalIncome > 0 ? `${(noi / totalIncome) * 100}%` : "0%",
-                      bgcolor: "#9c27b0",
+                      height: 8,
+                      bgcolor: alpha("#4caf50", 0.2),
+                      borderRadius: 1,
+                      overflow: "hidden",
                     }}
-                  />
+                  >
+                    <Box
+                      sx={{
+                        height: "100%",
+                        width: "100%",
+                        bgcolor: "#4caf50",
+                      }}
+                    />
+                  </Box>
+                </Box>
+
+                <Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      mb: 1,
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      Gastos Totales
+                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={100} />
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{ fontWeight: 700, color: "#ff9800" }}
+                      >
+                        {formatCurrency(
+                          totalRecurringExpenses + totalOneOffExpenses
+                        )}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box
+                    sx={{
+                      height: 8,
+                      bgcolor: alpha("#ff9800", 0.2),
+                      borderRadius: 1,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        height: "100%",
+                        width:
+                          totalIncome > 0
+                            ? `${((totalRecurringExpenses + totalOneOffExpenses) / totalIncome) * 100}%`
+                            : "0%",
+                        bgcolor: "#ff9800",
+                      }}
+                    />
+                  </Box>
+                </Box>
+
+                <Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      mb: 1,
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      Beneficio Neto (NOI)
+                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={100} />
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        sx={{ fontWeight: 700, color: "#9c27b0" }}
+                      >
+                        {formatCurrency(noi)}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Box
+                    sx={{
+                      height: 8,
+                      bgcolor: alpha("#9c27b0", 0.2),
+                      borderRadius: 1,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        height: "100%",
+                        width:
+                          totalIncome > 0
+                            ? `${(noi / totalIncome) * 100}%`
+                            : "0%",
+                        bgcolor: "#9c27b0",
+                      }}
+                    />
+                  </Box>
+                </Box>
+
+                <Box
+                  sx={{
+                    pt: 2,
+                    borderTop: `2px solid ${theme.palette.divider}`,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600 }}
+                  >
+                    Margen de Beneficio
+                  </Typography>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: 700,
+                      color: noi > 0 ? "#4caf50" : "#f44336",
+                    }}
+                  >
+                    {totalIncome > 0
+                      ? ((noi / totalIncome) * 100).toFixed(1)
+                      : "0.0"}
+                    %
+                  </Typography>
                 </Box>
               </Box>
-
-              <Box sx={{ pt: 2, borderTop: `2px solid ${theme.palette.divider}` }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                  Margen de Beneficio
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: noi > 0 ? "#4caf50" : "#f44336" }}>
-                  {totalIncome > 0 ? ((noi / totalIncome) * 100).toFixed(1) : "0.0"}%
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
+            </Paper>
+          </Grid>
         </Grid>
-      </Grid>
       )}
     </Box>
   );
