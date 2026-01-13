@@ -9,7 +9,6 @@ import {
   Lease,
   Room,
   AggregatedRentResult,
-  RentAdjustment,
 } from "./types";
 import dayjs, { Dayjs } from "dayjs";
 
