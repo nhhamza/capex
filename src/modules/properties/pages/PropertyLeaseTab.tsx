@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers";
+import dayjs from "dayjs";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -110,6 +111,7 @@ export function PropertyLeaseTab({
   // Rent adjustment dialog states
   const [rentAdjustmentDialogOpen, setRentAdjustmentDialogOpen] = useState(false);
   const [rentAdjustmentLease, setRentAdjustmentLease] = useState<Lease | null>(null);
+  const [editingAdjustmentIndex, setEditingAdjustmentIndex] = useState<number | null>(null);
   const [rentAdjustmentData, setRentAdjustmentData] = useState({
     effectiveDate: null as any,
     newMonthlyRent: 0,
@@ -228,15 +230,30 @@ export function PropertyLeaseTab({
     link.click();
   };
 
-  const handleOpenRentAdjustmentDialog = (lease: Lease) => {
+  const handleOpenRentAdjustmentDialog = (lease: Lease, editIndex?: number) => {
     setRentAdjustmentLease(lease);
-    const currentRent = getMonthlyRentForDate(lease, new Date());
-    setRentAdjustmentData({
-      effectiveDate: null,
-      newMonthlyRent: currentRent,
-      reason: "",
-      notes: "",
-    });
+    setEditingAdjustmentIndex(editIndex ?? null);
+
+    if (editIndex !== undefined && lease.rentAdjustments?.[editIndex]) {
+      // Editing existing adjustment
+      const adjustment = lease.rentAdjustments[editIndex];
+      setRentAdjustmentData({
+        effectiveDate: dayjs(adjustment.effectiveDate),
+        newMonthlyRent: adjustment.newMonthlyRent,
+        reason: adjustment.reason || "",
+        notes: adjustment.notes || "",
+      });
+    } else {
+      // Creating new adjustment
+      const currentRent = getMonthlyRentForDate(lease, new Date());
+      setRentAdjustmentData({
+        effectiveDate: null,
+        newMonthlyRent: currentRent,
+        reason: "",
+        notes: "",
+      });
+    }
+
     setRentAdjustmentDialogOpen(true);
   };
 
@@ -261,21 +278,56 @@ export function PropertyLeaseTab({
         notes: rentAdjustmentData.notes,
       };
 
-      const updatedAdjustments = [
-        ...(rentAdjustmentLease.rentAdjustments || []),
-        newAdjustment,
-      ];
+      let updatedAdjustments;
+      if (editingAdjustmentIndex !== null) {
+        // Editing existing adjustment
+        updatedAdjustments = [...(rentAdjustmentLease.rentAdjustments || [])];
+        updatedAdjustments[editingAdjustmentIndex] = newAdjustment;
+      } else {
+        // Adding new adjustment
+        updatedAdjustments = [
+          ...(rentAdjustmentLease.rentAdjustments || []),
+          newAdjustment,
+        ];
+      }
 
       await updateLease(rentAdjustmentLease.id, {
         rentAdjustments: updatedAdjustments,
       });
 
       setRentAdjustmentDialogOpen(false);
+      setEditingAdjustmentIndex(null);
       loadLeases();
       onSave();
     } catch (err) {
       setError("Error al guardar el ajuste de renta. Por favor, inténtalo de nuevo.");
       console.error("Error saving rent adjustment:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteRentAdjustment = async (lease: Lease, adjustmentIndex: number) => {
+    if (!window.confirm("¿Estás seguro de que quieres eliminar este ajuste de renta?")) {
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const updatedAdjustments = [...(lease.rentAdjustments || [])];
+      updatedAdjustments.splice(adjustmentIndex, 1);
+
+      await updateLease(lease.id, {
+        rentAdjustments: updatedAdjustments,
+      });
+
+      loadLeases();
+      onSave();
+    } catch (err) {
+      setError("Error al eliminar el ajuste de renta. Por favor, inténtalo de nuevo.");
+      console.error("Error deleting rent adjustment:", err);
     } finally {
       setLoading(false);
     }
@@ -656,6 +708,41 @@ export function PropertyLeaseTab({
                                       {percentChange.toFixed(2)}%)
                                     </Typography>
                                   </Box>
+                                </Box>
+                                <Box sx={{ display: "flex", gap: 0.5, ml: 1 }}>
+                                  <Tooltip title="Editar ajuste">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => {
+                                        const sortedAdjustments = [...activeUnitLease.rentAdjustments!].sort(
+                                          (a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime()
+                                        );
+                                        const originalIndex = activeUnitLease.rentAdjustments!.findIndex(
+                                          (adj) => adj.effectiveDate === sortedAdjustments[index].effectiveDate
+                                        );
+                                        handleOpenRentAdjustmentDialog(activeUnitLease, originalIndex);
+                                      }}
+                                    >
+                                      <EditIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Eliminar ajuste">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => {
+                                        const sortedAdjustments = [...activeUnitLease.rentAdjustments!].sort(
+                                          (a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime()
+                                        );
+                                        const originalIndex = activeUnitLease.rentAdjustments!.findIndex(
+                                          (adj) => adj.effectiveDate === sortedAdjustments[index].effectiveDate
+                                        );
+                                        handleDeleteRentAdjustment(activeUnitLease, originalIndex);
+                                      }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
                                 </Box>
                               </Box>
                             );
@@ -1194,6 +1281,41 @@ export function PropertyLeaseTab({
                                           {percentChange.toFixed(2)}%)
                                         </Typography>
                                       </Box>
+                                    </Box>
+                                    <Box sx={{ display: "flex", gap: 0.5, ml: 1 }}>
+                                      <Tooltip title="Editar ajuste">
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => {
+                                            const sortedAdjustments = [...activeLease.rentAdjustments!].sort(
+                                              (a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime()
+                                            );
+                                            const originalIndex = activeLease.rentAdjustments!.findIndex(
+                                              (adj) => adj.effectiveDate === sortedAdjustments[index].effectiveDate
+                                            );
+                                            handleOpenRentAdjustmentDialog(activeLease, originalIndex);
+                                          }}
+                                        >
+                                          <EditIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Eliminar ajuste">
+                                        <IconButton
+                                          size="small"
+                                          color="error"
+                                          onClick={() => {
+                                            const sortedAdjustments = [...activeLease.rentAdjustments!].sort(
+                                              (a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime()
+                                            );
+                                            const originalIndex = activeLease.rentAdjustments!.findIndex(
+                                              (adj) => adj.effectiveDate === sortedAdjustments[index].effectiveDate
+                                            );
+                                            handleDeleteRentAdjustment(activeLease, originalIndex);
+                                          }}
+                                        >
+                                          <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
                                     </Box>
                                   </Box>
                                 );
@@ -1761,14 +1883,19 @@ export function PropertyLeaseTab({
         </form>
       </Dialog>
 
-      {/* Dialog para Añadir Ajuste de Renta */}
+      {/* Dialog para Añadir/Editar Ajuste de Renta */}
       <Dialog
         open={rentAdjustmentDialogOpen}
-        onClose={() => setRentAdjustmentDialogOpen(false)}
+        onClose={() => {
+          setRentAdjustmentDialogOpen(false);
+          setEditingAdjustmentIndex(null);
+        }}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Añadir Ajuste de Renta</DialogTitle>
+        <DialogTitle>
+          {editingAdjustmentIndex !== null ? "Editar Ajuste de Renta" : "Añadir Ajuste de Renta"}
+        </DialogTitle>
         <DialogContent>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -1895,7 +2022,10 @@ export function PropertyLeaseTab({
 
         <DialogActions>
           <Button
-            onClick={() => setRentAdjustmentDialogOpen(false)}
+            onClick={() => {
+              setRentAdjustmentDialogOpen(false);
+              setEditingAdjustmentIndex(null);
+            }}
             disabled={loading}
           >
             Cancelar
@@ -1905,7 +2035,7 @@ export function PropertyLeaseTab({
             variant="contained"
             disabled={loading || !rentAdjustmentData.effectiveDate || !rentAdjustmentData.newMonthlyRent}
           >
-            {loading ? "Guardando..." : "Guardar Ajuste"}
+            {loading ? "Guardando..." : (editingAdjustmentIndex !== null ? "Actualizar" : "Guardar")}
           </Button>
         </DialogActions>
       </Dialog>
