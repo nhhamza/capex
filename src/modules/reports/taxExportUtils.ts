@@ -3,17 +3,28 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatCurrency } from "@/utils/format";
 
+export interface RoomReport {
+  roomName: string;
+  rentalIncome: number;
+  deductions: number;
+  netIncome: number;
+}
+
+export interface PropertyReport {
+  property: string;
+  rentalIncome: number;
+  deductions: number;
+  netIncome: number;
+  isPerRoom?: boolean;
+  rooms?: RoomReport[];
+}
+
 export interface TaxReportData {
   year: number;
   totalRentalIncome: number;
   totalDeductions: number;
   netTaxableIncome: number;
-  propertyReports: Array<{
-    property: string;
-    rentalIncome: number;
-    deductions: number;
-    netIncome: number;
-  }>;
+  propertyReports: PropertyReport[];
 }
 
 export function exportTaxReportToExcel(taxReportData: TaxReportData) {
@@ -48,25 +59,48 @@ export function exportTaxReportToExcel(taxReportData: TaxReportData) {
   XLSX.utils.book_append_sheet(wb, wsSummary, "Resumen Ingresos");
 
   // Sheet 2: Property Details
-  const detailsData = [
+  const detailsData: any[][] = [
     ["DETALLE POR VIVIENDA"],
     ["Año:", year.toString()],
     [""],
     [
-      "Vivienda",
+      "Vivienda / Habitación",
       "Ingresos por Alquiler",
       "Gastos Deducibles",
       "Rendimiento Neto",
+      "% del Total",
     ],
   ];
 
   propertyReports.forEach((report) => {
+    // Add property row
     detailsData.push([
-      report.property,
+      report.property +
+        (report.isPerRoom ? " (Alquiler por habitaciones)" : ""),
       report.rentalIncome.toFixed(2) + " €",
       report.deductions.toFixed(2) + " €",
       report.netIncome.toFixed(2) + " €",
+      "",
     ]);
+
+    // Add room details if available
+    if (report.rooms && report.rooms.length > 0) {
+      report.rooms.forEach((room) => {
+        const percentage =
+          report.rentalIncome > 0
+            ? ((room.rentalIncome / report.rentalIncome) * 100).toFixed(1)
+            : "0.0";
+        detailsData.push([
+          "    • " + room.roomName,
+          room.rentalIncome.toFixed(2) + " €",
+          room.deductions.toFixed(2) + " €",
+          room.netIncome.toFixed(2) + " €",
+          percentage + "%",
+        ]);
+      });
+      // Add spacing after rooms
+      detailsData.push(["", "", "", "", ""]);
+    }
   });
 
   // Add totals row
@@ -76,10 +110,17 @@ export function exportTaxReportToExcel(taxReportData: TaxReportData) {
     totalRentalIncome.toFixed(2) + " €",
     totalDeductions.toFixed(2) + " €",
     netTaxableIncome.toFixed(2) + " €",
+    "",
   ]);
 
   const wsDetails = XLSX.utils.aoa_to_sheet(detailsData);
-  wsDetails["!cols"] = [{ wch: 30 }, { wch: 20 }, { wch: 20 }, { wch: 20 }];
+  wsDetails["!cols"] = [
+    { wch: 40 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 15 },
+  ];
   XLSX.utils.book_append_sheet(wb, wsDetails, "Detalle por Vivienda");
 
   // Save file
@@ -137,18 +178,44 @@ export function exportTaxReportToPDF(taxReportData: TaxReportData) {
   doc.setFontSize(14);
   doc.text("Detalle por Vivienda", 20, finalY);
 
-  const tableData = propertyReports.map((report) => [
-    report.property,
-    formatCurrency(report.rentalIncome),
-    formatCurrency(report.deductions),
-    formatCurrency(report.netIncome),
-  ]);
+  // Build table data with rooms
+  const tableData: any[] = [];
+
+  propertyReports.forEach((report) => {
+    // Add property row
+    const propertyLabel = report.isPerRoom
+      ? `${report.property} (Alquiler por habitaciones)`
+      : report.property;
+
+    tableData.push([
+      propertyLabel,
+      formatCurrency(report.rentalIncome),
+      formatCurrency(report.deductions),
+      formatCurrency(report.netIncome),
+    ]);
+
+    // Add room rows if available
+    if (report.rooms && report.rooms.length > 0) {
+      report.rooms.forEach((room) => {
+        const percentage =
+          report.rentalIncome > 0
+            ? ((room.rentalIncome / report.rentalIncome) * 100).toFixed(1)
+            : "0.0";
+        tableData.push([
+          `    • ${room.roomName} (${percentage}%)`,
+          formatCurrency(room.rentalIncome),
+          formatCurrency(room.deductions),
+          formatCurrency(room.netIncome),
+        ]);
+      });
+    }
+  });
 
   autoTable(doc, {
     startY: finalY + 10,
     head: [
       [
-        "Vivienda",
+        "Vivienda / Habitación",
         "Ingresos por Alquiler",
         "Gastos Deducibles",
         "Rendimiento Neto",
@@ -159,12 +226,40 @@ export function exportTaxReportToPDF(taxReportData: TaxReportData) {
     styles: { fontSize: 9 },
     headStyles: { fillColor: [41, 128, 185] },
     columnStyles: {
-      0: { cellWidth: 60 },
-      1: { cellWidth: 35, halign: "right" },
-      2: { cellWidth: 35, halign: "right" },
-      3: { cellWidth: 35, halign: "right" },
+      0: { cellWidth: 70 },
+      1: { cellWidth: 30, halign: "right" },
+      2: { cellWidth: 30, halign: "right" },
+      3: { cellWidth: 30, halign: "right" },
     },
-  });
+    willDrawCell: function (data: any) {
+      // Style property rows differently from room rows
+      if (data.section === "body") {
+        const cellText = data.cell.raw as string;
+        const isRoomRow = cellText && cellText.toString().startsWith("    •");
+        const isPropertyWithRooms =
+          cellText && cellText.toString().includes("(Alquiler por habitaciones)");
+
+        if (isPropertyWithRooms) {
+          // Property with rooms - bold and light blue background
+          data.cell.styles.fillColor = [227, 242, 253]; // #e3f2fd
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.textColor = [0, 0, 0];
+        } else if (isRoomRow) {
+          // Room row - lighter background and smaller font
+          data.cell.styles.fillColor = [245, 245, 245]; // #f5f5f5
+          data.cell.styles.fontSize = 8;
+          data.cell.styles.textColor = [100, 100, 100];
+        } else if (
+          !isRoomRow &&
+          data.row.index > 0 &&
+          data.row.index < tableData.length - 1
+        ) {
+          // Regular property row
+          data.cell.styles.fontStyle = "bold";
+        }
+      }
+    },
+  } as any);
 
   // Footer note
   finalY = (doc as any).lastAutoTable.finalY + 15;
