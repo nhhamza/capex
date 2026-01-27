@@ -5,6 +5,8 @@ const baseURL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
 
 export const backendApi = axios.create({
   baseURL,
+  // Increase timeout for Vercel cold starts (15 seconds)
+  timeout: 30000,
 });
 
 backendApi.interceptors.request.use(
@@ -24,9 +26,9 @@ backendApi.interceptors.request.use(
         return config;
       }
 
-      // User is now available, get token
+      // User is now available, get token (force refresh to avoid expired tokens)
       try {
-        const token = await retryUser.getIdToken();
+        const token = await retryUser.getIdToken(true); // true = force refresh
         config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${token}`;
       } catch (err) {
@@ -36,21 +38,40 @@ backendApi.interceptors.request.use(
       return config;
     }
 
-    // User is available, get token
+    // User is available, get token (force refresh if token is stale)
     try {
-      const token = await user.getIdToken();
+      // Check if token is about to expire (within 5 minutes)
+      const tokenResult = await user.getIdTokenResult();
+      const expirationTime = new Date(tokenResult.expirationTime).getTime();
+      const now = Date.now();
+      const fiveMinutes = 5 * 60 * 1000;
+
+      // Force refresh if token expires soon
+      const forceRefresh = expirationTime - now < fiveMinutes;
+
+      const token = await user.getIdToken(forceRefresh);
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     } catch (err) {
       console.error("[backendApi] Failed to get token:", err);
-      // Continue without token - backend will reject if needed
+      // Try one more time without force refresh as fallback
+      try {
+        const token = await user.getIdToken();
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+      } catch (fallbackErr) {
+        console.error(
+          "[backendApi] Fallback token fetch also failed:",
+          fallbackErr,
+        );
+      }
     }
 
     return config;
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 backendApi.interceptors.response.use(
@@ -62,10 +83,10 @@ backendApi.interceptors.response.use(
     ) {
       sessionStorage.setItem(
         "billing_blocked_payload",
-        JSON.stringify(error.response.data)
+        JSON.stringify(error.response.data),
       );
       window.location.assign("/blocked");
     }
     return Promise.reject(error);
-  }
+  },
 );

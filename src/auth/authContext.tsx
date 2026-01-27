@@ -59,9 +59,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  const fetchMe = async (): Promise<UserDoc> => {
-    const me = await backendApi.get("/api/me");
-    return (me.data?.user ?? null) as UserDoc;
+  const fetchMe = async (retryCount = 0): Promise<UserDoc> => {
+    try {
+      const me = await backendApi.get("/api/me");
+      return (me.data?.user ?? null) as UserDoc;
+    } catch (error: any) {
+      // If it's a network error and we haven't retried too many times, retry
+      const isNetworkError = !error?.response || error?.code === 'ERR_NETWORK' || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNABORTED';
+
+      if (isNetworkError && retryCount < 2) {
+        console.log(`[Auth] Network error, retrying (${retryCount + 1}/2)...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Progressive backoff
+        return fetchMe(retryCount + 1);
+      }
+
+      throw error;
+    }
   };
 
   const refreshUserDoc = async () => {
@@ -70,23 +83,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!currentUser && !user) return;
 
     try {
+      // Force token refresh before fetching user doc
+      if (currentUser) {
+        await currentUser.getIdToken(true);
+      }
+
       const me = await fetchMe();
       setUserDoc(me);
       setNeedsOnboarding(false);
     } catch (e: any) {
       const status = e?.response?.status;
       const code = e?.response?.data?.error;
-      const isNetworkError = !e?.response || e?.code === 'ERR_NETWORK' || e?.code === 'ERR_CONNECTION_RESET';
+      const isNetworkError = !e?.response || e?.code === 'ERR_NETWORK' || e?.code === 'ERR_CONNECTION_RESET' || e?.code === 'ETIMEDOUT' || e?.code === 'ECONNABORTED';
 
-      // Network error or invalid token - logout
-      if (isNetworkError || status === 401) {
-        console.error("[Auth] Network error or invalid token in refreshUserDoc. Logging out...", {
+      // Only logout on 401 (invalid token), not on network errors
+      // Network errors could be temporary (cold start, connection issues)
+      if (status === 401) {
+        console.error("[Auth] Invalid token in refreshUserDoc. Logging out...", {
           code: e?.code,
           status,
         });
         await auth.signOut();
         setUserDoc(null);
         setNeedsOnboarding(false);
+        return;
+      }
+
+      // Don't logout on network errors - just log and keep session
+      if (isNetworkError) {
+        console.warn("[Auth] Network error in refreshUserDoc (keeping session):", {
+          code: e?.code,
+          message: e?.message,
+        });
+        // Keep existing userDoc if any
         return;
       }
 
@@ -124,7 +153,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
 
       try {
-        // 1) Try normal /api/me
+        // Force token refresh on login to ensure fresh token
+        await u.getIdToken(true);
+
+        // 1) Try normal /api/me with retries built into fetchMe
         try {
           const me = await fetchMe();
           setUserDoc(me);
@@ -133,49 +165,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e: any) {
           const status = e?.response?.status;
           const code = e?.response?.data?.error;
-          const isNetworkError = !e?.response || e?.code === 'ERR_NETWORK' || e?.code === 'ERR_CONNECTION_RESET';
+          const isNetworkError = !e?.response || e?.code === 'ERR_NETWORK' || e?.code === 'ERR_CONNECTION_RESET' || e?.code === 'ETIMEDOUT' || e?.code === 'ECONNABORTED';
 
-          // Network error (backend down, connection lost, etc) - logout and clear state
+          // Network error on initial login - give it more time (cold start)
           if (isNetworkError) {
-            console.error("[Auth] Network error - backend unreachable. Logging out...", {
+            console.warn("[Auth] Network error on initial login - retrying with longer delay (cold start)...", {
               code: e?.code,
               message: e?.message,
             });
-            // Sign out to clear invalid/stale token
-            await auth.signOut();
-            setUserDoc(null);
-            setNeedsOnboarding(false);
-            return;
-          }
 
-          // 401: token timing issue -> retry a couple times
-          if (status === 401) {
-            for (const delay of [300, 800]) {
-              await sleep(delay);
-              try {
-                const me = await fetchMe();
-                setUserDoc(me);
+            // Wait longer for potential cold start
+            await sleep(3000);
+
+            try {
+              const me = await fetchMe();
+              setUserDoc(me);
+              setNeedsOnboarding(false);
+              return;
+            } catch (retryErr: any) {
+              const retryIsNetworkError = !retryErr?.response || retryErr?.code === 'ERR_NETWORK' || retryErr?.code === 'ETIMEDOUT' || retryErr?.code === 'ECONNABORTED';
+
+              if (retryIsNetworkError) {
+                console.error("[Auth] Network error persists after cold start delay. Keeping session but showing error.", {
+                  code: retryErr?.code,
+                  message: retryErr?.message,
+                });
+                // Don't logout - keep the session and let user retry manually
+                setUserDoc(null);
                 setNeedsOnboarding(false);
                 return;
-              } catch (retryErr: any) {
-                // If retry also fails with network error, logout
-                const retryIsNetworkError = !retryErr?.response || retryErr?.code === 'ERR_NETWORK';
-                if (retryIsNetworkError) {
-                  console.error("[Auth] Network error during retry. Logging out...");
-                  await auth.signOut();
-                  setUserDoc(null);
-                  setNeedsOnboarding(false);
-                  return;
-                }
               }
             }
+          }
 
-            // After retries, if still 401, token is invalid - logout
-            console.error("[Auth] Token invalid after retries. Logging out...");
-            await auth.signOut();
-            setUserDoc(null);
-            setNeedsOnboarding(false);
-            return;
+          // 401: token timing issue -> retry with token refresh
+          if (status === 401) {
+            console.log("[Auth] Token invalid (401) - refreshing token and retrying...");
+
+            try {
+              // Force token refresh
+              await u.getIdToken(true);
+              await sleep(500);
+
+              const me = await fetchMe();
+              setUserDoc(me);
+              setNeedsOnboarding(false);
+              return;
+            } catch (retryErr: any) {
+              // After token refresh retry, if still 401, logout
+              if (retryErr?.response?.status === 401) {
+                console.error("[Auth] Token invalid after refresh. Logging out...");
+                await auth.signOut();
+                setUserDoc(null);
+                setNeedsOnboarding(false);
+                return;
+              }
+            }
           }
 
           // ✅ IMPORTANT: NO BOOTSTRAP ON LOGIN

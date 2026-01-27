@@ -5,12 +5,10 @@ import {
   Box,
   Button,
   Typography,
-  IconButton,
   Snackbar,
   Alert,
   Card,
   CardContent,
-  CardActions,
   Grid,
   Chip,
   Stack,
@@ -18,8 +16,6 @@ import {
   CircularProgress,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
 import HomeIcon from "@mui/icons-material/Home";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -27,12 +23,8 @@ import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 
 import { useAuth } from "@/auth/authContext";
 import { useOrgBilling } from "@/hooks/useOrgBilling";
-import {
-  getDashboard,
-  deleteProperty,
-} from "../api";
+import { getDashboard } from "../api";
 import { Property } from "../types";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   computeLeveredMetrics,
   sumClosingCosts,
@@ -93,7 +85,6 @@ export function PropertiesList() {
   // Store all data from dashboard
   const [dashboardData, setDashboardData] = useState<any>(null);
 
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -128,28 +119,6 @@ export function PropertiesList() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleDelete = useCallback(async () => {
-    if (!deleteId) return;
-
-    try {
-      await deleteProperty(deleteId);
-      setSnackbar({
-        open: true,
-        message: "Vivienda eliminada",
-        severity: "success",
-      });
-      loadData();
-    } catch (error) {
-      setSnackbar({
-        open: true,
-        message: "Error al eliminar",
-        severity: "error",
-      });
-    } finally {
-      setDeleteId(null);
-    }
-  }, [deleteId, loadData]);
 
   // Build enriched rows with metrics
   const [rows, setRows] = useState<any[]>([]);
@@ -642,45 +611,10 @@ export function PropertiesList() {
                   </Box>
                 </Stack>
               </CardContent>
-
-              <CardActions sx={{ justifyContent: "flex-end", pt: 0 }}>
-                <Tooltip title="Editar">
-                  <IconButton
-                    size="small"
-                    color="primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/properties/${row.id}`);
-                    }}
-                  >
-                    <EditIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Eliminar">
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteId(row.id);
-                    }}
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </Tooltip>
-              </CardActions>
             </Card>
           </Grid>
         ))}
       </Grid>
-
-      <ConfirmDialog
-        open={deleteId !== null}
-        title="Eliminar vivienda"
-        message="¿Estás seguro de que deseas eliminar esta vivienda? Se eliminarán también todos los datos relacionados."
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteId(null)}
-      />
 
       <Snackbar
         open={snackbar.open}

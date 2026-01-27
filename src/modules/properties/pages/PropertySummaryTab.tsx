@@ -1,5 +1,21 @@
 import { useState } from "react";
-import { Grid, Typography, Box, Alert, Button, Collapse, TextField, Divider } from "@mui/material";
+import {
+  Grid,
+  Typography,
+  Box,
+  Alert,
+  Button,
+  Collapse,
+  TextField,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+} from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import WarningIcon from "@mui/icons-material/Warning";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -9,13 +25,14 @@ import {
   Legend as ChartLegend,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
+import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { Property, Lease, Loan, RecurringExpense, Room } from "../types";
 import { KPI } from "@/components/KPI";
 import { computeLeveredMetrics, sumClosingCosts, getMonthlyRentForDate } from "../calculations";
 import { formatPercent, formatCurrency } from "@/utils/format";
 import { getAggregatedRentForMonth } from "../rentalAggregation";
-import { updateProperty } from "../api";
+import { updateProperty, deleteProperty } from "../api";
 
 // Register Chart.js components
 ChartJS.register(
@@ -47,25 +64,17 @@ export function PropertySummaryTab({
   rooms,
   onSave,
 }: PropertySummaryTabProps) {
+  const navigate = useNavigate();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [notes, setNotes] = useState(property.notes || '');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Si no hay lease y tampoco leases de habitaciones, mostramos aviso
   const hasAnyLease =
     !!lease ||
     (leases && leases.length > 0 && property.rentalMode === "PER_ROOM");
-
-  if (!hasAnyLease) {
-    return (
-      <Alert severity="info">
-        No hay contrato de arrendamiento todavía. Añade uno en la pestaña
-        {property.rentalMode === "PER_ROOM"
-          ? ' "Habitaciones" o "Contrato" para ver métricas.'
-          : ' "Contrato" para ver métricas.'}
-      </Alert>
-    );
-  }
 
   const closingCostsTotal = sumClosingCosts(property.closingCosts);
 
@@ -134,10 +143,22 @@ export function PropertySummaryTab({
 
   return (
     <Box>
+      {/* Show alert if no lease, but don't return early */}
+      {!hasAnyLease && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          No hay contrato de arrendamiento todavía. Añade uno en la pestaña
+          {property.rentalMode === "PER_ROOM"
+            ? ' "Habitaciones" o "Contrato" para ver métricas.'
+            : ' "Contrato" para ver métricas.'}
+        </Alert>
+      )}
+
       {/* --- QUICK KPIs --- */}
-      <Typography variant="h6" gutterBottom>
-        Resumen rápido
-      </Typography>
+      {hasAnyLease && (
+        <>
+          <Typography variant="h6" gutterBottom>
+            Resumen rápido
+          </Typography>
 
       <Grid container spacing={2} sx={{ mb: 2 }}>
         {/* KPI 1 */}
@@ -450,12 +471,14 @@ export function PropertySummaryTab({
         />
       </Box>
 
-      {!property.closingCosts && (
+      {!property.closingCosts && hasAnyLease && (
         <Alert severity="info" sx={{ mt: 3 }}>
           Aún no has detallado los costes de cierre (ITP, notaría, registro,
           etc.). Añádelos en la pestaña "Compra" para mejorar el cálculo de
           inversión total y métricas.
         </Alert>
+      )}
+        </>
       )}
 
       {/* --- NOTAS SECTION --- */}
@@ -494,6 +517,140 @@ export function PropertySummaryTab({
           {savingNotes ? 'Guardando...' : 'Guardar Notas'}
         </Button>
       </Box>
+
+      {/* --- DANGER ZONE --- */}
+      <Divider sx={{ my: 4 }} />
+
+      <Box
+        sx={{
+          border: "2px solid",
+          borderColor: "error.main",
+          borderRadius: 2,
+          p: 3,
+          backgroundColor: "rgba(244, 67, 54, 0.05)",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+          <WarningIcon color="error" />
+          <Typography variant="h6" color="error">
+            Zona de Peligro
+          </Typography>
+        </Box>
+
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Eliminar esta propiedad es una acción irreversible. Se eliminarán
+          permanentemente todos los datos asociados, incluyendo:
+        </Typography>
+
+        <Box component="ul" sx={{ color: "text.secondary", fontSize: "0.875rem", mb: 2 }}>
+          <li>Todos los contratos de arrendamiento</li>
+          <li>Todas las habitaciones (si aplica)</li>
+          <li>Todos los gastos recurrentes (comunidad, IBI, seguro, etc.)</li>
+          <li>Todos los gastos puntuales (reparaciones, mejoras, CapEx, etc.)</li>
+          <li>Préstamos e hipotecas</li>
+          <li>Documentos de la propiedad</li>
+          <li>Documentos de contratos</li>
+          <li>Adjuntos de gastos</li>
+          <li>Notas y configuraciones</li>
+        </Box>
+
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <strong>¡Atención!</strong> Esta acción no se puede deshacer. Asegúrate
+          de haber exportado cualquier información importante antes de continuar.
+        </Alert>
+
+        <Button
+          variant="contained"
+          color="error"
+          startIcon={<DeleteIcon />}
+          onClick={() => setDeleteDialogOpen(true)}
+          disabled={deleting}
+        >
+          Eliminar Propiedad Permanentemente
+        </Button>
+      </Box>
+
+      {/* --- DELETE CONFIRMATION DIALOG --- */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => !deleting && setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <WarningIcon color="error" />
+          Confirmar Eliminación
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            ¿Estás completamente seguro de que deseas eliminar la propiedad{" "}
+            <strong>{property.address}</strong>?
+          </DialogContentText>
+          <DialogContentText sx={{ mt: 2, color: "error.main" }}>
+            Esta acción eliminará permanentemente:
+          </DialogContentText>
+          <Box component="ul" sx={{ mt: 1, color: "text.secondary" }}>
+            <li>La propiedad y todos sus datos</li>
+            {leases && leases.length > 0 && (
+              <li>
+                {leases.length} contrato{leases.length !== 1 ? "s" : ""} de
+                arrendamiento
+              </li>
+            )}
+            {lease && (!leases || leases.length === 0) && <li>El contrato de arrendamiento</li>}
+            {rooms && rooms.length > 0 && (
+              <li>
+                {rooms.length} habitación{rooms.length !== 1 ? "es" : ""}
+              </li>
+            )}
+            {recurring && recurring.length > 0 && (
+              <li>
+                {recurring.length} gasto{recurring.length !== 1 ? "s" : ""}{" "}
+                recurrente{recurring.length !== 1 ? "s" : ""}
+              </li>
+            )}
+            <li>Todos los gastos puntuales (CapEx, reparaciones, mejoras)</li>
+            {loan && <li>Préstamo/hipoteca asociado</li>}
+            <li>Documentos de la propiedad</li>
+            <li>Documentos de contratos</li>
+            <li>Adjuntos de gastos</li>
+          </Box>
+          <DialogContentText sx={{ mt: 2, fontWeight: "bold" }}>
+            Esta acción NO se puede deshacer.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={deleting}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={async () => {
+              setDeleting(true);
+              try {
+                await deleteProperty(property.id);
+                // Navigate back to properties list after successful deletion
+                navigate("/properties");
+              } catch (error) {
+                console.error("Error deleting property:", error);
+                alert(
+                  "Error al eliminar la propiedad. Por favor, inténtalo de nuevo."
+                );
+                setDeleting(false);
+                setDeleteDialogOpen(false);
+              }
+            }}
+            color="error"
+            variant="contained"
+            disabled={deleting}
+            startIcon={<DeleteIcon />}
+          >
+            {deleting ? "Eliminando..." : "Sí, Eliminar Permanentemente"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
