@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { useIdleTimer } from 'react-idle-timer';
 
 export interface UseInactivityLogoutOptions {
   /**
@@ -43,7 +44,8 @@ export interface UseInactivityLogoutReturn {
 
 /**
  * Hook to handle automatic logout after inactivity
- * Shows a warning dialog 30 seconds before logout
+ * Shows a warning dialog before logout
+ * Uses react-idle-timer library for reliable idle detection
  */
 export function useInactivityLogout(options: UseInactivityLogoutOptions): UseInactivityLogoutReturn {
   console.log('[InactivityLogout] *** HOOK FUNCTION CALLED ***', {
@@ -62,20 +64,12 @@ export function useInactivityLogout(options: UseInactivityLogoutOptions): UseIna
 
   const [showWarning, setShowWarning] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(30);
-
-  // Use refs to store timer IDs
-  const inactivityTimerRef = useRef<number | null>(null);
-  const warningTimerRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
 
-  // Track warning state in ref for activity handler
-  const showWarningRef = useRef(false);
-
-  // Use refs to store callbacks to avoid dependency issues
+  // Store callbacks in refs to avoid recreating them
   const onLogoutRef = useRef(onLogout);
   const onRefreshTokenRef = useRef(onRefreshToken);
 
-  // Update refs when callbacks change
   useEffect(() => {
     onLogoutRef.current = onLogout;
   }, [onLogout]);
@@ -84,160 +78,122 @@ export function useInactivityLogout(options: UseInactivityLogoutOptions): UseIna
     onRefreshTokenRef.current = onRefreshToken;
   }, [onRefreshToken]);
 
-  // Keep showWarning ref in sync with state
-  useEffect(() => {
-    showWarningRef.current = showWarning;
-  }, [showWarning]);
-
-  // Clear all timers - use ref for stable reference
-  const clearAllTimers = useRef(() => {
-    console.log('[InactivityLogout] Clearing all timers');
-    if (inactivityTimerRef.current !== null) {
-      window.clearTimeout(inactivityTimerRef.current);
-      inactivityTimerRef.current = null;
-    }
-    if (warningTimerRef.current !== null) {
-      window.clearTimeout(warningTimerRef.current);
-      warningTimerRef.current = null;
-    }
+  // Clear countdown interval
+  const clearCountdown = useCallback(() => {
     if (countdownIntervalRef.current !== null) {
       window.clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
     }
-  });
+  }, []);
 
-  // Start warning countdown - use ref for stable reference
-  const startWarningCountdown = useRef(() => {
+  // Start countdown when warning is shown
+  const startCountdown = useCallback(() => {
     console.log('[InactivityLogout] Starting warning countdown');
-    showWarningRef.current = true;
-    setShowWarning(true);
     setSecondsRemaining(Math.floor(warningDuration / 1000));
 
-    // Countdown interval
     countdownIntervalRef.current = window.setInterval(() => {
       setSecondsRemaining((prev) => {
         const next = prev - 1;
         console.log('[InactivityLogout] Countdown:', next);
-        return next <= 0 ? 0 : next;
+        if (next <= 0) {
+          clearCountdown();
+          return 0;
+        }
+        return next;
       });
     }, 1000);
+  }, [warningDuration, clearCountdown]);
 
-    // Auto-logout after warning duration
-    warningTimerRef.current = window.setTimeout(() => {
-      console.log('[InactivityLogout] Auto-logout triggered');
-      clearAllTimers.current();
-      if (onLogoutRef.current) {
-        onLogoutRef.current();
-      }
-    }, warningDuration);
+  // Handle when prompt should be shown (warning phase)
+  const handleOnPrompt = useCallback(() => {
+    console.log('[InactivityLogout] Prompt triggered - showing warning');
+    setShowWarning(true);
+    startCountdown();
+  }, [startCountdown]);
+
+  // Handle when user becomes idle (auto logout)
+  const handleOnIdle = useCallback(() => {
+    console.log('[InactivityLogout] User is idle - logging out');
+    clearCountdown();
+    setShowWarning(false);
+    if (onLogoutRef.current) {
+      onLogoutRef.current();
+    }
+  }, [clearCountdown]);
+
+  // Handle when user becomes active again
+  const handleOnActive = useCallback(() => {
+    console.log('[InactivityLogout] User is active');
+    clearCountdown();
+    setShowWarning(false);
+  }, [clearCountdown]);
+
+  // Initialize idle timer
+  const { reset, pause, resume } = useIdleTimer({
+    timeout: inactivityTimeout + warningDuration, // Total time before logout
+    promptBeforeIdle: warningDuration, // Show warning this many ms before timeout
+    onPrompt: handleOnPrompt,
+    onIdle: handleOnIdle,
+    onActive: handleOnActive,
+    disabled: !enabled,
+    throttle: 500, // Throttle activity events to avoid performance issues
+    events: [
+      'mousedown',
+      'keypress',
+      'touchstart',
+      'click',
+    ],
   });
 
-  // Reset inactivity timer - use ref for stable reference
-  const resetInactivityTimer = useRef(() => {
-    console.log('[InactivityLogout] Resetting inactivity timer');
-    clearAllTimers.current();
-    showWarningRef.current = false;
-    setShowWarning(false);
+  useEffect(() => {
+    console.log('[InactivityLogout] Hook initialized with react-idle-timer', {
+      enabled,
+      timeout: inactivityTimeout + warningDuration,
+      promptBeforeIdle: warningDuration,
+    });
 
     if (!enabled) {
-      console.log('[InactivityLogout] Disabled, not starting timer');
-      return;
+      pause();
+    } else {
+      resume();
     }
-
-    console.log(`[InactivityLogout] Starting inactivity timer for ${inactivityTimeout / 1000}s`);
-    inactivityTimerRef.current = window.setTimeout(() => {
-      console.log('[InactivityLogout] Inactivity timeout reached, showing warning');
-      startWarningCountdown.current();
-    }, inactivityTimeout);
-  });
-
-  // Update refs when options change
-  useEffect(() => {
-    console.log('[InactivityLogout] Options updated');
-  }, [inactivityTimeout, warningDuration, enabled]);
-
-  // Handle user activity - stable function using refs
-  const handleActivity = useRef(() => {
-    // Only reset if warning is not showing
-    if (!showWarningRef.current) {
-      console.log('[InactivityLogout] Activity detected, resetting timer');
-      resetInactivityTimer.current();
-    }
-  });
+  }, [enabled, inactivityTimeout, warningDuration, pause, resume]);
 
   // User clicked "I'm still here"
-  const handleStillHere = () => {
+  const handleStillHere = useCallback(async () => {
     console.log('[InactivityLogout] User clicked still here');
-    clearAllTimers.current();
-    showWarningRef.current = false;
+    clearCountdown();
     setShowWarning(false);
 
     // Refresh token if callback provided
     if (onRefreshTokenRef.current) {
       try {
-        onRefreshTokenRef.current();
+        await onRefreshTokenRef.current();
       } catch (error) {
         console.error('[InactivityLogout] Failed to refresh token:', error);
       }
     }
 
-    // Reset timers
-    resetInactivityTimer.current();
-  };
+    // Reset the idle timer
+    reset();
+  }, [clearCountdown, reset]);
 
   // Handle manual logout
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     console.log('[InactivityLogout] Manual logout');
-    clearAllTimers.current();
+    clearCountdown();
     if (onLogoutRef.current) {
       onLogoutRef.current();
     }
-  };
+  }, [clearCountdown]);
 
-  // Setup activity listeners - only runs once on mount
+  // Cleanup on unmount
   useEffect(() => {
-    console.log(`[InactivityLogout] *** USEEFFECT RUNNING - HOOK IS ACTIVE ***, enabled: ${enabled}`);
-
-    if (!enabled) {
-      console.log('[InactivityLogout] Feature disabled, cleaning up');
-      clearAllTimers.current();
-      return;
-    }
-
-    const events = [
-      'mousedown',
-      'mousemove',
-      'keypress',
-      'scroll',
-      'touchstart',
-      'click',
-    ];
-
-    console.log('[InactivityLogout] Adding activity listeners:', events);
-
-    // Create a wrapper that calls the ref
-    const activityHandler = () => {
-      handleActivity.current();
-    };
-
-    // Add listeners
-    events.forEach((event) => {
-      document.addEventListener(event, activityHandler, { passive: true });
-    });
-
-    // Start initial timer
-    console.log('[InactivityLogout] Starting initial timer');
-    resetInactivityTimer.current();
-
-    // Cleanup
     return () => {
-      console.log('[InactivityLogout] Cleaning up - removing listeners and timers');
-      events.forEach((event) => {
-        document.removeEventListener(event, activityHandler);
-      });
-      clearAllTimers.current();
+      console.log('[InactivityLogout] Cleaning up');
+      clearCountdown();
     };
-  }, [enabled]); // Only re-run if enabled changes
+  }, [clearCountdown]);
 
   return {
     showWarning,

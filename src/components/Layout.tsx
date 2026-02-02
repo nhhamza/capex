@@ -94,14 +94,14 @@ export function Layout() {
     }
   }, [user]);
 
-  // Auto-logout after 1 minute of inactivity
+  // Auto-logout after 10 minutes of inactivity
   const {
     showWarning,
     secondsRemaining,
     handleStillHere,
     handleLogout: handleInactivityLogout,
   } = useInactivityLogout({
-    inactivityTimeout: 10 * 60 * 1000, // 1 minute
+    inactivityTimeout: 10 * 60 * 1000, // 10 minutes
     warningDuration: 30 * 1000, // 30 seconds
     onLogout: handleInactivityLogoutCallback,
     onRefreshToken: handleRefreshToken,
