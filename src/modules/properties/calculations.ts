@@ -241,15 +241,19 @@ export function computeLeveredMetrics(params: {
   const { purchasePrice, closingCostsTotal = 0, loan, currentValue } = params;
 
   if (!loan) {
-    // No debt case
+    // No debt case - client invests everything (purchase + closing costs)
+    const cfaf = annuals.noi;
+    const initialInvestment = purchasePrice + closingCostsTotal;
+    const cashOnCash = initialInvestment > 0 ? (cfaf / initialInvestment) * 100 : 0;
+
     return {
       ...annuals,
       ads: 0,
       interestsAnnual: 0,
       principalAnnual: 0,
-      cfaf: annuals.noi,
+      cfaf,
       equity: purchasePrice + closingCostsTotal,
-      cashOnCash: annuals.capRateNet,
+      cashOnCash,
       dscr: 0,
       ltv: 0,
     };
@@ -282,7 +286,12 @@ export function computeLeveredMetrics(params: {
       ? currentValue
       : purchasePrice;
   const equity = effectiveValue + closingCostsTotal - loan.principal;
-  const cashOnCash = equity > 0 ? (cfaf / equity) * 100 : 0;
+
+  // Cash on Cash: use only client's initial investment (down payment + closing costs)
+  const downPayment = purchasePrice - loan.principal;
+  const initialInvestment = downPayment + closingCostsTotal;
+  const cashOnCash = initialInvestment > 0 ? (cfaf / initialInvestment) * 100 : 0;
+
   const dscr = ads > 0 ? annuals.noi / ads : 0;
   // Dynamic LTV using currentValue if available
   const ltv = effectiveValue > 0 ? (loan.principal / effectiveValue) * 100 : 0;

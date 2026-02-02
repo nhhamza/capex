@@ -31,6 +31,7 @@ const BillingPage = lazy(() => import("@/modules/billing/BillingPage").then(m =>
 const BillingSuccessPage = lazy(() => import("@/modules/billing/BillingSuccessPage").then(m => ({ default: m.BillingSuccessPage })));
 const BillingCancelPage = lazy(() => import("@/modules/billing/BillingCancelPage").then(m => ({ default: m.BillingCancelPage })));
 const DealAnalyzerPage = lazy(() => import("@/modules/deal-analyzer/DealAnalyzerPage").then(m => ({ default: m.DealAnalyzerPage })));
+const AdminPage = lazy(() => import("@/modules/admin/AdminPage").then(m => ({ default: m.AdminPage })));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -197,6 +198,14 @@ export const router = makeRouter()([
               {withSuspense(UsersPage)}
             </RequireAdmin>
           </RequireBilling>
+        ),
+      },
+      {
+        path: "tanis",
+        element: (
+          <RequireAuth>
+            {withSuspense(AdminPage)}
+          </RequireAuth>
         ),
       },
     ],

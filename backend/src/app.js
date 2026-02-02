@@ -484,9 +484,29 @@ async function requireBillingOk(req, res, next) {
   }
 }
 
+// -------------------- Super Admin Middleware --------------------
+const SUPER_ADMIN_ORG_ID = "NQnVPyNCCemaU63cNGOw";
+
+async function requireSuperAdmin(req, res, next) {
+  if (!req.orgId) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  if (req.orgId !== SUPER_ADMIN_ORG_ID) {
+    console.warn("[SuperAdmin] Access denied", {
+      attemptedBy: req.user?.email,
+      orgId: req.orgId
+    });
+    return res.status(403).json({ error: "forbidden - admin access only" });
+  }
+
+  console.log("[SuperAdmin] Access granted", { email: req.user?.email });
+  return next();
+}
+
 // -------------------- Price map --------------------
 function mapPrice(priceId) {
-  if (!priceId) return { plan: "free", propertyLimit: 2, seatLimit: 1 };
+  if (!priceId) return { plan: "free", propertyLimit: 1, seatLimit: 1 };
 
   // Read price IDs from environment variables
   const PRICE_SOLO = process.env.STRIPE_PRICE_SOLO;
@@ -499,7 +519,7 @@ function mapPrice(priceId) {
 
   // Fallback to free if price not recognized
   console.warn(`[mapPrice] Unknown priceId: ${priceId}, defaulting to free plan`);
-  return { plan: "free", propertyLimit: 2, seatLimit: 1 };
+  return { plan: "free", propertyLimit: 1, seatLimit: 1 };
 }
 
 // -------------------- Health --------------------
@@ -576,6 +596,159 @@ app.get("/api/health/storage", async (req, res) => {
   }
 });
 
+// -------------------- Super Admin Endpoints --------------------
+
+// List all organizations
+app.get("/api/admin/organizations", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
+  try {
+    const orgsSnap = await db.collection("organizations").orderBy("createdAt", "desc").get();
+
+    const orgs = await Promise.all(
+      orgsSnap.docs.map(async (doc) => {
+        const orgId = doc.id;
+        const orgData = doc.data();
+
+        // Get billing info
+        const billingSnap = await billingDocRef(orgId).get();
+        const billing = billingSnap.exists ? billingSnap.data() : {};
+
+        // Count users
+        const usersSnap = await db.collection("users")
+          .where("organizationId", "==", orgId)
+          .get();
+
+        const usersCount = usersSnap.size;
+
+        // Count properties
+        const propertiesSnap = await db.collection("properties")
+          .where("organizationId", "==", orgId)
+          .get();
+
+        const propertiesCount = propertiesSnap.size;
+
+        return {
+          id: orgId,
+          name: orgData.name || "Sin nombre",
+          createdAt: orgData.createdAt,
+          plan: billing.plan || "free",
+          status: billing.status || "active",
+          propertyLimit: billing.propertyLimit || 1,
+          seatLimit: billing.seatLimit || 1,
+          usersCount,
+          propertiesCount,
+        };
+      })
+    );
+
+    return res.json({ organizations: orgs });
+  } catch (err) {
+    console.error("[admin] list organizations failed", err);
+    return res.status(500).json({ error: "Failed to list organizations" });
+  }
+});
+
+// Get users for an organization
+app.get("/api/admin/users/:orgId", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
+  try {
+    const { orgId } = req.params;
+
+    // Get org info
+    const orgSnap = await db.collection("organizations").doc(orgId).get();
+    if (!orgSnap.exists) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+
+    // Get users
+    const usersSnap = await db.collection("users")
+      .where("organizationId", "==", orgId)
+      .get();
+
+    const users = usersSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    return res.json({
+      organization: {
+        id: orgId,
+        ...orgSnap.data(),
+      },
+      users,
+    });
+  } catch (err) {
+    console.error("[admin] get users failed", err);
+    return res.status(500).json({ error: "Failed to get users" });
+  }
+});
+
+// Get billing info for an organization
+app.get("/api/admin/billing/:orgId", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
+  try {
+    const { orgId } = req.params;
+
+    const billing = await readBilling(orgId);
+
+    return res.json({ billing });
+  } catch (err) {
+    console.error("[admin] get billing failed", err);
+    return res.status(500).json({ error: "Failed to get billing" });
+  }
+});
+
+// Upgrade/downgrade organization plan
+app.post("/api/admin/upgrade", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
+  try {
+    const { orgId, plan } = req.body;
+
+    if (!orgId || !plan) {
+      return res.status(400).json({ error: "orgId and plan are required" });
+    }
+
+    // Validate plan
+    const planLimits = {
+      free: { propertyLimit: 1, seatLimit: 1 },
+      solo: { propertyLimit: 10, seatLimit: 1 },
+      pro: { propertyLimit: 50, seatLimit: 3 },
+      agency: { propertyLimit: 200, seatLimit: 10 },
+    };
+
+    if (!planLimits[plan]) {
+      return res.status(400).json({
+        error: "Invalid plan",
+        validPlans: Object.keys(planLimits)
+      });
+    }
+
+    const limits = planLimits[plan];
+
+    // Update billing
+    await writeBilling(orgId, {
+      plan,
+      status: "active",
+      propertyLimit: limits.propertyLimit,
+      seatLimit: limits.seatLimit,
+      updatedBy: req.user.email || req.user.uid,
+      updatedReason: "Manual upgrade by super admin",
+    });
+
+    console.log("[admin] Plan updated", {
+      orgId,
+      plan,
+      by: req.user.email,
+    });
+
+    return res.json({
+      success: true,
+      orgId,
+      plan,
+      limits,
+    });
+  } catch (err) {
+    console.error("[admin] upgrade failed", err);
+    return res.status(500).json({ error: "Failed to upgrade plan" });
+  }
+});
+
 // -------------------- Signup init (ONLY place to create org/profile) --------------------
 app.post("/api/signup/initialize", requireAuth, async (req, res) => {
   if (!firebaseReady || !db) return res.status(503).json({ error: "firebase_not_configured" });
@@ -609,7 +782,7 @@ app.post("/api/signup/initialize", requireAuth, async (req, res) => {
 
       tx.set(
         db.doc(billingDocPath(orgId)),
-        { plan: "free", status: "active", propertyLimit: 2, seatLimit: 1, createdAt: nowIso(), updatedAt: nowIso() },
+        { plan: "free", status: "active", propertyLimit: 1, seatLimit: 1, createdAt: nowIso(), updatedAt: nowIso() },
         { merge: true }
       );
 

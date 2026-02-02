@@ -47,6 +47,8 @@ import WarningIcon from "@mui/icons-material/Warning";
 
 import { useAuth } from "@/auth/authContext";
 import { useOrgBilling } from "@/hooks/useOrgBilling";
+import { useInactivityLogout } from "@/hooks/useInactivityLogout";
+import { InactivityWarningDialog } from "@/components/InactivityWarningDialog";
 
 const DRAWER_WIDTH = 240;
 const BOTTOM_NAV_HEIGHT = 56;
@@ -74,6 +76,24 @@ export function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+
+  // Auto-logout after 10 minutes of inactivity
+  const {
+    showWarning,
+    secondsRemaining,
+    handleStillHere,
+    handleLogout: handleInactivityLogout,
+  } = useInactivityLogout({
+    onLogout: async () => {
+      await logout();
+      navigate("/login");
+    },
+    onRefreshToken: async () => {
+      if (user) {
+        await user.getIdToken(true);
+      }
+    },
+  });
 
   const isAdmin = userDoc?.role === "admin";
 
@@ -497,6 +517,14 @@ export function Layout() {
           </BottomNavigation>
         </Paper>
       )}
+
+      {/* Inactivity warning dialog */}
+      <InactivityWarningDialog
+        open={showWarning}
+        secondsRemaining={secondsRemaining}
+        onStillHere={handleStillHere}
+        onLogout={handleInactivityLogout}
+      />
     </Box>
   );
 }
