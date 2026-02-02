@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Outlet,
   useNavigate,
@@ -77,22 +77,34 @@ export function Layout() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
-  // Auto-logout after 10 minutes of inactivity
+  console.log("[Layout] About to initialize useInactivityLogout hook");
+
+  // Memoize callbacks to prevent recreation on every render
+  const handleInactivityLogoutCallback = useCallback(async () => {
+    console.log("[Layout] Logging out user due to inactivity");
+    await logout();
+    // Force redirect to login page
+    window.location.href = "/login";
+  }, [logout]);
+
+  const handleRefreshToken = useCallback(async () => {
+    console.log("[Layout] Refreshing token");
+    if (user) {
+      await user.getIdToken(true);
+    }
+  }, [user]);
+
+  // Auto-logout after 1 minute of inactivity
   const {
     showWarning,
     secondsRemaining,
     handleStillHere,
     handleLogout: handleInactivityLogout,
   } = useInactivityLogout({
-    onLogout: async () => {
-      await logout();
-      navigate("/login");
-    },
-    onRefreshToken: async () => {
-      if (user) {
-        await user.getIdToken(true);
-      }
-    },
+    inactivityTimeout: 10 * 60 * 1000, // 1 minute
+    warningDuration: 30 * 1000, // 30 seconds
+    onLogout: handleInactivityLogoutCallback,
+    onRefreshToken: handleRefreshToken,
   });
 
   const isAdmin = userDoc?.role === "admin";
