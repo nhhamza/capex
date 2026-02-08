@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import dayjs, { Dayjs } from "dayjs";
+import dayjs from "dayjs";
 import { useAuth } from "@/auth/authContext";
-import { getProperties, createProperty, createLease, createLoan } from "@/modules/properties/api";
+import {
+  getProperties,
+  createProperty,
+  createLease,
+  createLoan,
+  createRecurringExpense,
+} from "@/modules/properties/api";
 import {
   Box,
-  Paper,
+  Card,
+  CardContent,
   Stepper,
   Step,
   StepLabel,
@@ -15,12 +22,12 @@ import {
   Stack,
   Alert,
   CircularProgress,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  FormControlLabel,
+  Switch,
+  LinearProgress,
+  Snackbar,
+  Paper,
 } from "@mui/material";
-import { DatePicker } from "@mui/x-date-pickers";
 
 /**
  * IMPORTANT:
@@ -29,7 +36,53 @@ import { DatePicker } from "@mui/x-date-pickers";
  * - Here we only help users create their first property (if they have an org but zero properties).
  */
 
-const steps = ["Perfil", "Primera Vivienda", "Contrato (Opcional)", "Financiación (Opcional)"];
+const steps = [
+  "Tu primera propiedad",
+  "¿Tienes hipoteca?",
+  "Gastos fijos mensuales",
+];
+
+interface DemoProperty {
+  address: string;
+  purchasePrice: number;
+  monthlyRent: number;
+  mortgageAmount?: number;
+  mortgageInterestRate?: number;
+  ibiAnnual?: number;
+  communityMonthly?: number;
+  insuranceAnnual?: number;
+}
+
+const DEMO_PORTFOLIO: DemoProperty[] = [
+  {
+    address: "Apartamento Centro, Madrid - Calle Gran Vía 45",
+    purchasePrice: 250000,
+    monthlyRent: 1200,
+    mortgageAmount: 175000,
+    mortgageInterestRate: 3.5,
+    ibiAnnual: 750,
+    communityMonthly: 120,
+    insuranceAnnual: 300,
+  },
+  {
+    address: "Estudio Zona Universidad, Barcelona",
+    purchasePrice: 180000,
+    monthlyRent: 750,
+    mortgageAmount: 120000,
+    mortgageInterestRate: 3.2,
+    ibiAnnual: 500,
+    communityMonthly: 80,
+    insuranceAnnual: 200,
+  },
+  {
+    address: "Casa Rural Levante, Valencia",
+    purchasePrice: 150000,
+    monthlyRent: 600,
+    ibiAnnual: 400,
+    communityMonthly: 0,
+    insuranceAnnual: 250,
+  },
+];
 
 export function OnboardingWizard() {
   const navigate = useNavigate();
@@ -41,22 +94,29 @@ export function OnboardingWizard() {
 
   const [checkingProperties, setCheckingProperties] = useState(true);
   const [error, setError] = useState<string>("");
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(
+    "🎉 ¡Tu primera propiedad está lista!",
+  );
 
-  // First property
+  // Step 1: First property
   const [firstAddress, setFirstAddress] = useState("");
   const [firstPurchasePrice, setFirstPurchasePrice] = useState<number | "">("");
   const [firstMonthlyRent, setFirstMonthlyRent] = useState<number | "">("");
 
-  // Lease (optional)
-  const [contractTenantName, setContractTenantName] = useState("");
-  const [contractStartDate, setContractStartDate] = useState<Dayjs | null>(null);
+  // Step 2: Financing (optional)
+  const [hasFinancing, setHasFinancing] = useState(false);
+  const [financingLoanAmount, setFinancingLoanAmount] = useState<number | "">(
+    "",
+  );
+  const [financingInterestRate, setFinancingInterestRate] = useState<
+    number | ""
+  >("");
 
-  // Loan (optional)
-  const [financingLoanAmount, setFinancingLoanAmount] = useState<number | "">("");
-  const [financingInterestRatePct, setFinancingInterestRatePct] = useState<number | "">("");
-  const [financingTermYears, setFinancingTermYears] = useState<number | "">("");
-  const [financingBank, setFinancingBank] = useState("");
-  const [financingLoanType, setFinancingLoanType] = useState("fixed");
+  // Step 3: Recurring expenses (optional)
+  const [ibiAnnual, setIbiAnnual] = useState<number | "">("");
+  const [communityMonthly, setCommunityMonthly] = useState<number | "">("");
+  const [insuranceAnnual, setInsuranceAnnual] = useState<number | "">("");
 
   const orgId = userDoc?.organizationId || userDoc?.orgId || null;
 
@@ -87,23 +147,133 @@ export function OnboardingWizard() {
     run();
   }, [authLoading, needsOnboarding, orgId, navigate]);
 
+  // Validaciones por paso
+  const isStep1Valid =
+    firstAddress &&
+    typeof firstPurchasePrice === "number" &&
+    firstPurchasePrice > 0;
+  const isStep2Valid =
+    !hasFinancing ||
+    (typeof financingLoanAmount === "number" && financingLoanAmount > 0);
+
+  const createPropertyWithData = async (prop: DemoProperty) => {
+    if (!orgId) {
+      throw new Error("No organization");
+    }
+
+    const clientRequestId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    // Create property
+    const newProperty = await createProperty({
+      organizationId: orgId,
+      address: prop.address,
+      purchasePrice: prop.purchasePrice,
+      purchaseDate: dayjs().toISOString(),
+      notes: "Creado durante onboarding",
+      rentalMode: "ENTIRE_UNIT", // Default to full unit rental
+      clientRequestId,
+    });
+
+    const propertyId = newProperty.id;
+
+    // Create lease with monthly rent
+    if (propertyId && prop.monthlyRent > 0) {
+      try {
+        await createLease({
+          propertyId,
+          tenantName: "Inquilino",
+          startDate: dayjs().toISOString(),
+          monthlyRent: prop.monthlyRent,
+        });
+      } catch (leaseErr) {
+        console.warn("[Onboarding] Lease creation failed:", leaseErr);
+      }
+    }
+
+    // Create loan if financing exists
+    if (propertyId && prop.mortgageAmount && prop.mortgageAmount > 0) {
+      try {
+        await createLoan({
+          propertyId,
+          principal: prop.mortgageAmount,
+          annualRatePct: prop.mortgageInterestRate || 3.5,
+          termMonths: 360, // Default 30 years
+          startDate: dayjs().toISOString(),
+          interestOnlyMonths: 0,
+          upFrontFees: 0,
+        });
+      } catch (loanErr) {
+        console.warn("[Onboarding] Loan creation failed:", loanErr);
+      }
+    }
+
+    // Create recurring expenses if provided
+    if (propertyId) {
+      try {
+        if (prop.ibiAnnual && prop.ibiAnnual > 0) {
+          await createRecurringExpense({
+            propertyId,
+            type: "ibi",
+            amount: prop.ibiAnnual,
+            periodicity: "yearly",
+            isDeductible: true,
+          });
+        }
+        if (prop.communityMonthly && prop.communityMonthly > 0) {
+          await createRecurringExpense({
+            propertyId,
+            type: "community",
+            amount: prop.communityMonthly,
+            periodicity: "monthly",
+            isDeductible: true,
+          });
+        }
+        if (prop.insuranceAnnual && prop.insuranceAnnual > 0) {
+          await createRecurringExpense({
+            propertyId,
+            type: "insurance",
+            amount: prop.insuranceAnnual,
+            periodicity: "yearly",
+            isDeductible: true,
+          });
+        }
+      } catch (expenseErr) {
+        console.warn("[Onboarding] Recurring expense creation failed:", expenseErr);
+      }
+    }
+  };
+
   const handleNext = async () => {
+    // Validación del step actual
+    if (activeStep === 0 && !isStep1Valid) {
+      setError("Por favor, completa la dirección y el precio de compra");
+      return;
+    }
+
+    if (activeStep === 1 && !isStep2Valid) {
+      setError(
+        "Por favor, completa el importe del préstamo si tienes hipoteca",
+      );
+      return;
+    }
+
     if (activeStep < steps.length - 1) {
+      setError("");
       setActiveStep((s) => s + 1);
       return;
     }
 
+    // Finish - save everything
     if (finishingRef.current) return;
     finishingRef.current = true;
 
     if (!orgId) {
-      setError("Tu cuenta aún no está inicializada (no hay organización asociada).");
-      finishingRef.current = false;
-      return;
-    }
-
-    if (!firstAddress || typeof firstPurchasePrice !== "number" || firstPurchasePrice <= 0) {
-      setError("Por favor, completa la dirección y el precio de compra de la vivienda.");
+      setError(
+        "Tu cuenta aún no está inicializada (no hay organización asociada).",
+      );
       finishingRef.current = false;
       return;
     }
@@ -117,62 +287,135 @@ export function OnboardingWizard() {
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+      // Create property
       const newProperty = await createProperty({
         organizationId: orgId,
         address: firstAddress,
-        purchasePrice: firstPurchasePrice,
+        purchasePrice: firstPurchasePrice as number,
         purchaseDate: dayjs().toISOString(),
         notes: "Creado durante onboarding",
+        rentalMode: "ENTIRE_UNIT", // Default to full unit rental
         clientRequestId,
       });
 
       const propertyId = newProperty.id;
 
-      // Optional lease
+      // Create lease with monthly rent
       if (
         propertyId &&
-        (contractTenantName ||
-          contractStartDate ||
-          (typeof firstMonthlyRent === "number" && firstMonthlyRent > 0))
+        typeof firstMonthlyRent === "number" &&
+        firstMonthlyRent > 0
       ) {
         try {
           await createLease({
             propertyId,
-            tenantName: contractTenantName || "Inquilino",
-            startDate: contractStartDate ? contractStartDate.toISOString() : dayjs().toISOString(),
-            monthlyRent: typeof firstMonthlyRent === "number" ? firstMonthlyRent : 0,
+            tenantName: "Inquilino",
+            startDate: dayjs().toISOString(),
+            monthlyRent: firstMonthlyRent,
           });
         } catch (leaseErr) {
           console.warn("[Onboarding] Lease creation failed:", leaseErr);
         }
       }
 
-      // Optional loan
-      if (propertyId && typeof financingLoanAmount === "number" && financingLoanAmount > 0) {
-        const annualRatePct = typeof financingInterestRatePct === "number" ? financingInterestRatePct : 0;
-        const termMonths =
-          typeof financingTermYears === "number" ? Math.max(0, Math.round(financingTermYears * 12)) : 0;
-
+      // Create loan if financing is set
+      if (
+        propertyId &&
+        hasFinancing &&
+        typeof financingLoanAmount === "number" &&
+        financingLoanAmount > 0
+      ) {
         try {
           await createLoan({
             propertyId,
             principal: financingLoanAmount,
-            annualRatePct,
-            termMonths,
+            annualRatePct: typeof financingInterestRate === "number" ? financingInterestRate : 3.5,
+            termMonths: 360, // Default 30 years
             startDate: dayjs().toISOString(),
             interestOnlyMonths: 0,
             upFrontFees: 0,
-            notes: financingBank ? `Banco: ${financingBank}, Tipo: ${financingLoanType}` : `Tipo: ${financingLoanType}`,
           });
         } catch (loanErr) {
           console.warn("[Onboarding] Loan creation failed:", loanErr);
         }
       }
 
-      navigate("/dashboard", { replace: true });
+      // Create recurring expenses if provided
+      if (propertyId) {
+        try {
+          if (typeof ibiAnnual === "number" && ibiAnnual > 0) {
+            await createRecurringExpense({
+              propertyId,
+              type: "ibi",
+              amount: ibiAnnual,
+              periodicity: "yearly",
+              isDeductible: true,
+            });
+          }
+          if (typeof communityMonthly === "number" && communityMonthly > 0) {
+            await createRecurringExpense({
+              propertyId,
+              type: "community",
+              amount: communityMonthly,
+              periodicity: "monthly",
+              isDeductible: true,
+            });
+          }
+          if (typeof insuranceAnnual === "number" && insuranceAnnual > 0) {
+            await createRecurringExpense({
+              propertyId,
+              type: "insurance",
+              amount: insuranceAnnual,
+              periodicity: "yearly",
+              isDeductible: true,
+            });
+          }
+        } catch (expenseErr) {
+          console.warn("[Onboarding] Recurring expense creation failed:", expenseErr);
+        }
+      }
+
+      setSuccessMessage("🎉 ¡Tu primera propiedad está lista!");
+      setShowSuccess(true);
+      setTimeout(() => {
+        navigate("/dashboard?onboarding=done", { replace: true });
+      }, 1500);
     } catch (err) {
       console.error("[Onboarding] Finish failed:", err);
-      setError("Error al crear tu primera vivienda. Por favor, intenta de nuevo.");
+      setError(
+        "Error al crear tu primera vivienda. Por favor, intenta de nuevo.",
+      );
+    } finally {
+      setSaving(false);
+      finishingRef.current = false;
+    }
+  };
+
+  const handleLoadDemoPortfolio = async () => {
+    if (finishingRef.current || !orgId) return;
+    finishingRef.current = true;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      for (const prop of DEMO_PORTFOLIO) {
+        await createPropertyWithData(prop);
+      }
+
+      setSuccessMessage(
+        `🎉 ¡${DEMO_PORTFOLIO.length} propiedades de demostración cargadas!`,
+      );
+      setShowSuccess(true);
+
+      setTimeout(() => {
+        navigate("/dashboard?onboarding=done&demo=true", { replace: true });
+      }, 1500);
+    } catch (err) {
+      console.error("[Onboarding] Demo portfolio failed:", err);
+      setError(
+        "Error al cargar el portfolio de demostración. Por favor, intenta de nuevo.",
+      );
     } finally {
       setSaving(false);
       finishingRef.current = false;
@@ -184,7 +427,14 @@ export function OnboardingWizard() {
 
   if (authLoading || checkingProperties) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "100vh",
+        }}
+      >
         <CircularProgress />
       </Box>
     );
@@ -198,10 +448,12 @@ export function OnboardingWizard() {
             Completa tu registro
           </Typography>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Tu cuenta todavía no tiene una organización asociada. Por seguridad, no creamos una nueva automáticamente.
+            Tu cuenta todavía no tiene una organización asociada. Por seguridad,
+            no creamos una nueva automáticamente.
           </Alert>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            Por favor, cierra sesión y crea tu cuenta desde la pantalla de registro (Sign Up).
+            Por favor, cierra sesión y crea tu cuenta desde la pantalla de
+            registro (Sign Up).
           </Typography>
           <Stack direction="row" spacing={2}>
             <Button variant="contained" onClick={logout}>
@@ -217,135 +469,267 @@ export function OnboardingWizard() {
   }
 
   return (
-    <Box sx={{ maxWidth: 900, mx: "auto", px: 2, py: 4 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          Configuración inicial
-        </Typography>
-        <Typography variant="body2" sx={{ mb: 3, color: "text.secondary" }}>
-          Te ayudamos a crear tu primera vivienda para empezar a usar la app.
-        </Typography>
+    <Box sx={{ maxWidth: 800, mx: "auto", px: 2, py: 4 }}>
+      <Card>
+        <CardContent sx={{ p: 4 }}>
+          <Typography variant="h5" gutterBottom fontWeight={700}>
+            🏠 Añade tu primera propiedad
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 3, color: "text.secondary" }}>
+            Solo necesitamos 3 datos para empezar
+          </Typography>
 
-        {error ? (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        ) : null}
+          {error ? (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          ) : null}
 
-        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
-
-        {activeStep === 0 ? (
-          <Box>
-            <Typography variant="subtitle1" gutterBottom>
-              Perfil
-            </Typography>
-            <Typography variant="body2" sx={{ color: "text.secondary" }}>
-              (Opcional) Puedes saltarte este paso. Lo importante es crear tu primera vivienda.
-            </Typography>
+          {/* Progress */}
+          <Box sx={{ mb: 3 }}>
+            <Box
+              sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                {`Paso ${activeStep + 1} de ${steps.length}`}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {activeStep === 0 && "⏱️ 30 segundos"}
+                {activeStep === 1 && "⏱️ 15 segundos"}
+                {activeStep === 2 && "⏱️ 30 segundos"}
+              </Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={((activeStep + 1) / steps.length) * 100}
+            />
           </Box>
-        ) : null}
 
-        {activeStep === 1 ? (
-          <Stack spacing={2}>
-            <TextField label="Dirección" value={firstAddress} onChange={(e) => setFirstAddress(e.target.value)} fullWidth />
-            <TextField
-              label="Precio de compra (€)"
-              value={firstPurchasePrice}
-              onChange={(e) => setFirstPurchasePrice(e.target.value === "" ? "" : Number(e.target.value))}
-              type="number"
-              fullWidth
-            />
-            <TextField
-              label="Alquiler mensual (€) (opcional)"
-              value={firstMonthlyRent}
-              onChange={(e) => setFirstMonthlyRent(e.target.value === "" ? "" : Number(e.target.value))}
-              type="number"
-              fullWidth
-            />
+          <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+            {steps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+
+          {/* STEP 1: First property */}
+          {activeStep === 0 && (
+            <Stack spacing={2.5}>
+              <Typography variant="subtitle2" fontWeight={700}>
+                Información básica
+              </Typography>
+              <TextField
+                fullWidth
+                label="Dirección o nombre"
+                placeholder="Calle Principal 123, Madrid"
+                value={firstAddress}
+                onChange={(e) => setFirstAddress(e.target.value)}
+                required
+              />
+              <TextField
+                fullWidth
+                label="Precio de compra"
+                type="number"
+                placeholder="150000"
+                value={firstPurchasePrice}
+                onChange={(e) =>
+                  setFirstPurchasePrice(
+                    e.target.value === "" ? "" : Number(e.target.value),
+                  )
+                }
+                InputProps={{ endAdornment: "€" }}
+                required
+              />
+              <TextField
+                fullWidth
+                label="Alquiler mensual"
+                type="number"
+                placeholder="750"
+                value={firstMonthlyRent}
+                onChange={(e) =>
+                  setFirstMonthlyRent(
+                    e.target.value === "" ? "" : Number(e.target.value),
+                  )
+                }
+                InputProps={{ endAdornment: "€/mes" }}
+              />
+            </Stack>
+          )}
+
+          {/* STEP 2: Financing */}
+          {activeStep === 1 && (
+            <Stack spacing={2.5}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={hasFinancing}
+                    onChange={(e) => setHasFinancing(e.target.checked)}
+                  />
+                }
+                label="¿Esta propiedad tiene hipoteca?"
+              />
+
+              {hasFinancing && (
+                <>
+                  <TextField
+                    fullWidth
+                    label="Cantidad del préstamo"
+                    type="number"
+                    placeholder="120000"
+                    value={financingLoanAmount}
+                    onChange={(e) =>
+                      setFinancingLoanAmount(
+                        e.target.value === "" ? "" : Number(e.target.value),
+                      )
+                    }
+                    InputProps={{ endAdornment: "€" }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Tipo de interés"
+                    type="number"
+                    placeholder="3.5"
+                    value={financingInterestRate}
+                    onChange={(e) =>
+                      setFinancingInterestRate(
+                        e.target.value === "" ? "" : Number(e.target.value),
+                      )
+                    }
+                    InputProps={{ endAdornment: "% anual" }}
+                  />
+                </>
+              )}
+
+              {!hasFinancing && (
+                <Alert severity="info">
+                  Puedes añadirlo después en la sección de propiedades
+                </Alert>
+              )}
+            </Stack>
+          )}
+
+          {/* STEP 3: Recurring expenses */}
+          {activeStep === 2 && (
+            <Stack spacing={2.5}>
+              <Typography variant="subtitle2" fontWeight={700}>
+                Gastos que pagas cada mes/año (opcional)
+              </Typography>
+
+              <TextField
+                fullWidth
+                label="IBI anual"
+                type="number"
+                placeholder="600"
+                value={ibiAnnual}
+                onChange={(e) =>
+                  setIbiAnnual(
+                    e.target.value === "" ? "" : Number(e.target.value),
+                  )
+                }
+                InputProps={{ endAdornment: "€/año" }}
+                helperText="Divide entre 12 para ver el mensual"
+              />
+
+              <TextField
+                fullWidth
+                label="Comunidad mensual"
+                type="number"
+                placeholder="80"
+                value={communityMonthly}
+                onChange={(e) =>
+                  setCommunityMonthly(
+                    e.target.value === "" ? "" : Number(e.target.value),
+                  )
+                }
+                InputProps={{ endAdornment: "€/mes" }}
+              />
+
+              <TextField
+                fullWidth
+                label="Seguro anual"
+                type="number"
+                placeholder="250"
+                value={insuranceAnnual}
+                onChange={(e) =>
+                  setInsuranceAnnual(
+                    e.target.value === "" ? "" : Number(e.target.value),
+                  )
+                }
+                InputProps={{ endAdornment: "€/año" }}
+              />
+
+              <Alert severity="info">
+                Todos los campos son opcionales - puedes añadirlos después
+              </Alert>
+            </Stack>
+          )}
+
+          {/* Buttons */}
+          <Stack direction="row" spacing={2} sx={{ mt: 4 }}>
+            <Button
+              disabled={activeStep === 0 || saving}
+              onClick={handleBack}
+              variant="outlined"
+            >
+              Atrás
+            </Button>
+            <Box sx={{ flex: 1 }} />
+            <Button disabled={saving} onClick={handleSkip} variant="text">
+              Saltar
+            </Button>
+            <Button
+              variant="contained"
+              disabled={
+                saving ||
+                (activeStep === 0 && !isStep1Valid) ||
+                (activeStep === 1 && !isStep2Valid)
+              }
+              onClick={handleNext}
+              size="large"
+            >
+              {activeStep === steps.length - 1
+                ? "Crear mi primera propiedad"
+                : "Continuar"}
+            </Button>
           </Stack>
-        ) : null}
+        </CardContent>
+      </Card>
 
-        {activeStep === 2 ? (
-          <Stack spacing={2}>
-            <TextField
-              label="Nombre inquilino (opcional)"
-              value={contractTenantName}
-              onChange={(e) => setContractTenantName(e.target.value)}
-              fullWidth
-            />
-            <DatePicker
-              label="Fecha de inicio del contrato (opcional)"
-              value={contractStartDate}
-              onChange={(newValue) => setContractStartDate(newValue)}
-              slotProps={{
-                textField: {
-                  fullWidth: true,
-                },
-              }}
-            />
-          </Stack>
-        ) : null}
-
-        {activeStep === 3 ? (
-          <Stack spacing={2}>
-            <TextField
-              label="Importe préstamo (opcional)"
-              value={financingLoanAmount}
-              onChange={(e) => setFinancingLoanAmount(e.target.value === "" ? "" : Number(e.target.value))}
-              type="number"
-              fullWidth
-            />
-            <TextField
-              label="Interés anual (%) (opcional)"
-              value={financingInterestRatePct}
-              onChange={(e) => setFinancingInterestRatePct(e.target.value === "" ? "" : Number(e.target.value))}
-              type="number"
-              fullWidth
-            />
-            <TextField
-              label="Plazo (años) (opcional)"
-              value={financingTermYears}
-              onChange={(e) => setFinancingTermYears(e.target.value === "" ? "" : Number(e.target.value))}
-              type="number"
-              fullWidth
-            />
-            <TextField label="Banco (opcional)" value={financingBank} onChange={(e) => setFinancingBank(e.target.value)} fullWidth />
-            <FormControl fullWidth>
-              <InputLabel id="loan-type-label">Tipo</InputLabel>
-              <Select labelId="loan-type-label" value={financingLoanType} label="Tipo" onChange={(e) => setFinancingLoanType(String(e.target.value))}>
-                <MenuItem value="fixed">Fijo</MenuItem>
-                <MenuItem value="variable">Variable</MenuItem>
-                <MenuItem value="mixed">Mixto</MenuItem>
-              </Select>
-            </FormControl>
-          </Stack>
-        ) : null}
-
-        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-          <Button disabled={activeStep === 0 || saving} onClick={handleBack}>
-            Atrás
-          </Button>
-          <Box sx={{ flex: 1 }} />
-          <Button variant="text" disabled={saving} onClick={handleSkip}>
-            Saltar
-          </Button>
-          <Button variant="contained" disabled={saving} onClick={handleNext}>
-            {activeStep === steps.length - 1 ? "Finalizar" : "Siguiente"}
-          </Button>
-        </Stack>
-
-        {saving ? (
-          <Box sx={{ mt: 2 }}>
-            <Alert severity="info">Guardando…</Alert>
-          </Box>
-        ) : null}
+      {/* Demo Data Section */}
+      <Paper
+        sx={{
+          p: 3,
+          mt: 3,
+          bgcolor: "rgba(33, 150, 243, 0.08)",
+          border: "1px solid rgba(33, 150, 243, 0.2)",
+        }}
+      >
+        <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+          ✨ Prueba con datos de demostración
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Carga un portfolio de ejemplo con {DEMO_PORTFOLIO.length} propiedades
+          para explorar todas las características
+        </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          disabled={saving}
+          onClick={handleLoadDemoPortfolio}
+          fullWidth
+        >
+          {saving ? "Cargando..." : "Usar datos de ejemplo"}
+        </Button>
       </Paper>
+
+      {/* Success Snackbar */}
+      <Snackbar
+        open={showSuccess}
+        autoHideDuration={1500}
+        message={successMessage}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
     </Box>
   );
 }

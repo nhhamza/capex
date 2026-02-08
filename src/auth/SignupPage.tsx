@@ -14,88 +14,96 @@ import {
   Alert,
   Link,
   Grid,
-  MenuItem,
-  FormControlLabel,
-  Checkbox,
   Chip,
+  Step,
+  Stepper,
+  StepLabel,
+  Stack,
+  Divider,
 } from "@mui/material";
+import CheckCircleOutlinedIcon from "@mui/icons-material/CheckCircleOutlined";
+import { GoogleLogin } from "@/components/GoogleLogin";
 
-const signupSchema = z
+// Schema para Step 1 (solo email)
+const step1Schema = z.object({
+  email: z.string().email("Email inválido"),
+});
+
+// Schema para Step 2 (password y nombre)
+const step2Schema = z
   .object({
-    name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
-    email: z.string().email("Email inválido"),
     password: z
       .string()
       .min(8, "La contraseña debe tener al menos 8 caracteres")
       .regex(
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        "Debe contener mayúsculas, minúsculas y números"
+        "Debe contener mayúsculas, minúsculas y números",
       ),
     confirmPassword: z.string(),
-    phone: z
-      .string()
-      .regex(/^[+]?[0-9]{9,15}$/, "Teléfono inválido (9-15 dígitos)")
-      .optional()
-      .or(z.literal("")),
-    city: z.string().min(2, "La ciudad es requerida"),
-    userType: z.enum(["investor", "small_owner"], {
-      required_error: "Selecciona tu perfil",
-    }),
-    companyName: z.string().optional(),
-    propertyCount: z.enum(["0", "1-3", "4-10", "11-20", "21+"]),
-    acceptTerms: z.boolean().refine((val) => val === true, {
-      message: "Debes aceptar los términos y condiciones",
-    }),
-    acceptPrivacy: z.boolean().refine((val) => val === true, {
-      message: "Debes aceptar la política de privacidad",
-    }),
+    name: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Las contraseñas no coinciden",
     path: ["confirmPassword"],
   });
 
-type SignupFormData = z.infer<typeof signupSchema>;
+type Step1FormData = z.infer<typeof step1Schema>;
+type Step2FormData = z.infer<typeof step2Schema>;
 
 export function SignupPage() {
   const navigate = useNavigate();
+  const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState("");
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<SignupFormData>({
-    resolver: zodResolver(signupSchema),
+  // Step 1 form
+  const step1Form = useForm<Step1FormData>({
+    resolver: zodResolver(step1Schema),
+  });
+
+  // Step 2 form
+  const step2Form = useForm<Step2FormData>({
+    resolver: zodResolver(step2Schema),
     defaultValues: {
-      userType: undefined,
-      propertyCount: "0",
-      acceptTerms: false,
-      acceptPrivacy: false,
+      name: "",
     },
   });
 
-  const onSubmit = async (data: SignupFormData) => {
+  const onStep1Submit = async (data: Step1FormData) => {
+    setError("");
+
+    // Validar que el email no esté registrado
+    try {
+      setLoading(true);
+      // Aquí podrías hacer una validación del backend si lo deseas
+      setEmail(data.email);
+      setStep(2);
+    } catch (err) {
+      setError("Error al validar el email");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onStep2Submit = async (data: Step2FormData) => {
     setError("");
     setLoading(true);
 
     try {
       // Bootstrap profile + organization from backend (Admin SDK)
       await backendApi.post("/api/signup/initialize", {
-        orgName: data.companyName || data.name,
+        email: email,
+        password: data.password,
+        name: data.name || email.split("@")[0],
+        orgName: data.name || email.split("@")[0],
         profile: {
-          name: data.name,
-          phone: data.phone || null,
-          city: data.city,
-          userType: data.userType,
-          companyName: data.companyName || null,
-          propertyCount: data.propertyCount,
+          name: data.name || email.split("@")[0],
         },
       });
 
-      // Navigate to dashboard
-      navigate("/dashboard");
+      // Navigate to onboarding
+      navigate("/onboarding");
     } catch (err: any) {
       console.error("Signup error:", err);
       let errorMessage = "Error al crear la cuenta";
@@ -114,6 +122,11 @@ export function SignupPage() {
     }
   };
 
+  const handleBack = () => {
+    setStep(1);
+    setError("");
+  };
+
   return (
     <Box
       sx={{
@@ -125,230 +138,226 @@ export function SignupPage() {
         py: 4,
       }}
     >
-      <Card sx={{ maxWidth: 600, width: "100%", mx: 2 }}>
+      <Card sx={{ maxWidth: 500, width: "100%", mx: 2 }}>
         <CardContent sx={{ p: 4 }}>
           <Chip
             label="Beta privada · Acceso gratuito"
             color="primary"
-            sx={{ mb: 2 }}
+            sx={{ mb: 3 }}
           />
-          <Typography variant="h5" component="h1" gutterBottom>
-            Crear cuenta gratis
-          </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
-            Únete a la plataforma de gestión inmobiliaria para inversores y
-            propietarios en España.
-          </Typography>
-          <Box
-            component="form"
-            onSubmit={handleSubmit(onSubmit)}
-            sx={{ mt: 3 }}
-          >
-            <Grid container spacing={2}>
-              {/* Name */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Nombre completo"
-                  {...register("name")}
-                  error={!!errors.name}
-                  helperText={errors.name?.message}
-                  required
-                />
-              </Grid>
 
-              {/* Email */}
-              <Grid item xs={12}>
+          {/* Stepper */}
+          <Stepper activeStep={step - 1} sx={{ mb: 4 }}>
+            <Step>
+              <StepLabel>Email</StepLabel>
+            </Step>
+            <Step>
+              <StepLabel>Contraseña</StepLabel>
+            </Step>
+          </Stepper>
+
+          {/* STEP 1: Email */}
+          {step === 1 && (
+            <Box>
+              <Typography variant="h5" component="h1" gutterBottom>
+                Empieza gratis
+              </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                Sin tarjeta, cancela cuando quieras
+              </Typography>
+
+              {/* Google OAuth Button */}
+              <Box sx={{ mb: 3 }}>
+                <GoogleLogin />
+              </Box>
+
+              <Divider sx={{ my: 2.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  O con email
+                </Typography>
+              </Divider>
+
+              <Box
+                component="form"
+                onSubmit={step1Form.handleSubmit(onStep1Submit)}
+                sx={{ mt: 2 }}
+              >
                 <TextField
                   fullWidth
                   label="Email"
                   type="email"
-                  {...register("email")}
-                  error={!!errors.email}
-                  helperText={errors.email?.message}
-                  required
-                />
-              </Grid>
-
-              {/* Password */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Contraseña"
-                  type="password"
-                  {...register("password")}
-                  error={!!errors.password}
+                  placeholder="tu@email.com"
+                  {...step1Form.register("email")}
+                  error={!!step1Form.formState.errors.email}
                   helperText={
-                    errors.password?.message ||
-                    "Mín. 8 caracteres, mayúsculas, minúsculas y números"
+                    step1Form.formState.errors.email?.message ||
+                    "Tardarás menos de 60 segundos en empezar"
                   }
                   required
+                  autoFocus
                 />
-              </Grid>
 
-              {/* Confirm Password */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Confirmar contraseña"
-                  type="password"
-                  {...register("confirmPassword")}
-                  error={!!errors.confirmPassword}
-                  helperText={errors.confirmPassword?.message}
-                  required
-                />
-              </Grid>
-
-              {/* Phone */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Teléfono (opcional)"
-                  {...register("phone")}
-                  error={!!errors.phone}
-                  helperText={errors.phone?.message || "Formato: +34612345678"}
-                  placeholder="+34612345678"
-                />
-              </Grid>
-
-              {/* City */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Ciudad"
-                  {...register("city")}
-                  error={!!errors.city}
-                  helperText={errors.city?.message}
-                  required
-                />
-              </Grid>
-
-              {/* User Type */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  select
-                  label="¿Cuál es tu perfil?"
-                  {...register("userType")}
-                  error={!!errors.userType}
-                  helperText={errors.userType?.message}
-                  required
-                >
-                  <MenuItem value="investor">
-                    Inversor (múltiples propiedades)
-                  </MenuItem>
-                  <MenuItem value="small_owner">
-                    Pequeño propietario (1-3 propiedades)
-                  </MenuItem>
-                </TextField>
-              </Grid>
-
-              {/* Property Count */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  select
-                  label="¿Cuántas propiedades gestionas?"
-                  {...register("propertyCount")}
-                  error={!!errors.propertyCount}
-                  helperText={errors.propertyCount?.message}
-                  required
-                >
-                  <MenuItem value="0">Ninguna (empezando)</MenuItem>
-                  <MenuItem value="1-3">1-3 propiedades</MenuItem>
-                  <MenuItem value="4-10">4-10 propiedades</MenuItem>
-                  <MenuItem value="11-20">11-20 propiedades</MenuItem>
-                  <MenuItem value="21+">21 o más propiedades</MenuItem>
-                </TextField>
-              </Grid>
-
-              {/* Company Name */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Nombre de empresa (opcional)"
-                  {...register("companyName")}
-                  error={!!errors.companyName}
-                  helperText="Si gestionas propiedades a través de una empresa"
-                />
-              </Grid>
-
-              {/* Terms and Privacy */}
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={<Checkbox {...register("acceptTerms")} />}
-                  label={
-                    <Typography variant="body2">
-                      Acepto los{" "}
-                      <Link href="/terms" target="_blank">
-                        términos y condiciones
-                      </Link>
-                    </Typography>
-                  }
-                />
-                {errors.acceptTerms && (
-                  <Typography variant="caption" color="error" display="block">
-                    {errors.acceptTerms.message}
-                  </Typography>
+                {error && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {error}
+                  </Alert>
                 )}
-              </Grid>
 
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={<Checkbox {...register("acceptPrivacy")} />}
-                  label={
-                    <Typography variant="body2">
-                      Acepto la{" "}
-                      <Link href="/privacy" target="_blank">
-                        política de privacidad
-                      </Link>
+                <Button
+                  type="submit"
+                  fullWidth
+                  variant="contained"
+                  size="large"
+                  disabled={loading}
+                  sx={{ mt: 3 }}
+                >
+                  {loading ? "Validando..." : "Continuar"}
+                </Button>
+
+                {/* Benefits */}
+                <Stack spacing={1} sx={{ mt: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <CheckCircleOutlinedIcon
+                      sx={{ fontSize: 18, color: "success.main" }}
+                    />
+                    <Typography variant="caption">
+                      Gratis hasta 1 propiedad
                     </Typography>
-                  }
-                />
-                {errors.acceptPrivacy && (
-                  <Typography variant="caption" color="error" display="block">
-                    {errors.acceptPrivacy.message}
-                  </Typography>
-                )}
-              </Grid>
-            </Grid>
-
-            {error && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {error}
-              </Alert>
-            )}
-
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              disabled={loading}
-              sx={{ mt: 3 }}
-            >
-              {loading ? "Creando cuenta..." : "Crear cuenta gratis"}
-            </Button>
-
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              display="block"
-              align="center"
-              sx={{ mt: 2 }}
-            >
-              Durante la beta, tu cuenta es completamente gratuita. No necesitas
-              tarjeta de crédito.
-            </Typography>
-
-            <Box sx={{ mt: 3, textAlign: "center" }}>
-              <Typography variant="body2">
-                ¿Ya tienes cuenta?{" "}
-                <Link component={RouterLink} to="/login">
-                  Iniciar sesión
-                </Link>
-              </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <CheckCircleOutlinedIcon
+                      sx={{ fontSize: 18, color: "success.main" }}
+                    />
+                    <Typography variant="caption">
+                      No requiere tarjeta
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <CheckCircleOutlinedIcon
+                      sx={{ fontSize: 18, color: "success.main" }}
+                    />
+                    <Typography variant="caption">
+                      Cancela cuando quieras
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Box>
             </Box>
+          )}
+
+          {/* STEP 2: Password & Name */}
+          {step === 2 && (
+            <Box>
+              <Typography variant="h5" component="h1" gutterBottom>
+                Crea tu cuenta
+              </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                {email}
+              </Typography>
+
+              <Box
+                component="form"
+                onSubmit={step2Form.handleSubmit(onStep2Submit)}
+                sx={{ mt: 3 }}
+              >
+                <Grid container spacing={2}>
+                  {/* Contraseña */}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Contraseña"
+                      type="password"
+                      {...step2Form.register("password")}
+                      error={!!step2Form.formState.errors.password}
+                      helperText={
+                        step2Form.formState.errors.password?.message ||
+                        "Mín. 8 caracteres, mayúsculas, minúsculas y números"
+                      }
+                      required
+                      autoFocus
+                    />
+                  </Grid>
+
+                  {/* Confirmar contraseña */}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Confirmar contraseña"
+                      type="password"
+                      {...step2Form.register("confirmPassword")}
+                      error={!!step2Form.formState.errors.confirmPassword}
+                      helperText={
+                        step2Form.formState.errors.confirmPassword?.message
+                      }
+                      required
+                    />
+                  </Grid>
+
+                  {/* Nombre (opcional) */}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="¿Cómo te llamas?"
+                      {...step2Form.register("name")}
+                      error={!!step2Form.formState.errors.name}
+                      helperText="Opcional - para personalizar tu experiencia"
+                      placeholder="Tu nombre"
+                    />
+                  </Grid>
+                </Grid>
+
+                {error && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {error}
+                  </Alert>
+                )}
+
+                <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={handleBack}
+                    disabled={loading}
+                  >
+                    Atrás
+                  </Button>
+                  <Button
+                    type="submit"
+                    fullWidth
+                    variant="contained"
+                    size="large"
+                    disabled={loading}
+                  >
+                    {loading ? "Creando..." : "Crear mi cuenta gratuita"}
+                  </Button>
+                </Stack>
+
+                {/* Gift */}
+                <Box
+                  sx={{
+                    mt: 3,
+                    p: 1.5,
+                    bgcolor: "info.light",
+                    borderRadius: 1,
+                    textAlign: "center",
+                  }}
+                >
+                  <Typography variant="caption">
+                    🎁 <strong>14 días de plan Premium de regalo</strong>
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
+
+          {/* Login link */}
+          <Box sx={{ mt: 3, textAlign: "center" }}>
+            <Typography variant="body2">
+              ¿Ya tienes cuenta?{" "}
+              <Link component={RouterLink} to="/login">
+                Iniciar sesión
+              </Link>
+            </Typography>
           </Box>
         </CardContent>
       </Card>

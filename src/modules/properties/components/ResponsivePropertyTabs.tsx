@@ -9,13 +9,11 @@ import {
   FormControl,
   InputLabel,
 } from "@mui/material";
-import DescriptionIcon from "@mui/icons-material/Assessment";
-import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
-import AssignmentIcon from "@mui/icons-material/Assignment";
-import PaymentsIcon from "@mui/icons-material/Payments";
-import FolderIcon from "@mui/icons-material/Folder";
-import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
-import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
+import LightningBoltIcon from "@mui/icons-material/FlashlightOn";
+import PaymentIcon from "@mui/icons-material/Payment";
+import ReceiptIcon from "@mui/icons-material/Receipt";
+import DescriptionIcon from "@mui/icons-material/Description";
+import AnalyticsIcon from "@mui/icons-material/Analytics";
 import { ReactElement } from "react";
 import { RentalMode } from "../types";
 
@@ -32,51 +30,43 @@ interface ResponsivePropertyTabsProps {
   rentalMode?: RentalMode;
 }
 
-const getTabs = (rentalMode?: RentalMode): PropertyTabConfig[] => [
+const getTabs = (): PropertyTabConfig[] => [
   {
-    value: "resumen",
-    label: "Resumen",
-    icon: <DescriptionIcon fontSize="small" />,
+    value: "quick",
+    label: "⚡ Vista Rápida",
+    icon: <LightningBoltIcon fontSize="small" />,
   },
   {
-    value: "compra",
-    label: "Compra",
-    icon: <ShoppingCartIcon fontSize="small" />,
-  },
-  {
-    value: "financiacion",
-    label: "Financiación (Hipotecas)",
-    icon: <AccountBalanceIcon fontSize="small" />,
-  },
-  {
-    value: "habitaciones",
-    label: "Habitaciones",
-    icon: <MeetingRoomIcon fontSize="small" />,
-    hidden: rentalMode !== "PER_ROOM",
-  },
-  {
-    value: "contrato",
-    label: "Contrato de alquiler",
-    icon: <AssignmentIcon fontSize="small" />,
+    value: "ingresos",
+    label: "💵 Ingresos",
+    icon: <PaymentIcon fontSize="small" />,
   },
   {
     value: "gastos",
-    label: "Gastos",
-    icon: <PaymentsIcon fontSize="small" />,
+    label: "💳 Gastos",
+    icon: <ReceiptIcon fontSize="small" />,
   },
-  { value: "docs", label: "Documentos", icon: <FolderIcon fontSize="small" /> },
+  {
+    value: "datos",
+    label: "📋 Datos",
+    icon: <DescriptionIcon fontSize="small" />,
+  },
+  {
+    value: "resumen",
+    label: "📊 Métricas",
+    icon: <AnalyticsIcon fontSize="small" />,
+  },
 ];
 
 export function ResponsivePropertyTabs({
   value,
   onChange,
-  rentalMode,
 }: ResponsivePropertyTabsProps) {
   const isMobile = useMediaQuery((theme: Theme) =>
-    theme.breakpoints.down("sm")
+    theme.breakpoints.down("sm"),
   );
 
-  const tabs = getTabs(rentalMode).filter((t) => !t.hidden);
+  const tabs = getTabs().filter((t) => !t.hidden);
 
   if (isMobile) {
     return (

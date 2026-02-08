@@ -46,6 +46,7 @@ import {
   updateOneOffExpense,
   deleteOneOffExpense,
   uploadCapexAttachment,
+  getCapexDownloadUrl,
 } from "../api";
 import { parseDate, toISOString, formatDate } from "@/utils/date";
 import { Money } from "@/components/Money";
@@ -138,7 +139,7 @@ export function PropertyExpensesTab({
 }: PropertyExpensesTabProps) {
   const [filter, setFilter] = useState<ExpenseFilter>("all");
   const [dialogType, setDialogType] = useState<"recurring" | "capex" | null>(
-    null
+    null,
   );
   const [editingRecurring, setEditingRecurring] =
     useState<RecurringExpense | null>(null);
@@ -323,7 +324,7 @@ export function PropertyExpensesTab({
       const attachment = await uploadCapexAttachment(
         propertyId,
         file,
-        file.name
+        file.name,
       );
       setUploadedFile({ name: attachment.name, url: attachment.url });
     } catch (err: any) {
@@ -530,12 +531,19 @@ export function PropertyExpensesTab({
                       display: "flex",
                       flexDirection: "column",
                       position: "relative",
-                      transition: "box-shadow 0.2s",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderLeft: "4px solid",
+                      borderLeftColor: "error.main",
+                      transition: "all 0.2s ease",
                       "&:hover": {
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                        transform: "translateY(-2px)",
+                        boxShadow: 4,
+                        borderLeftColor: "error.dark",
                       },
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-                      borderRadius: 2,
+                      boxShadow: 1,
+                      borderRadius: 1,
+                      overflow: "visible",
                     }}
                   >
                     {/* Actions - always visible */}
@@ -577,148 +585,185 @@ export function PropertyExpensesTab({
                       </Tooltip>
                     </Box>
 
-                    <CardContent sx={{ flexGrow: 1, p: 2, pt: 1.5 }}>
-                      {/* Header with badges */}
-                      <Stack
-                        direction="row"
-                        spacing={0.5}
-                        sx={{ mb: 1.5, flexWrap: "wrap", gap: 0.5, pr: 6 }}
-                      >
-                        <Chip
-                          label="Fijo"
-                          color="secondary"
-                          size="small"
-                          icon={<RepeatIcon sx={{ fontSize: "0.9rem" }} />}
-                          sx={{ fontWeight: 600, height: 22 }}
-                        />
-                        <Chip
-                          label={recurringTypeLabels[exp.type] || exp.type}
-                          size="small"
+                    <CardContent sx={{ flexGrow: 1, p: 2.5 }}>
+                      {/* Type and Category in header */}
+                      <Box sx={{ mb: 2 }}>
+                        <Typography
+                          variant="h6"
                           sx={{
-                            bgcolor: "primary.main",
-                            color: "primary.contrastText",
-                            fontWeight: 500,
-                            height: 22,
+                            fontWeight: 700,
+                            fontSize: "1.1rem",
+                            color: "text.primary",
+                            mb: 0.5,
                           }}
-                        />
-                        {exp.isDeductible !== false && (
+                        >
+                          {recurringTypeLabels[exp.type] || exp.type}
+                        </Typography>
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          sx={{ flexWrap: "wrap", gap: 0.75 }}
+                        >
                           <Chip
-                            label="Deducible"
-                            color="success"
+                            label="Gasto Fijo"
                             size="small"
-                            variant="outlined"
-                            sx={{ fontWeight: 500, height: 22 }}
-                          />
-                        )}
-                      </Stack>
-
-                      {/* Amount section - compact */}
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "baseline",
-                          justifyContent: "space-between",
-                          mb: 1.5,
-                          p: 1.5,
-                          bgcolor: "error.lighter",
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Box>
-                          <Typography
-                            variant="caption"
+                            icon={<RepeatIcon sx={{ fontSize: "0.85rem" }} />}
                             sx={{
+                              height: 20,
+                              fontSize: "0.7rem",
+                              bgcolor: "error.lighter",
                               color: "error.dark",
                               fontWeight: 600,
-                              fontSize: "0.65rem",
-                              textTransform: "uppercase",
-                              letterSpacing: 0.5,
                             }}
-                          >
-                            {periodicityLabels[exp.periodicity]}
-                          </Typography>
-                          <Typography
-                            variant="h5"
-                            sx={{
-                              color: "error.main",
-                              fontWeight: 700,
-                              lineHeight: 1,
-                            }}
-                          >
-                            <Money amount={exp.amount} />
-                          </Typography>
-                        </Box>
-                        <Box sx={{ textAlign: "right" }}>
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: "text.secondary",
-                              fontWeight: 600,
-                              fontSize: "0.6rem",
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            Anual
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            sx={{ fontWeight: 700, color: "text.primary" }}
-                          >
-                            <Money amount={annualAmount} />
-                          </Typography>
-                        </Box>
+                          />
+                          {exp.isDeductible !== false && (
+                            <Chip
+                              label="Deducible"
+                              size="small"
+                              sx={{
+                                height: 20,
+                                fontSize: "0.7rem",
+                                bgcolor: "success.lighter",
+                                color: "success.dark",
+                                fontWeight: 600,
+                              }}
+                            />
+                          )}
+                        </Stack>
                       </Box>
 
-                      {/* Next due date - inline */}
+                      {/* Amount section - more compact with better hierarchy */}
+                      <Box
+                        sx={{
+                          mb: 2,
+                          p: 1.5,
+                          bgcolor: "grey.50",
+                          borderRadius: 1.5,
+                          border: "1px solid",
+                          borderColor: "grey.200",
+                        }}
+                      >
+                        <Grid container spacing={1.5}>
+                          <Grid item xs={7}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                fontWeight: 600,
+                                fontSize: "0.7rem",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.3,
+                                display: "block",
+                                mb: 0.5,
+                              }}
+                            >
+                              {periodicityLabels[exp.periodicity]}
+                            </Typography>
+                            <Typography
+                              variant="h5"
+                              sx={{
+                                color: "error.main",
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                fontSize: "1.5rem",
+                              }}
+                            >
+                              <Money amount={exp.amount} />
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={5}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                fontWeight: 600,
+                                fontSize: "0.7rem",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.3,
+                                display: "block",
+                                mb: 0.5,
+                              }}
+                            >
+                              Anual
+                            </Typography>
+                            <Typography
+                              variant="body1"
+                              sx={{
+                                fontWeight: 700,
+                                color: "text.primary",
+                                fontSize: "1rem",
+                                lineHeight: 1,
+                              }}
+                            >
+                              <Money amount={annualAmount} />
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </Box>
+
+                      {/* Next due date - compact inline */}
                       {exp.nextDueDate && (
                         <Box
                           sx={{
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "space-between",
-                            p: 1,
-                            bgcolor: "grey.50",
+                            gap: 1,
+                            py: 1,
+                            px: 1.5,
+                            bgcolor: "primary.lighter",
                             borderRadius: 1,
                             mb: exp.notes ? 1.5 : 0,
+                          }}
+                        >
+                          <EventIcon
+                            sx={{ fontSize: "1rem", color: "primary.main" }}
+                          />
+                          <Box sx={{ flex: 1 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                fontWeight: 500,
+                                fontSize: "0.65rem",
+                                display: "block",
+                                lineHeight: 1,
+                              }}
+                            >
+                              Vencimiento
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontWeight: 600,
+                                fontSize: "0.8rem",
+                                color: "primary.dark",
+                                mt: 0.25,
+                              }}
+                            >
+                              {formatDate(exp.nextDueDate)}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      )}
+
+                      {/* Notes - modern style */}
+                      {exp.notes && (
+                        <Box
+                          sx={{
+                            p: 1.5,
+                            bgcolor: "grey.50",
+                            borderRadius: 1,
+                            border: "1px solid",
+                            borderColor: "grey.200",
                           }}
                         >
                           <Typography
                             variant="caption"
                             sx={{
                               color: "text.secondary",
-                              fontWeight: 600,
-                              fontSize: "0.7rem",
-                            }}
-                          >
-                            Próximo vencimiento
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            sx={{ fontWeight: 600, fontSize: "0.85rem" }}
-                          >
-                            {formatDate(exp.nextDueDate)}
-                          </Typography>
-                        </Box>
-                      )}
-
-                      {/* Notes - compact */}
-                      {exp.notes && (
-                        <Box
-                          sx={{
-                            p: 1,
-                            bgcolor: "info.lighter",
-                            borderLeft: "2px solid",
-                            borderColor: "info.main",
-                            borderRadius: 0.5,
-                          }}
-                        >
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: "info.dark",
-                              fontStyle: "italic",
                               fontSize: "0.75rem",
-                              lineHeight: 1.4,
+                              lineHeight: 1.5,
+                              display: "block",
                             }}
                           >
                             {exp.notes}
@@ -739,29 +784,22 @@ export function PropertyExpensesTab({
                       display: "flex",
                       flexDirection: "column",
                       position: "relative",
-                      transition: "box-shadow 0.2s",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderLeft: "4px solid",
+                      borderLeftColor: "info.main",
+                      transition: "all 0.2s ease",
                       "&:hover": {
-                        boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                        transform: "translateY(-2px)",
+                        boxShadow: 4,
+                        borderLeftColor: "info.dark",
                       },
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+                      boxShadow: 1,
+                      borderRadius: 1,
+                      overflow: "visible",
                     }}
                   >
-                    {/* Date badge - compact */}
-                    <Chip
-                      label={formatDate(exp.date)}
-                      size="small"
-                      sx={{
-                        position: "absolute",
-                        top: 8,
-                        left: 8,
-                        bgcolor: "primary.main",
-                        color: "primary.contrastText",
-                        fontWeight: 700,
-                        fontSize: "0.7rem",
-                        height: 22,
-                        zIndex: 1,
-                      }}
-                    />
+                    {/* Date badge - removed, will show inline */}
 
                     {/* Actions - always visible */}
                     <Box
@@ -802,74 +840,109 @@ export function PropertyExpensesTab({
                       </Tooltip>
                     </Box>
 
-                    <CardContent sx={{ flexGrow: 1, p: 2, pt: 4.5 }}>
-                      {/* Header with badges */}
-                      <Stack
-                        direction="row"
-                        spacing={0.5}
-                        sx={{ mb: 1.5, flexWrap: "wrap", gap: 0.5 }}
-                      >
-                        <Chip
-                          label="Puntual"
-                          color="info"
-                          size="small"
-                          icon={<EventIcon sx={{ fontSize: "0.9rem" }} />}
-                          sx={{ fontWeight: 600, height: 22 }}
-                        />
-                        <Chip
-                          label={
-                            capexCategoryLabels[exp.category] || exp.category
-                          }
-                          size="small"
+                    <CardContent sx={{ flexGrow: 1, p: 2.5 }}>
+                      {/* Date with category */}
+                      <Box sx={{ mb: 2 }}>
+                        <Box
                           sx={{
-                            bgcolor: "primary.main",
-                            color: "primary.contrastText",
-                            fontWeight: 500,
-                            height: 22,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                            mb: 0.5,
                           }}
-                        />
-                        {exp.isDeductible !== false && (
-                          <Chip
-                            label="Deducible"
-                            color="success"
-                            size="small"
-                            variant="outlined"
-                            sx={{ fontWeight: 500, height: 22 }}
+                        >
+                          <EventIcon
+                            sx={{ fontSize: "1rem", color: "info.main" }}
                           />
-                        )}
-                      </Stack>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: "0.85rem",
+                              color: "info.dark",
+                            }}
+                          >
+                            {formatDate(exp.date)}
+                          </Typography>
+                        </Box>
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontWeight: 700,
+                            fontSize: "1.1rem",
+                            color: "text.primary",
+                            mb: 0.5,
+                          }}
+                        >
+                          {capexCategoryLabels[exp.category] || exp.category}
+                        </Typography>
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          sx={{ flexWrap: "wrap", gap: 0.75 }}
+                        >
+                          <Chip
+                            label="Gasto Puntual"
+                            size="small"
+                            sx={{
+                              height: 20,
+                              fontSize: "0.7rem",
+                              bgcolor: "info.lighter",
+                              color: "info.dark",
+                              fontWeight: 600,
+                            }}
+                          />
+                          {exp.isDeductible !== false && (
+                            <Chip
+                              label="Deducible"
+                              size="small"
+                              sx={{
+                                height: 20,
+                                fontSize: "0.7rem",
+                                bgcolor: "success.lighter",
+                                color: "success.dark",
+                                fontWeight: 600,
+                              }}
+                            />
+                          )}
+                        </Stack>
+                      </Box>
 
-                      {/* Description - compact */}
+                      {/* Description */}
                       <Typography
                         variant="body2"
                         sx={{
-                          mb: 1.5,
+                          mb: 2,
                           fontWeight: 500,
-                          lineHeight: 1.4,
+                          lineHeight: 1.5,
                           color: "text.primary",
-                          fontSize: "0.875rem",
+                          fontSize: "0.9rem",
                         }}
                       >
                         {exp.description}
                       </Typography>
 
-                      {/* Amount section - compact */}
+                      {/* Amount section */}
                       <Box
                         sx={{
+                          mb: 2,
                           p: 1.5,
-                          bgcolor: "error.lighter",
-                          borderRadius: 1,
-                          mb: 1.5,
+                          bgcolor: "grey.50",
+                          borderRadius: 1.5,
+                          border: "1px solid",
+                          borderColor: "grey.200",
                         }}
                       >
                         <Typography
                           variant="caption"
                           sx={{
-                            color: "error.dark",
+                            color: "text.secondary",
                             fontWeight: 600,
-                            fontSize: "0.65rem",
+                            fontSize: "0.7rem",
                             textTransform: "uppercase",
-                            letterSpacing: 0.5,
+                            letterSpacing: 0.3,
+                            display: "block",
+                            mb: 0.5,
                           }}
                         >
                           Importe
@@ -880,24 +953,22 @@ export function PropertyExpensesTab({
                             color: "error.main",
                             fontWeight: 700,
                             lineHeight: 1,
+                            fontSize: "1.5rem",
                           }}
                         >
                           <Money amount={exp.amount} />
                         </Typography>
                       </Box>
 
-                      {/* Details - compact inline */}
+                      {/* Details - inline with icons */}
                       {(exp.vendor || exp.invoiceNumber) && (
-                        <Stack spacing={0.75} sx={{ mb: 1.5 }}>
+                        <Stack spacing={1} sx={{ mb: 1.5 }}>
                           {exp.vendor && (
                             <Box
                               sx={{
                                 display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                p: 1,
-                                bgcolor: "grey.50",
-                                borderRadius: 1,
+                                alignItems: "flex-start",
+                                gap: 1,
                               }}
                             >
                               <Typography
@@ -906,13 +977,19 @@ export function PropertyExpensesTab({
                                   color: "text.secondary",
                                   fontWeight: 600,
                                   fontSize: "0.7rem",
+                                  minWidth: "70px",
                                 }}
                               >
-                                Proveedor
+                                Proveedor:
                               </Typography>
                               <Typography
                                 variant="body2"
-                                sx={{ fontWeight: 600, fontSize: "0.85rem" }}
+                                sx={{
+                                  fontWeight: 600,
+                                  fontSize: "0.85rem",
+                                  color: "text.primary",
+                                  flex: 1,
+                                }}
                               >
                                 {exp.vendor}
                               </Typography>
@@ -922,11 +999,8 @@ export function PropertyExpensesTab({
                             <Box
                               sx={{
                                 display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                p: 1,
-                                bgcolor: "grey.50",
-                                borderRadius: 1,
+                                alignItems: "flex-start",
+                                gap: 1,
                               }}
                             >
                               <Typography
@@ -935,13 +1009,19 @@ export function PropertyExpensesTab({
                                   color: "text.secondary",
                                   fontWeight: 600,
                                   fontSize: "0.7rem",
+                                  minWidth: "70px",
                                 }}
                               >
-                                Nº Factura
+                                Factura:
                               </Typography>
                               <Typography
                                 variant="body2"
-                                sx={{ fontWeight: 600, fontSize: "0.85rem" }}
+                                sx={{
+                                  fontWeight: 600,
+                                  fontSize: "0.85rem",
+                                  color: "text.primary",
+                                  flex: 1,
+                                }}
                               >
                                 {exp.invoiceNumber}
                               </Typography>
@@ -950,25 +1030,25 @@ export function PropertyExpensesTab({
                         </Stack>
                       )}
 
-                      {/* Notes - compact */}
+                      {/* Notes */}
                       {exp.notes && (
                         <Box
                           sx={{
-                            p: 1,
-                            bgcolor: "info.lighter",
-                            borderLeft: "2px solid",
-                            borderColor: "info.main",
-                            borderRadius: 0.5,
+                            p: 1.5,
+                            bgcolor: "grey.50",
+                            borderRadius: 1,
+                            border: "1px solid",
+                            borderColor: "grey.200",
                             mb: exp.attachmentUrl ? 1.5 : 0,
                           }}
                         >
                           <Typography
                             variant="caption"
                             sx={{
-                              color: "info.dark",
-                              fontStyle: "italic",
+                              color: "text.secondary",
                               fontSize: "0.75rem",
-                              lineHeight: 1.4,
+                              lineHeight: 1.5,
+                              display: "block",
                             }}
                           >
                             {exp.notes}
@@ -976,48 +1056,79 @@ export function PropertyExpensesTab({
                         </Box>
                       )}
 
-                      {/* Attachment - compact */}
+                      {/* Attachment */}
                       {exp.attachmentUrl && (
                         <Box
-                          onClick={() => {
-                            const a = document.createElement("a");
-                            a.href = exp.attachmentUrl!;
-                            a.download = exp.attachmentName || "archivo";
-                            a.click();
+                          onClick={async () => {
+                            try {
+                              if (!exp.storagePath) {
+                                // Fallback to old URL if no storagePath
+                                const a = document.createElement("a");
+                                a.href = exp.attachmentUrl!;
+                                a.download = exp.attachmentName || "archivo";
+                                a.click();
+                                return;
+                              }
+                              // Get fresh URL from backend
+                              const url = await getCapexDownloadUrl(exp.storagePath);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = exp.attachmentName || "archivo";
+                              a.click();
+                            } catch (error) {
+                              console.error("Failed to download attachment:", error);
+                            }
                           }}
                           sx={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 1,
-                            p: 1,
+                            gap: 1.5,
+                            p: 1.5,
                             bgcolor: "primary.lighter",
                             borderRadius: 1,
                             cursor: "pointer",
+                            border: "1px solid",
+                            borderColor: "primary.light",
                             transition: "all 0.2s",
                             "&:hover": {
                               bgcolor: "primary.light",
+                              borderColor: "primary.main",
                             },
                           }}
                         >
                           <AttachFileIcon
-                            sx={{ color: "primary.main", fontSize: "1rem" }}
+                            sx={{ color: "primary.main", fontSize: "1.2rem" }}
                           />
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              flexGrow: 1,
-                              color: "primary.main",
-                              fontWeight: 600,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              fontSize: "0.75rem",
-                            }}
-                          >
-                            {exp.attachmentName || "Archivo adjunto"}
-                          </Typography>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                fontWeight: 500,
+                                fontSize: "0.65rem",
+                                display: "block",
+                                lineHeight: 1,
+                              }}
+                            >
+                              Adjunto
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                color: "primary.dark",
+                                fontWeight: 600,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontSize: "0.8rem",
+                                mt: 0.25,
+                              }}
+                            >
+                              {exp.attachmentName || "Archivo"}
+                            </Typography>
+                          </Box>
                           <DownloadIcon
-                            sx={{ color: "primary.main", fontSize: "1rem" }}
+                            sx={{ color: "primary.main", fontSize: "1.2rem" }}
                           />
                         </Box>
                       )}

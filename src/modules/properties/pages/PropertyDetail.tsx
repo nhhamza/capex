@@ -18,8 +18,8 @@ import {
   getLoan,
   getRecurringExpenses,
   getOneOffExpenses,
-  getLeases, // 👈 NUEVO
-  getRooms, // 👈 NUEVO
+  getLeases,
+  getRooms,
 } from "../api";
 import {
   Property,
@@ -27,13 +27,14 @@ import {
   Loan,
   RecurringExpense,
   OneOffExpense,
-  Room, // 👈 NUEVO
+  Room,
 } from "../types";
+import { PropertyQuickView } from "./PropertyQuickView";
+import { PropertyIncomesTab } from "./PropertyIncomesTab";
+import { PropertyExpensesAndLoanTab } from "./PropertyExpensesAndLoanTab";
+import { PropertyDataTab } from "./PropertyDataTab";
 import { PropertySummaryTab } from "./PropertySummaryTab";
-import { PropertyPurchaseTab } from "./PropertyPurchaseTab";
 import { PropertyLeaseTab } from "./PropertyLeaseTab";
-import { PropertyExpensesTab } from "./PropertyExpensesTab";
-import { PropertyDocsTab } from "./PropertyDocsTab";
 import { PropertyLoanTab } from "./PropertyLoanTab";
 import { PropertyRoomsTab } from "./PropertyRoomsTab";
 import { ResponsivePropertyTabs } from "../components/ResponsivePropertyTabs";
@@ -61,7 +62,7 @@ export function PropertyDetail() {
     severity: "success" as "success" | "error",
   });
 
-  const currentTab = searchParams.get("tab") || "resumen";
+  const currentTab = searchParams.get("tab") || "quick";
   const roomIdFromUrl = searchParams.get("roomId") ?? null;
 
   const loadData = useCallback(async () => {
@@ -271,23 +272,62 @@ export function PropertyDetail() {
             </Box>
           )}
 
+          {currentTab === "quick" && (
+            <PropertyQuickView
+              property={property}
+              lease={lease}
+              loan={loan}
+              recurring={recurring}
+              leases={leases}
+              rooms={rooms}
+              onTabChange={(tab) => handleTabChange(null, tab)}
+              onExportReport={() => {
+                // Handle export - can be implemented later
+                console.log("Export report clicked");
+              }}
+            />
+          )}
+          {currentTab === "ingresos" && (
+            <PropertyIncomesTab
+              property={property}
+              lease={lease}
+              leases={leases}
+              rooms={rooms}
+              onSave={handleDataChanged}
+            />
+          )}
+          {currentTab === "gastos" && (
+            <PropertyExpensesAndLoanTab
+              propertyId={property.id}
+              loan={loan}
+              recurring={recurring}
+              capex={capex}
+              onSave={handleDataChanged}
+            />
+          )}
+          {currentTab === "datos" && (
+            <PropertyDataTab property={property} onSave={handleDataChanged} />
+          )}
           {currentTab === "resumen" && (
             <PropertySummaryTab
               property={property}
               lease={lease}
               loan={loan}
               recurring={recurring}
-              leases={leases} // 👈 NUEVO
-              rooms={rooms} // 👈 NUEVO
+              leases={leases}
+              rooms={rooms}
               onSave={handleDataChanged}
             />
           )}
-          {currentTab === "compra" && (
-            <PropertyPurchaseTab
-              property={property}
+          {currentTab === "hipoteca" && (
+            <PropertyLoanTab
+              propertyId={property.id}
+              loan={loan}
+              lease={lease}
               onSave={handleDataChanged}
             />
           )}
+          {/* Keep old tabs for backward compatibility */}
           {currentTab === "habitaciones" &&
             property.rentalMode === "PER_ROOM" && (
               <PropertyRoomsTab
@@ -301,25 +341,6 @@ export function PropertyDetail() {
               lease={lease}
               onSave={handleDataChanged}
               roomId={roomIdFromUrl}
-            />
-          )}
-          {currentTab === "gastos" && (
-            <PropertyExpensesTab
-              propertyId={property.id}
-              recurring={recurring}
-              capex={capex}
-              onSave={handleDataChanged}
-            />
-          )}
-          {currentTab === "docs" && (
-            <PropertyDocsTab propertyId={property.id} />
-          )}
-          {currentTab === "financiacion" && (
-            <PropertyLoanTab
-              propertyId={property.id}
-              loan={loan}
-              lease={lease}
-              onSave={handleDataChanged}
             />
           )}
         </Box>

@@ -61,7 +61,7 @@ export async function getDashboard(): Promise<{
 // ------------------------------
 
 export async function getProperties(
-  _organizationId?: string
+  _organizationId?: string,
 ): Promise<Property[]> {
   // organizationId is inferred server-side from the ID token
   const r = await backendApi.get("/api/properties");
@@ -75,7 +75,7 @@ export async function getProperty(id: string): Promise<Property | undefined> {
 }
 
 export async function createProperty(
-  data: CreatePropertyRequest
+  data: CreatePropertyRequest,
 ): Promise<Property> {
   const r = await backendApi.post("/api/properties", data);
   return r.data?.property as Property;
@@ -83,7 +83,7 @@ export async function createProperty(
 
 export async function updateProperty(
   id: string,
-  data: Partial<Property>
+  data: Partial<Property>,
 ): Promise<Property> {
   const r = await backendApi.put(`/api/properties/${id}`, data);
   return r.data?.property as Property;
@@ -113,7 +113,7 @@ async function createChild<T>(col: string, payload: any): Promise<T> {
 async function updateChild<T>(
   col: string,
   id: string,
-  payload: any
+  payload: any,
 ): Promise<T> {
   const r = await backendApi.put(`/api/collection/${col}/${id}`, payload);
   return r.data?.item as T;
@@ -183,7 +183,7 @@ export const createRecurringExpense = (data: Omit<RecurringExpense, "id">) =>
 
 export const updateRecurringExpense = (
   id: string,
-  data: Partial<RecurringExpense>
+  data: Partial<RecurringExpense>,
 ) => updateChild<RecurringExpense>("recurringExpenses", id, data);
 
 export const deleteRecurringExpense = (id: string) =>
@@ -215,7 +215,7 @@ export const listPropertyDocs = (propertyId: string) =>
 export async function uploadPropertyDoc(
   propertyId: string,
   file: File,
-  name?: string
+  name?: string,
 ): Promise<PropertyDocMeta> {
   const form = new FormData();
   form.append("file", file);
@@ -241,7 +241,7 @@ export const addPropertyDoc = async (args: {
 }): Promise<PropertyDocMeta> => {
   if (!args.file) {
     throw new Error(
-      "addPropertyDoc now requires a File. Use uploadPropertyDoc(propertyId, file)."
+      "addPropertyDoc now requires a File. Use uploadPropertyDoc(propertyId, file).",
     );
   }
   return uploadPropertyDoc(args.propertyId, args.file, args.name);
@@ -270,7 +270,7 @@ export type UploadedAttachment = {
 export async function uploadCapexAttachment(
   propertyId: string,
   file: File,
-  name?: string
+  name?: string,
 ): Promise<UploadedAttachment> {
   const form = new FormData();
   form.append("file", file);
@@ -281,4 +281,9 @@ export async function uploadCapexAttachment(
 
   // backend returns { attachment: {...} }
   return r.data?.attachment as UploadedAttachment;
+}
+
+export async function getCapexDownloadUrl(storagePath: string): Promise<string> {
+  const r = await backendApi.post("/api/capex/download-url", { storagePath });
+  return r.data?.url as string;
 }

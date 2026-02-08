@@ -85,6 +85,7 @@ export interface OneOffExpense {
   vendor?: string;
   invoiceNumber?: string;
   attachmentUrl?: string;
+  storagePath?: string; // GCS storage path for on-demand URL generation
   attachmentName?: string;
   isDeductible?: boolean; // Para Hacienda
   notes?: string;

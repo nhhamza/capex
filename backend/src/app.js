@@ -5,12 +5,18 @@ import admin from "firebase-admin";
 import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
+import { OAuth2Client } from "google-auth-library";
 
 dotenv.config();
 
 const app = express();
 
 const isVercel = Boolean(process.env.VERCEL);
+
+// -------------------- Google OAuth --------------------
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null;
 
 // -------------------- Stripe --------------------
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -749,6 +755,112 @@ app.post("/api/admin/upgrade", requireAuth, requireOrg, requireSuperAdmin, async
   }
 });
 
+// -------------------- Google OAuth --------------------
+app.post("/api/auth/google", async (req, res) => {
+  if (!firebaseReady || !db) return res.status(503).json({ error: "firebase_not_configured" });
+  if (!googleClient) return res.status(500).json({ error: "google_oauth_not_configured" });
+
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "token_required" });
+
+    // Verify Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name } = payload;
+
+    if (!email) return res.status(400).json({ error: "email_required_from_google" });
+
+    const uid = googleId;
+    const userRef = db.collection("users").doc(uid);
+
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(userRef);
+
+      // User already exists -> return existing data
+      if (snap.exists) {
+        const existing = { id: uid, ...snap.data() };
+        const orgId = pickOrgId(existing);
+
+        // Create custom token
+        const customToken = await admin.auth().createCustomToken(uid);
+
+        return {
+          alreadyInitialized: true,
+          user: existing,
+          orgId,
+          customToken,
+        };
+      }
+
+      // New user: create Firebase user + Firestore doc + organization
+      try {
+        // Create Firebase user
+        await admin.auth().createUser({
+          uid,
+          email,
+          displayName: name || email.split("@")[0],
+          emailVerified: true, // Google verified the email
+        });
+      } catch (e) {
+        // User might already exist in Firebase, continue
+        if (e.code !== "auth/uid-already-exists") {
+          throw e;
+        }
+      }
+
+      // Create organization (same logic as /api/signup/initialize)
+      const orgRef = db.collection("organizations").doc();
+      const orgId = orgRef.id;
+      const orgName = name || email.split("@")[0];
+
+      tx.set(orgRef, { name: orgName, createdAt: nowIso(), updatedAt: nowIso() });
+
+      // Set billing doc
+      tx.set(
+        db.doc(billingDocPath(orgId)),
+        { plan: "free", status: "active", propertyLimit: 1, seatLimit: 1, createdAt: nowIso(), updatedAt: nowIso() },
+        { merge: true }
+      );
+
+      // Create user doc
+      const userDoc = {
+        email,
+        name: name || email.split("@")[0],
+        role: "admin",
+        orgId,
+        organizationId: orgId,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+
+      tx.set(userRef, userDoc);
+
+      // Create custom token for client-side signin
+      const customToken = await admin.auth().createCustomToken(uid);
+
+      return {
+        alreadyInitialized: false,
+        user: { id: uid, ...userDoc },
+        orgId,
+        customToken,
+      };
+    });
+
+    return res.json(result);
+  } catch (err) {
+    console.error("[auth/google] failed", err);
+    return res.status(500).json({
+      error: "google_auth_failed",
+      message: err?.message || String(err),
+    });
+  }
+});
+
 // -------------------- Signup init (ONLY place to create org/profile) --------------------
 app.post("/api/signup/initialize", requireAuth, async (req, res) => {
   if (!firebaseReady || !db) return res.status(503).json({ error: "firebase_not_configured" });
@@ -1382,19 +1494,10 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
       metadata: { cacheControl: "public, max-age=3600" },
     });
 
-    console.log("[capex/upload] Generating signed URL...");
-    // Generate signed URL valid for 7 days (instead of makePublic)
-    const [signedUrl] = await gcsFile.getSignedUrl({
-      action: "read",
-      expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-    const publicUrl = signedUrl;
-
     console.log("[capex/upload] Upload successful");
     return res.json({
       attachment: {
         name: safeName,
-        url: publicUrl,
         storagePath,
         mimeType: file.mimetype,
       },
@@ -1409,6 +1512,46 @@ app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.
       error: "failed to upload capex file",
       message: err?.message || "Unknown error",
       code: err?.code,
+    });
+  }
+});
+
+// ========== Get signed URL for capex attachment ==========
+app.post("/api/capex/download-url", requireAuth, requireOrg, async (req, res) => {
+  try {
+    const { storagePath } = req.body;
+    
+    if (!storagePath) {
+      return res.status(400).json({ error: "storagePath required" });
+    }
+
+    if (!firebaseReady || !bucket) {
+      return res.status(503).json({ error: "firebase_not_configured" });
+    }
+
+    // Verify ownership by checking the storagePath structure
+    if (!storagePath.startsWith(`organizations/${req.orgId}/`)) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+
+    console.log("[capex/download-url] Generating fresh signed URL for:", storagePath);
+    const gcsFile = bucket.file(storagePath);
+    
+    // Generate signed URL valid for 1 hour
+    const [signedUrl] = await gcsFile.getSignedUrl({
+      action: "read",
+      expires: Date.now() + 1 * 60 * 60 * 1000, // 1 hour
+    });
+
+    return res.json({ url: signedUrl });
+  } catch (err) {
+    console.error("[capex/download-url] failed:", {
+      message: err?.message,
+      code: err?.code,
+    });
+    return res.status(500).json({
+      error: "failed to generate download url",
+      message: err?.message,
     });
   }
 });

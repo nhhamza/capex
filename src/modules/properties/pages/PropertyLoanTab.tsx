@@ -24,6 +24,7 @@ import { Lease } from "../types";
 import { parseDate, toISOString } from "@/utils/date";
 import { buildAmortizationSchedule } from "../calculations";
 import { Money } from "@/components/Money";
+import { useEffect } from "react";
 
 const schema = z.object({
   principal: z.number().min(1, "Principal requerido"),
@@ -56,6 +57,7 @@ export function PropertyLoanTab({
     handleSubmit,
     register,
     watch,
+    reset,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -69,6 +71,19 @@ export function PropertyLoanTab({
       notes: loan?.notes || "",
     },
   });
+
+  // Update form when loan prop changes
+  useEffect(() => {
+    reset({
+      principal: loan?.principal || 0,
+      annualRatePct: loan?.annualRatePct || 3.5,
+      termMonths: loan?.termMonths || 360,
+      startDate: parseDate(loan?.startDate),
+      interestOnlyMonths: loan?.interestOnlyMonths || 0,
+      upFrontFees: loan?.upFrontFees || 0,
+      notes: loan?.notes || "",
+    });
+  }, [loan, reset]);
 
   const watchedPrincipal = watch("principal");
   const watchedRate = watch("annualRatePct");

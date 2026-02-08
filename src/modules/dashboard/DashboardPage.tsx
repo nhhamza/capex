@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Box,
   Grid,
@@ -16,6 +17,10 @@ import {
   CircularProgress,
   Chip,
   Button,
+  Stack,
+  Alert,
+  Divider,
+  Tooltip,
 } from "@mui/material";
 import {
   Chart as ChartJS,
@@ -30,8 +35,9 @@ import {
 import { Line } from "react-chartjs-2";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
-import ShowChartIcon from "@mui/icons-material/ShowChart";
 import PaidIcon from "@mui/icons-material/Paid";
+import HomeIcon from "@mui/icons-material/Home";
+import InfoIcon from "@mui/icons-material/Info";
 
 // Register Chart.js components
 ChartJS.register(
@@ -41,7 +47,7 @@ ChartJS.register(
   LineElement,
   Filler,
   ChartTooltip,
-  ChartLegend
+  ChartLegend,
 );
 
 import dayjs from "dayjs";
@@ -55,6 +61,14 @@ import {
 } from "@/modules/properties/calculations";
 import { getAggregatedRentForMonth } from "@/modules/properties/rentalAggregation";
 import { formatCurrency } from "@/utils/format";
+import {
+  calculateYTDCashflow,
+  calculateYearProjection,
+  determineTrend,
+} from "./calculations";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import { AchievementBadges } from "@/modules/achievements/AchievementBadges";
 
 interface OneOffExpense {
   date: string;
@@ -63,12 +77,16 @@ interface OneOffExpense {
 
 export function DashboardPage() {
   const { userDoc } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const theme = useTheme();
+
+  const isDemoMode = searchParams.get("demo") === "true";
+  const isOnboardingDone = searchParams.get("onboarding") === "done";
+  const [showDemoAlert, setShowDemoAlert] = useState(isDemoMode);
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
 
-  const [totalCFAF, setTotalCFAF] = useState(0);
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalRecurringExpenses, setTotalRecurringExpenses] = useState(0);
   const [totalOneOffExpenses, setTotalOneOffExpenses] = useState(0);
@@ -76,30 +94,36 @@ export function DashboardPage() {
     { month: string; ingresos: number; gastos: number; flujoNeto: number }[]
   >([]);
   const [avgCashOnCash, setAvgCashOnCash] = useState(0);
-  const [avgCapRate, setAvgCapRate] = useState(0);
-  const [totalEquity, setTotalEquity] = useState(0);
-  const [portfolioDebtRatio, setPortfolioDebtRatio] = useState<number>(0);
   const [totalPrincipal, setTotalPrincipal] = useState(0);
   const [totalCurrentValue, setTotalCurrentValue] = useState(0);
   const [totalPurchasePrice, setTotalPurchasePrice] = useState(0);
+  const [_totalMonthlyLoanPayment, setTotalMonthlyLoanPayment] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // New states for best/worst property metrics
+  const [bestProperty, setBestProperty] = useState<Property | null>(null);
+  const [worstProperty, setWorstProperty] = useState<Property | null>(null);
+  const [bestPropertyCashflow, setBestPropertyCashflow] = useState(0);
+  const [worstPropertyCashflow, setWorstPropertyCashflow] = useState(0);
+
+  // YTD and Projection metrics
+  const [ytdCashflow, setYtdCashflow] = useState(0);
+  const [yearProjection, setYearProjection] = useState(0);
+  const [cashflowTrend, setCashflowTrend] = useState<"up" | "down" | "neutral">(
+    "neutral",
+  );
 
   useEffect(() => {
     const loadData = async () => {
       if (!userDoc?.orgId) {
         setProperties([]);
         setChartData([]);
-        setTotalCFAF(0);
-        setTotalIncome(0);
-        setTotalRecurringExpenses(0);
-        setTotalOneOffExpenses(0);
-        setTotalEquity(0);
-        setAvgCapRate(0);
+
         setAvgCashOnCash(0);
-        setPortfolioDebtRatio(0);
         setTotalPrincipal(0);
         setTotalCurrentValue(0);
         setTotalPurchasePrice(0);
+        setTotalMonthlyLoanPayment(0);
         return;
       }
 
@@ -116,17 +140,14 @@ export function DashboardPage() {
 
         if (filteredProps.length === 0) {
           setChartData([]);
-          setTotalCFAF(0);
           setTotalIncome(0);
           setTotalRecurringExpenses(0);
           setTotalOneOffExpenses(0);
-          setTotalEquity(0);
-          setAvgCapRate(0);
           setAvgCashOnCash(0);
-          setPortfolioDebtRatio(0);
           setTotalPrincipal(0);
           setTotalCurrentValue(0);
           setTotalPurchasePrice(0);
+          setTotalMonthlyLoanPayment(0);
           return;
         }
 
@@ -142,25 +163,28 @@ export function DashboardPage() {
             [
               prop.id,
               leasesAll.filter((x) => x.propertyId === prop.id),
-            ] as const
+            ] as const,
         );
         const loansEntries = filteredProps.map(
           (prop) =>
-            [prop.id, loansAll.filter((x) => x.propertyId === prop.id)] as const
+            [
+              prop.id,
+              loansAll.filter((x) => x.propertyId === prop.id),
+            ] as const,
         );
         const recurringEntries = filteredProps.map(
           (prop) =>
             [
               prop.id,
               recurringAll.filter((x) => x.propertyId === prop.id),
-            ] as const
+            ] as const,
         );
         const oneOffEntries = filteredProps.map(
           (prop) =>
             [
               prop.id,
               oneOffAll.filter((x) => x.propertyId === prop.id),
-            ] as const
+            ] as const,
         );
         const roomsEntries = filteredProps
           .filter((prop) => prop.rentalMode === "PER_ROOM")
@@ -169,7 +193,7 @@ export function DashboardPage() {
               [
                 prop.id,
                 roomsAll.filter((x) => x.propertyId === prop.id),
-              ] as const
+              ] as const,
           );
 
         const leasesByProp: Record<string, any[]> = {};
@@ -209,6 +233,7 @@ export function DashboardPage() {
         let totalPrincipal = 0;
         let totalCurrentValue = 0;
         let totalPurchasePrice = 0;
+        let totalMonthlyLoanPayment = 0;
 
         const monthlyData: Record<
           number,
@@ -284,6 +309,7 @@ export function DashboardPage() {
           });
 
           cfaf += metrics.cfaf;
+          totalMonthlyLoanPayment += loan ? metrics.ads / 12 : 0;
 
           // Calculate annual income
           let yearlyRent = 0;
@@ -336,7 +362,9 @@ export function DashboardPage() {
               });
               monthlyRent = agg.monthlyNet;
             } else if (lease) {
-              monthlyRent = getMonthlyRentForDate(lease, monthDate) * (1 - (lease.vacancyPct || 0));
+              monthlyRent =
+                getMonthlyRentForDate(lease, monthDate) *
+                (1 - (lease.vacancyPct || 0));
             }
 
             const monthlyExpenses =
@@ -362,25 +390,109 @@ export function DashboardPage() {
             monthlyData[m].ingresos - monthlyData[m].gastos;
         });
 
-        setTotalCFAF(cfaf);
-        setTotalIncome(annualIncome);
-        setTotalRecurringExpenses(annualRecurringExpenses);
-        setTotalOneOffExpenses(annualOneOffExpenses);
-        setTotalEquity(totalEquitySum);
+        // Calculate best and worst properties by cashflow (INCLUYENDO HIPOTECA)
+        const propertiesWithCashflow = filteredProps
+          .filter((prop) => {
+            // Solo incluir propiedades con lease o PER_ROOM con rooms
+            const hasLease = (leasesByProp[prop.id] || []).length > 0;
+            const hasRooms =
+              prop.rentalMode === "PER_ROOM" &&
+              (roomsByProp[prop.id] || []).length > 0;
+            return hasLease || hasRooms;
+          })
+          .map((prop) => {
+            const leases = leasesByProp[prop.id] || [];
+            const loans = loansByProp[prop.id] || [];
+            const loan = loans[0];
+            const recurring = recurringByProp[prop.id] || [];
+            const rooms = roomsByProp[prop.id] || [];
+
+            // Calcular ingresos mensuales según modo de renta
+            let monthlyIncome = 0;
+            if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
+              const agg = getAggregatedRentForMonth({
+                property: prop,
+                leases,
+                rooms,
+                monthDate: dayjs(),
+              });
+              monthlyIncome = agg.monthlyNet;
+            } else {
+              const activeLease = leases.find((l) => !l.roomId);
+              if (activeLease) {
+                const rent = getMonthlyRentForDate(activeLease, dayjs());
+                monthlyIncome = rent * (1 - (activeLease.vacancyPct || 0));
+              }
+            }
+
+            // Calcular gastos mensuales (considerando periodicidad)
+            const monthlyRecurring = recurring.reduce((sum, exp) => {
+              if (exp.periodicity === "monthly") return sum + exp.amount;
+              if (exp.periodicity === "quarterly") return sum + exp.amount / 3;
+              if (exp.periodicity === "yearly") return sum + exp.amount / 12;
+              return sum;
+            }, 0);
+
+            // Pago mensual de hipoteca
+            const monthlyLoan = loan?.monthlyPayment || 0;
+
+            // Cashflow = Ingresos - Gastos - Hipoteca
+            const cashflow = monthlyIncome - monthlyRecurring - monthlyLoan;
+
+            return {
+              ...prop,
+              monthlyIncome,
+              monthlyRecurring,
+              monthlyLoan,
+              cashflow,
+            };
+          });
+
+        if (propertiesWithCashflow.length > 0) {
+          const sorted = [...propertiesWithCashflow].sort(
+            (a, b) => b.cashflow - a.cashflow,
+          );
+          setBestProperty(sorted[0] as Property);
+          setBestPropertyCashflow(sorted[0].cashflow);
+          setWorstProperty(sorted[sorted.length - 1] as Property);
+          setWorstPropertyCashflow(sorted[sorted.length - 1].cashflow);
+        }
+
+        // Calculate YTD and projection (CORRECTED: include all deductions)
+        const totalAnnualLoanPayments = totalMonthlyLoanPayment * 12;
+        const ytd = calculateYTDCashflow(
+          annualIncome,
+          annualRecurringExpenses + annualOneOffExpenses,
+          totalAnnualLoanPayments,
+        );
+        setYtdCashflow(ytd);
+
+        // Projection: monthly average AFTER all deductions
+        const monthlyNetCashflow =
+          (annualIncome -
+            annualRecurringExpenses -
+            annualOneOffExpenses -
+            totalAnnualLoanPayments) /
+          12;
+        const projection = calculateYearProjection(monthlyNetCashflow);
+        setYearProjection(projection);
+
+        // Calculate trend: compare net cashflow, not just income
+        const trend = determineTrend(monthlyNetCashflow, 0);
+        setCashflowTrend(trend);
+
+        setTotalIncome(annualIncome); // Store ANNUAL
+        setTotalRecurringExpenses(annualRecurringExpenses); // Store ANNUAL
+        setTotalOneOffExpenses(annualOneOffExpenses); // Store ANNUAL
         setTotalPrincipal(totalPrincipal);
         setTotalCurrentValue(totalCurrentValue);
         setTotalPurchasePrice(totalPurchasePrice);
-
-        setPortfolioDebtRatio(
-          totalCurrentValue > 0 ? (totalPrincipal / totalCurrentValue) * 100 : 0
-        );
+        setTotalMonthlyLoanPayment(totalMonthlyLoanPayment);
 
         if (totalEquitySum > 0) {
           setAvgCashOnCash(weightedCashOnCash / totalEquitySum);
-          setAvgCapRate(weightedCapRate / totalEquitySum);
         } else {
           setAvgCashOnCash(0);
-          setAvgCapRate(0);
         }
 
         const monthNames = [
@@ -402,7 +514,7 @@ export function DashboardPage() {
           Object.keys(monthlyData).map((month) => ({
             month: monthNames[parseInt(month) - 1],
             ...monthlyData[parseInt(month)],
-          }))
+          })),
         );
       } finally {
         setLoading(false);
@@ -413,14 +525,13 @@ export function DashboardPage() {
   }, [userDoc, selectedPropertyId]);
 
   // Calculate derived metrics
-  const noi = totalIncome - totalRecurringExpenses - totalOneOffExpenses;
-  const rentabilidadBruta =
-    totalCurrentValue > 0 ? (totalIncome / totalCurrentValue) * 100 : 0;
-  const rentabilidadNeta =
-    totalCurrentValue > 0 ? (noi / totalCurrentValue) * 100 : 0;
   const plusvalia = totalCurrentValue - totalPurchasePrice;
   const plusvaliaPercent =
     totalPurchasePrice > 0 ? (plusvalia / totalPurchasePrice) * 100 : 0;
+
+  // LTV (Loan-to-Value): deuda total / valor actual
+  const ltv =
+    totalCurrentValue > 0 ? (totalPrincipal / totalCurrentValue) * 100 : 0;
 
   return (
     <Box>
@@ -459,6 +570,44 @@ export function DashboardPage() {
         </FormControl>
       </Box>
 
+      {/* Demo Mode Alert */}
+      {showDemoAlert && (
+        <Alert
+          severity="info"
+          onClose={() => setShowDemoAlert(false)}
+          sx={{ mb: 3 }}
+        >
+          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 0.5 }}>
+            ℹ️ Estás en modo demo
+          </Typography>
+          <Typography variant="body2">
+            Estás explorando con datos de ejemplo. Puedes editar y explorar
+            libremente, o crea tu primera propiedad real para comenzar.
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Onboarding Done Alert */}
+      {isOnboardingDone && !isDemoMode && (
+        <Alert
+          severity="success"
+          onClose={() => {
+            const params = new URLSearchParams(searchParams);
+            params.delete("onboarding");
+            setSearchParams(params);
+          }}
+          sx={{ mb: 3 }}
+        >
+          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 0.5 }}>
+            🎉 ¡Bienvenido!
+          </Typography>
+          <Typography variant="body2">
+            Tu primera propiedad ha sido creada exitosamente. Explora el
+            dashboard para ver todas tus métricas.
+          </Typography>
+        </Alert>
+      )}
+
       {/* Loading State */}
       {loading && (
         <Box
@@ -494,13 +643,13 @@ export function DashboardPage() {
         </Paper>
       )}
 
-      {/* Hero Section - Métricas Principales */}
+      {/* SECTION 1: HERO CARD - ANNUAL CASHFLOW */}
       {properties.length > 0 && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12}>
             <Card
               sx={{
-                background: `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.9)} 0%, ${alpha(theme.palette.success.dark, 0.9)} 100%)`,
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
                 color: "white",
                 position: "relative",
                 overflow: "hidden",
@@ -509,699 +658,759 @@ export function DashboardPage() {
               <Box
                 sx={{
                   position: "absolute",
-                  top: -20,
-                  right: -20,
-                  width: 120,
-                  height: 120,
+                  top: -50,
+                  right: -50,
+                  width: 200,
+                  height: 200,
                   borderRadius: "50%",
-                  background: alpha("#fff", 0.1),
+                  background: alpha("rgba(255,255,255,0.1)", 1),
                 }}
               />
-              <CardContent sx={{ position: "relative", zIndex: 1 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                  <PaidIcon sx={{ fontSize: 22, mr: 1 }} />
-                  <Typography
-                    variant="caption"
-                    sx={{ fontWeight: 600, opacity: 0.9 }}
-                  >
-                    VALOR DEL PORTFOLIO
-                  </Typography>
-                </Box>
+              <CardContent sx={{ p: 4, position: "relative", zIndex: 1 }}>
+                <Typography variant="overline" sx={{ opacity: 0.9 }}>
+                  TU CASHFLOW ESTE AÑO (DESPUÉS DE TODO)
+                </Typography>
+
                 {loading ? (
                   <Skeleton
                     variant="text"
-                    width={140}
-                    height={40}
-                    sx={{ bgcolor: alpha("#fff", 0.2) }}
+                    width={250}
+                    height={80}
+                    sx={{ bgcolor: alpha("#fff", 0.2), my: 2 }}
                   />
                 ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                    {formatCurrency(totalCurrentValue)}
+                  <Typography variant="h1" fontWeight={900} sx={{ my: 2 }}>
+                    {ytdCashflow >= 0 ? "+" : ""}
+                    {formatCurrency(ytdCashflow)}
                   </Typography>
                 )}
+
+                <Typography variant="body1" sx={{ opacity: 0.9, mb: 3 }}>
+                  Ganancia neta después de hipotecas, gastos e impuestos
+                  <br />
+                  <strong>
+                    {formatCurrency(ytdCashflow / 12)}/mes promedio
+                  </strong>
+                </Typography>
+
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <Chip
-                    size="small"
-                    label={`${properties.length} ${properties.length === 1 ? "propiedad" : "propiedades"}`}
-                    sx={{
-                      bgcolor: alpha("#fff", 0.2),
-                      color: "white",
-                      fontWeight: 600,
-                      fontSize: "0.7rem",
-                    }}
-                  />
-                  {plusvalia !== 0 && (
-                    <Typography
-                      variant="caption"
-                      sx={{ opacity: 0.9, fontWeight: 600 }}
-                    >
-                      {plusvaliaPercent > 0 ? "+" : ""}
-                      {plusvaliaPercent.toFixed(1)}% plusvalía
+                  {cashflowTrend === "up" ? (
+                    <>
+                      <ArrowUpwardIcon />
+                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        Tendencia positiva vs mes anterior
+                      </Typography>
+                    </>
+                  ) : cashflowTrend === "down" ? (
+                    <>
+                      <ArrowDownwardIcon />
+                      <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                        Tendencia negativa vs mes anterior
+                      </Typography>
+                    </>
+                  ) : (
+                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                      Estable vs mes anterior
                     </Typography>
                   )}
                 </Box>
               </CardContent>
             </Card>
           </Grid>
-
-          <Grid item xs={12} sm={6} md={3}>
-            <Card
-              sx={{
-                background: `linear-gradient(135deg, ${alpha("#2196f3", 0.9)} 0%, ${alpha("#1976d2", 0.9)} 100%)`,
-                color: "white",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: -20,
-                  right: -20,
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  background: alpha("#fff", 0.1),
-                }}
-              />
-              <CardContent sx={{ position: "relative", zIndex: 1 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                  <TrendingUpIcon sx={{ fontSize: 24, mr: 1 }} />
-                  <Typography
-                    variant="caption"
-                    sx={{ fontWeight: 600, opacity: 0.9 }}
-                  >
-                    INGRESOS ANUALES
-                  </Typography>
-                </Box>
-                {loading ? (
-                  <Skeleton
-                    variant="text"
-                    width={140}
-                    height={40}
-                    sx={{ bgcolor: alpha("#fff", 0.2) }}
-                  />
-                ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                    {formatCurrency(totalIncome)}
-                  </Typography>
-                )}
-                <Typography
-                  variant="caption"
-                  sx={{ opacity: 0.9, fontWeight: 600 }}
-                >
-                  {formatCurrency(totalIncome / 12)} mensuales
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={3}>
-            <Card
-              sx={{
-                background: `linear-gradient(135deg, ${alpha("#ff9800", 0.9)} 0%, ${alpha("#f57c00", 0.9)} 100%)`,
-                color: "white",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: -20,
-                  right: -20,
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  background: alpha("#fff", 0.1),
-                }}
-              />
-              <CardContent sx={{ position: "relative", zIndex: 1 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                  <ShowChartIcon sx={{ fontSize: 24, mr: 1 }} />
-                  <Typography
-                    variant="caption"
-                    sx={{ fontWeight: 600, opacity: 0.9 }}
-                  >
-                    FLUJO DE CAJA ANUAL
-                  </Typography>
-                </Box>
-                {loading ? (
-                  <Skeleton
-                    variant="text"
-                    width={140}
-                    height={40}
-                    sx={{ bgcolor: alpha("#fff", 0.2) }}
-                  />
-                ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                    {formatCurrency(totalCFAF)}
-                  </Typography>
-                )}
-                <Typography
-                  variant="caption"
-                  sx={{ opacity: 0.9, fontWeight: 600 }}
-                >
-                  {formatCurrency(totalCFAF / 12)} mensuales
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} sm={6} md={3}>
-            <Card
-              sx={{
-                background: `linear-gradient(135deg, ${alpha("#9c27b0", 0.9)} 0%, ${alpha("#7b1fa2", 0.9)} 100%)`,
-                color: "white",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: -20,
-                  right: -20,
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  background: alpha("#fff", 0.1),
-                }}
-              />
-              <CardContent sx={{ position: "relative", zIndex: 1 }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-                  <AccountBalanceWalletIcon sx={{ fontSize: 24, mr: 1 }} />
-                  <Typography
-                    variant="caption"
-                    sx={{ fontWeight: 600, opacity: 0.9 }}
-                  >
-                    BENEFICIO NETO (NOI)
-                  </Typography>
-                </Box>
-                {loading ? (
-                  <Skeleton
-                    variant="text"
-                    width={140}
-                    height={40}
-                    sx={{ bgcolor: alpha("#fff", 0.2) }}
-                  />
-                ) : (
-                  <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-                    {formatCurrency(noi)}
-                  </Typography>
-                )}
-                <Typography
-                  variant="caption"
-                  sx={{ opacity: 0.9, fontWeight: 600 }}
-                >
-                  {rentabilidadNeta.toFixed(2)}% rentabilidad neta
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
         </Grid>
       )}
 
-      {/* Métricas de Rentabilidad */}
+      {/* SECTION 2: 4 KPIs PRINCIPALES */}
       {properties.length > 0 && (
-        <Paper sx={{ p: 3, mb: 4 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
-            Métricas de Rentabilidad
-          </Typography>
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontWeight: 600 }}
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* KPI 1: Portfolio Value */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ mb: 1 }}
                 >
-                  Tasa de Capitalización
-                </Typography>
-                {loading ? (
-                  <Skeleton variant="text" width={100} height={40} />
-                ) : (
-                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                    <Typography
-                      variant="h4"
-                      sx={{ fontWeight: 700, color: "#2196f3" }}
-                    >
-                      {avgCapRate.toFixed(2)}%
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Cap Rate
-                    </Typography>
-                  </Box>
-                )}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block", mt: 0.5 }}
-                >
-                  Retorno sobre la inversión inicial
-                </Typography>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontWeight: 600 }}
-                >
-                  Retorno sobre Capital
-                </Typography>
-                {loading ? (
-                  <Skeleton variant="text" width={100} height={40} />
-                ) : (
-                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                    <Typography
-                      variant="h4"
-                      sx={{ fontWeight: 700, color: "#00bcd4" }}
-                    >
-                      {avgCashOnCash.toFixed(2)}%
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      CoC
-                    </Typography>
-                  </Box>
-                )}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block", mt: 0.5 }}
-                >
-                  Rendimiento del capital invertido
-                </Typography>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontWeight: 600 }}
-                >
-                  Rentabilidad Bruta
-                </Typography>
-                {loading ? (
-                  <Skeleton variant="text" width={100} height={40} />
-                ) : (
-                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                    <Typography
-                      variant="h4"
-                      sx={{ fontWeight: 700, color: "#4caf50" }}
-                    >
-                      {rentabilidadBruta.toFixed(2)}%
-                    </Typography>
-                  </Box>
-                )}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block", mt: 0.5 }}
-                >
-                  Ingresos / Valor actual
-                </Typography>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <Box>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontWeight: 600 }}
-                >
-                  Ratio de Endeudamiento
-                </Typography>
-                {loading ? (
-                  <Skeleton variant="text" width={100} height={40} />
-                ) : (
-                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                    <Typography
-                      variant="h4"
-                      sx={{
-                        fontWeight: 700,
-                        color:
-                          portfolioDebtRatio < 50
-                            ? "#4caf50"
-                            : portfolioDebtRatio < 70
-                              ? "#ff9800"
-                              : "#f44336",
-                      }}
-                    >
-                      {portfolioDebtRatio.toFixed(1)}%
-                    </Typography>
-                  </Box>
-                )}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ display: "block", mt: 0.5 }}
-                >
-                  {formatCurrency(totalPrincipal)} deuda total
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
-        </Paper>
-      )}
-
-      {/* Gráficos */}
-      {properties.length > 0 && (
-        <Grid container spacing={3}>
-          <Grid item xs={12} lg={8}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
-                Evolución Mensual del Flujo de Caja
-              </Typography>
-
-              <Box sx={{ height: 350 }}>
-                {loading ? (
-                  <Box
-                    sx={{
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <CircularProgress />
-                  </Box>
-                ) : (
-                  <Line
-                    data={{
-                      labels: chartData.map((d) => d.month),
-                      datasets: [
-                        {
-                          label: "Ingresos",
-                          data: chartData.map((d) => d.ingresos),
-                          borderColor: "#4caf50",
-                          backgroundColor: "rgba(76, 175, 80, 0.1)",
-                          fill: true,
-                          tension: 0.4,
-                          borderWidth: 3,
-                          pointRadius: 5,
-                          pointHoverRadius: 7,
-                          pointBackgroundColor: "#4caf50",
-                        },
-                        {
-                          label: "Gastos",
-                          data: chartData.map((d) => d.gastos),
-                          borderColor: "#ff9800",
-                          backgroundColor: "rgba(255, 152, 0, 0.1)",
-                          fill: true,
-                          tension: 0.4,
-                          borderWidth: 3,
-                          pointRadius: 5,
-                          pointHoverRadius: 7,
-                          pointBackgroundColor: "#ff9800",
-                        },
-                        {
-                          label: "Flujo Neto",
-                          data: chartData.map((d) => d.flujoNeto),
-                          borderColor: "#2196f3",
-                          backgroundColor: "rgba(33, 150, 243, 0.1)",
-                          fill: true,
-                          tension: 0.4,
-                          borderWidth: 3,
-                          pointRadius: 5,
-                          pointHoverRadius: 7,
-                          pointBackgroundColor: "#2196f3",
-                        },
-                      ],
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      interaction: {
-                        mode: "index",
-                        intersect: false,
-                      },
-                      plugins: {
-                        legend: {
-                          display: true,
-                          position: "top",
-                          labels: {
-                            usePointStyle: true,
-                            padding: 20,
-                            font: {
-                              size: 12,
-                              weight: 600,
-                            },
-                          },
-                        },
-                        tooltip: {
-                          enabled: true,
-                          backgroundColor: theme.palette.background.paper,
-                          titleColor: theme.palette.text.primary,
-                          bodyColor: theme.palette.text.secondary,
-                          borderColor: theme.palette.divider,
-                          borderWidth: 1,
-                          padding: 12,
-                          displayColors: true,
-                          callbacks: {
-                            label: (context) => {
-                              return `${context.dataset.label}: ${formatCurrency(
-                                context.parsed.y ?? 0
-                              )}`;
-                            },
-                          },
-                        },
-                      },
-                      scales: {
-                        x: {
-                          grid: {
-                            display: false,
-                          },
-                          ticks: {
-                            color: theme.palette.text.secondary,
-                            font: {
-                              size: 11,
-                            },
-                          },
-                        },
-                        y: {
-                          grid: {
-                            color: alpha(theme.palette.divider, 0.2),
-                          },
-                          ticks: {
-                            color: theme.palette.text.secondary,
-                            callback: (value) =>
-                              formatCurrency(value as number),
-                            font: {
-                              size: 11,
-                            },
-                          },
-                        },
-                      },
-                    }}
-                  />
-                )}
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid item xs={12} lg={4}>
-            <Paper sx={{ p: 3, height: "100%" }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
-                Desglose Financiero
-              </Typography>
-
-              <Box sx={{ mb: 4 }}>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontWeight: 600 }}
-                >
-                  Capital Invertido
-                </Typography>
-                {loading ? (
-                  <Skeleton variant="text" width={160} height={35} />
-                ) : (
-                  <Typography
-                    variant="h5"
-                    sx={{ fontWeight: 700, color: "#2196f3" }}
-                  >
-                    {formatCurrency(totalEquity)}
-                  </Typography>
-                )}
-              </Box>
-
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <Box>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 1,
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ fontWeight: 600 }}
-                    >
-                      Ingresos
-                    </Typography>
-                    {loading ? (
-                      <Skeleton variant="text" width={100} />
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 700, color: "#4caf50" }}
-                      >
-                        {formatCurrency(totalIncome)}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Box
-                    sx={{
-                      height: 8,
-                      bgcolor: alpha("#4caf50", 0.2),
-                      borderRadius: 1,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        height: "100%",
-                        width: "100%",
-                        bgcolor: "#4caf50",
-                      }}
-                    />
-                  </Box>
-                </Box>
-
-                <Box>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 1,
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ fontWeight: 600 }}
-                    >
-                      Gastos Totales
-                    </Typography>
-                    {loading ? (
-                      <Skeleton variant="text" width={100} />
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 700, color: "#ff9800" }}
-                      >
-                        {formatCurrency(
-                          totalRecurringExpenses + totalOneOffExpenses
-                        )}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Box
-                    sx={{
-                      height: 8,
-                      bgcolor: alpha("#ff9800", 0.2),
-                      borderRadius: 1,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        height: "100%",
-                        width:
-                          totalIncome > 0
-                            ? `${((totalRecurringExpenses + totalOneOffExpenses) / totalIncome) * 100}%`
-                            : "0%",
-                        bgcolor: "#ff9800",
-                      }}
-                    />
-                  </Box>
-                </Box>
-
-                <Box>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 1,
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ fontWeight: 600 }}
-                    >
-                      Beneficio Neto (NOI)
-                    </Typography>
-                    {loading ? (
-                      <Skeleton variant="text" width={100} />
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 700, color: "#9c27b0" }}
-                      >
-                        {formatCurrency(noi)}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Box
-                    sx={{
-                      height: 8,
-                      bgcolor: alpha("#9c27b0", 0.2),
-                      borderRadius: 1,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        height: "100%",
-                        width:
-                          totalIncome > 0
-                            ? `${(noi / totalIncome) * 100}%`
-                            : "0%",
-                        bgcolor: "#9c27b0",
-                      }}
-                    />
-                  </Box>
-                </Box>
-
-                <Box
-                  sx={{
-                    pt: 2,
-                    borderTop: `2px solid ${theme.palette.divider}`,
-                  }}
-                >
+                  <HomeIcon color="primary" />
                   <Typography
                     variant="caption"
                     color="text.secondary"
                     sx={{ fontWeight: 600 }}
                   >
-                    Margen de Beneficio
+                    VALOR DEL PORTFOLIO
                   </Typography>
-                  <Typography
-                    variant="h5"
-                    sx={{
-                      fontWeight: 700,
-                      color: noi > 0 ? "#4caf50" : "#f44336",
-                    }}
-                  >
-                    {totalIncome > 0
-                      ? ((noi / totalIncome) * 100).toFixed(1)
-                      : "0.0"}
-                    %
+                </Stack>
+
+                {loading ? (
+                  <Skeleton variant="text" width={140} height={40} />
+                ) : (
+                  <Typography variant="h4" fontWeight={900}>
+                    {formatCurrency(totalCurrentValue)}
                   </Typography>
+                )}
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {properties.length}{" "}
+                    {properties.length === 1 ? "propiedad" : "propiedades"}
+                  </Typography>
+                  {plusvalia > 0 && (
+                    <>
+                      {" • "}
+                      <Typography
+                        variant="caption"
+                        color="success.main"
+                        sx={{ fontWeight: 600 }}
+                      >
+                        +{plusvaliaPercent.toFixed(1)}% plusvalía
+                      </Typography>
+                    </>
+                  )}
                 </Box>
-              </Box>
-            </Paper>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* KPI 2: ROI Average */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ mb: 1 }}
+                >
+                  <TrendingUpIcon color="success" />
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600 }}
+                  >
+                    ROI PROMEDIO
+                  </Typography>
+                  <Tooltip title="Cash-on-Cash Return: rentabilidad sobre el capital invertido">
+                    <InfoIcon fontSize="small" sx={{ opacity: 0.5 }} />
+                  </Tooltip>
+                </Stack>
+
+                {loading ? (
+                  <Skeleton variant="text" width={100} height={40} />
+                ) : (
+                  <Typography variant="h4" fontWeight={900}>
+                    {avgCashOnCash.toFixed(1)}%
+                  </Typography>
+                )}
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Retorno anual
+                  </Typography>
+                  {avgCashOnCash > 6 && (
+                    <>
+                      {" • "}
+                      <Typography
+                        variant="caption"
+                        color="success.main"
+                        sx={{ fontWeight: 600 }}
+                      >
+                        ¡Excelente!
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* KPI 3: Annual Income */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ mb: 1 }}
+                >
+                  <PaidIcon color="primary" />
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600 }}
+                  >
+                    INGRESOS ANUALES
+                  </Typography>
+                </Stack>
+
+                {loading ? (
+                  <Skeleton variant="text" width={140} height={40} />
+                ) : (
+                  <Typography variant="h4" fontWeight={900}>
+                    {formatCurrency(totalIncome)}
+                  </Typography>
+                )}
+
+                <Typography variant="caption" color="text.secondary">
+                  {formatCurrency(totalIncome / 12)}/mes promedio
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* KPI 4: Loan-to-Value (LTV) */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={1}
+                  sx={{ mb: 1 }}
+                >
+                  <AccountBalanceWalletIcon color="error" />
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600 }}
+                  >
+                    ENDEUDAMIENTO (LTV)
+                  </Typography>
+                  <Tooltip title="Loan-to-Value: deuda total / valor actual del portfolio">
+                    <InfoIcon fontSize="small" sx={{ opacity: 0.5 }} />
+                  </Tooltip>
+                </Stack>
+
+                {loading ? (
+                  <Skeleton variant="text" width={100} height={40} />
+                ) : (
+                  <Typography
+                    variant="h4"
+                    fontWeight={900}
+                    color={
+                      ltv > 80
+                        ? "error.main"
+                        : ltv > 60
+                          ? "warning.main"
+                          : "success.main"
+                    }
+                  >
+                    {ltv.toFixed(1)}%
+                  </Typography>
+                )}
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Deuda: {formatCurrency(totalPrincipal)}
+                  </Typography>
+                  {ltv > 80 && (
+                    <>
+                      {" • "}
+                      <Typography
+                        variant="caption"
+                        color="error.main"
+                        sx={{ fontWeight: 600 }}
+                      >
+                        Alto
+                      </Typography>
+                    </>
+                  )}
+                  {ltv <= 60 && (
+                    <>
+                      {" • "}
+                      <Typography
+                        variant="caption"
+                        color="success.main"
+                        sx={{ fontWeight: 600 }}
+                      >
+                        Seguro
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
           </Grid>
         </Grid>
+      )}
+      {properties.length > 0 && (
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          {/* Best vs Worst Property */}
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" fontWeight={900} gutterBottom>
+                  📊 Rendimiento de propiedades
+                </Typography>
+
+                <Stack spacing={2}>
+                  {/* Best Property */}
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: "success.light",
+                      border: "2px solid",
+                      borderColor: "success.main",
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                      <Typography fontSize={32}>🏆</Typography>
+                      <Box flex={1}>
+                        <Typography variant="caption" color="text.secondary">
+                          MEJOR PROPIEDAD
+                        </Typography>
+                        <Typography variant="body1" fontWeight={700} noWrap>
+                          {bestProperty?.address || "N/A"}
+                        </Typography>
+                        <Typography
+                          variant="h6"
+                          color="success.dark"
+                          fontWeight={900}
+                        >
+                          {loading ? (
+                            <Skeleton variant="text" width={100} />
+                          ) : (
+                            `${bestPropertyCashflow >= 0 ? "+" : ""}${formatCurrency(bestPropertyCashflow)}/mes`
+                          )}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Box>
+
+                  {/* Worst Property */}
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: "grey.100",
+                      border: "2px solid",
+                      borderColor: "grey.300",
+                    }}
+                  >
+                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                      <Typography fontSize={32}>📉</Typography>
+                      <Box flex={1}>
+                        <Typography variant="caption" color="text.secondary">
+                          MENOR RENDIMIENTO
+                        </Typography>
+                        <Typography variant="body1" fontWeight={700} noWrap>
+                          {worstProperty?.address || "N/A"}
+                        </Typography>
+                        <Typography variant="h6" fontWeight={900}>
+                          {loading ? (
+                            <Skeleton variant="text" width={100} />
+                          ) : (
+                            formatCurrency(worstPropertyCashflow) + "/mes"
+                          )}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Box>
+
+                  {/* Difference Alert */}
+                  <Alert severity="info">
+                    Diferencia:{" "}
+                    <strong>
+                      {loading ? (
+                        <Skeleton variant="text" width={100} />
+                      ) : (
+                        `${formatCurrency(bestPropertyCashflow - worstPropertyCashflow)}/mes`
+                      )}
+                    </strong>
+                  </Alert>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Projection & Achievements */}
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" fontWeight={900} gutterBottom>
+                  🔮 Proyección
+                </Typography>
+
+                <Box
+                  sx={{
+                    p: 3,
+                    bgcolor: "info.light",
+                    borderRadius: 2,
+                    textAlign: "center",
+                    mb: 3,
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    SI MANTIENES EL RITMO ACTUAL
+                  </Typography>
+                  {loading ? (
+                    <Skeleton
+                      variant="text"
+                      width={150}
+                      height={50}
+                      sx={{ mx: "auto", my: 1 }}
+                    />
+                  ) : (
+                    <Typography variant="h3" fontWeight={900} sx={{ my: 1 }}>
+                      {yearProjection >= 0 ? "+" : ""}
+                      {formatCurrency(yearProjection)}
+                    </Typography>
+                  )}
+                  <Typography variant="body2" color="text.secondary">
+                    Ganancia proyectada próximos 12 meses
+                  </Typography>
+                </Box>
+
+                {/* Achievements */}
+                <Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    gutterBottom
+                    display="block"
+                  >
+                    🏅 TUS LOGROS
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                    <Tooltip title="Primera Propiedad">
+                      <Chip label="🏠" size="small" sx={{ fontSize: 18 }} />
+                    </Tooltip>
+                    {ytdCashflow > 0 && (
+                      <Tooltip title="Año Rentable">
+                        <Chip label="📈" size="small" sx={{ fontSize: 18 }} />
+                      </Tooltip>
+                    )}
+                    {properties.length >= 3 && (
+                      <Tooltip title="Portfolio Pro (3+ propiedades)">
+                        <Chip label="👑" size="small" sx={{ fontSize: 18 }} />
+                      </Tooltip>
+                    )}
+                  </Stack>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Smart Trend Alert */}
+      {properties.length > 0 && !loading && (
+        <Box sx={{ mb: 4 }}>
+          {cashflowTrend === "up" && (
+            <Alert
+              severity="success"
+              sx={{ display: "flex", alignItems: "flex-start" }}
+            >
+              <Box>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ fontWeight: 700, mb: 0.5 }}
+                >
+                  🚀 ¡Excelente! Tu cashflow ha mejorado
+                </Typography>
+                <Typography variant="body2">
+                  Comparado al mes anterior, tu flujo de caja ha mostrado una
+                  tendencia positiva. Mantén el enfoque en maximizar tus
+                  ingresos por renta y optimizar tus gastos operacionales.
+                </Typography>
+              </Box>
+            </Alert>
+          )}
+          {cashflowTrend === "down" && worstProperty && (
+            <Alert
+              severity="warning"
+              sx={{ display: "flex", alignItems: "flex-start" }}
+            >
+              <Box>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ fontWeight: 700, mb: 0.5 }}
+                >
+                  ⚠️ Tu cashflow ha bajado
+                </Typography>
+                <Typography variant="body2">
+                  Comparado al mes anterior, detectamos una reducción en tu
+                  flujo de caja. {worstProperty.address} es tu propiedad con
+                  peor desempeño ({formatCurrency(worstPropertyCashflow)}/mes).
+                  Revisa los gastos asociados.
+                </Typography>
+              </Box>
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      {/* SECTION 4: CHART + FINANCIAL BREAKDOWN */}
+      {properties.length > 0 && (
+        <Grid container spacing={2}>
+          {/* Monthly Evolution Chart */}
+          <Grid item xs={12} md={8}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+                  📈 Evolución mensual del flujo de caja
+                </Typography>
+
+                <Paper
+                  sx={{
+                    position: "relative",
+                    width: "100%",
+                    height: 400,
+                  }}
+                >
+                  {loading || chartData.length === 0 ? (
+                    <Box
+                      sx={{
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <CircularProgress />
+                    </Box>
+                  ) : (
+                    <Line
+                      data={{
+                        labels: chartData.map((d) => d.month),
+                        datasets: [
+                          {
+                            label: "Ingresos",
+                            data: chartData.map((d) => d.ingresos),
+                            borderColor: "#4caf50",
+                            backgroundColor: "rgba(76, 175, 80, 0.1)",
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: 3,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            pointBackgroundColor: "#4caf50",
+                          },
+                          {
+                            label: "Gastos",
+                            data: chartData.map((d) => d.gastos),
+                            borderColor: "#ff9800",
+                            backgroundColor: "rgba(255, 152, 0, 0.1)",
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: 3,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            pointBackgroundColor: "#ff9800",
+                          },
+                          {
+                            label: "Flujo Neto",
+                            data: chartData.map((d) => d.flujoNeto),
+                            borderColor: "#2196f3",
+                            backgroundColor: "rgba(33, 150, 243, 0.1)",
+                            fill: true,
+                            tension: 0.4,
+                            borderWidth: 3,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            pointBackgroundColor: "#2196f3",
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                          mode: "index",
+                          intersect: false,
+                        },
+                        plugins: {
+                          legend: {
+                            display: true,
+                            position: "top",
+                            labels: {
+                              usePointStyle: true,
+                              padding: 20,
+                              font: {
+                                size: 12,
+                                weight: "600" as any,
+                              },
+                            },
+                          },
+                          tooltip: {
+                            enabled: true,
+                            backgroundColor: theme.palette.background.paper,
+                            titleColor: theme.palette.text.primary,
+                            bodyColor: theme.palette.text.secondary,
+                            borderColor: theme.palette.divider,
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                              label: (context) => {
+                                return `${context.dataset.label}: ${formatCurrency(
+                                  context.parsed.y ?? 0,
+                                )}`;
+                              },
+                            },
+                          },
+                        },
+                        scales: {
+                          x: {
+                            grid: {
+                              display: false,
+                            },
+                            ticks: {
+                              color: theme.palette.text.secondary,
+                              font: {
+                                size: 11,
+                              },
+                            },
+                          },
+                          y: {
+                            grid: {
+                              color: alpha(theme.palette.divider, 0.2),
+                            },
+                            ticks: {
+                              color: theme.palette.text.secondary,
+                              callback: (value) =>
+                                formatCurrency(value as number),
+                              font: {
+                                size: 11,
+                              },
+                            },
+                          },
+                        },
+                      }}
+                    />
+                  )}
+                </Paper>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Financial Summary */}
+          <Grid item xs={12} md={4}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+                  💰 Resumen financiero
+                </Typography>
+
+                <Stack spacing={2}>
+                  {/* Income */}
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Ingresos totales
+                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={120} />
+                    ) : (
+                      <Typography
+                        variant="h6"
+                        fontWeight={900}
+                        color="success.main"
+                      >
+                        +{formatCurrency(totalIncome)}
+                      </Typography>
+                    )}
+                    <Typography variant="caption">/año</Typography>
+                  </Box>
+
+                  <Divider />
+
+                  {/* Expenses */}
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Gastos totales
+                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={120} />
+                    ) : (
+                      <Typography
+                        variant="h6"
+                        fontWeight={900}
+                        color="error.main"
+                      >
+                        -
+                        {formatCurrency(
+                          totalRecurringExpenses + totalOneOffExpenses,
+                        )}
+                      </Typography>
+                    )}
+                    <Typography variant="caption">/año</Typography>
+                  </Box>
+
+                  <Divider />
+
+                  {/* Loans */}
+                  {totalPrincipal > 0 && (
+                    <>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Hipotecas
+                        </Typography>
+                        {loading ? (
+                          <Skeleton variant="text" width={120} />
+                        ) : (
+                          <Typography variant="h6" fontWeight={900}>
+                            -
+                            {formatCurrency(
+                              ((totalPrincipal *
+                                (0.04 / 12) *
+                                Math.pow(1 + 0.04 / 12, 360)) /
+                                (Math.pow(1 + 0.04 / 12, 360) - 1)) *
+                                12,
+                            )}
+                          </Typography>
+                        )}
+                        <Typography variant="caption">/año</Typography>
+                      </Box>
+
+                      <Divider />
+                    </>
+                  )}
+
+                  {/* Net Cashflow */}
+                  <Box
+                    sx={{
+                      p: 2,
+                      bgcolor:
+                        ytdCashflow > 0 ? "success.light" : "error.light",
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      CASHFLOW NETO
+                    </Typography>
+                    {loading ? (
+                      <Skeleton variant="text" width={140} />
+                    ) : (
+                      <Typography
+                        variant="h5"
+                        fontWeight={900}
+                        color={ytdCashflow > 0 ? "success.dark" : "error.dark"}
+                      >
+                        {ytdCashflow >= 0 ? "+" : ""}
+                        {formatCurrency(ytdCashflow)}
+                      </Typography>
+                    )}
+                    <Typography variant="caption">/año</Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Achievements & Milestones */}
+      {properties.length > 0 && !loading && (
+        <Box sx={{ mt: 4 }}>
+          <AchievementBadges
+            properties={properties}
+            ytdCashflow={ytdCashflow}
+            loading={loading}
+          />
+        </Box>
       )}
     </Box>
   );

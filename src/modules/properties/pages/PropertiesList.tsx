@@ -8,70 +8,33 @@ import {
   Snackbar,
   Alert,
   Card,
-  CardContent,
   Grid,
-  Chip,
   Stack,
   Tooltip,
   CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Link,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import HomeIcon from "@mui/icons-material/Home";
-import LocationOnIcon from "@mui/icons-material/LocationOn";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 
 import { useAuth } from "@/auth/authContext";
 import { useOrgBilling } from "@/hooks/useOrgBilling";
 import { getDashboard } from "../api";
 import { Property } from "../types";
-import {
-  computeLeveredMetrics,
-  sumClosingCosts,
-  buildAmortizationSchedule,
-  getMonthlyRentForDate,
-} from "../calculations";
+import { getMonthlyRentForDate } from "../calculations";
 import { getAggregatedRentForMonth } from "../rentalAggregation";
-import { formatPercent, formatCurrency } from "@/utils/format";
-
-/**
- * Calculate current loan balance based on months elapsed since start date
- */
-function getRemainingLoanBalance(
-  loan: any,
-  currentDate: Date = new Date()
-): number {
-  if (!loan || !loan.startDate || !loan.principal || !loan.termMonths) {
-    return 0;
-  }
-
-  try {
-    const startDate = new Date(loan.startDate);
-    const monthsElapsed = Math.floor(
-      (currentDate.getFullYear() - startDate.getFullYear()) * 12 +
-        (currentDate.getMonth() - startDate.getMonth())
-    );
-
-    if (monthsElapsed < 0) return loan.principal;
-    if (monthsElapsed >= loan.termMonths) return 0;
-
-    const schedule = buildAmortizationSchedule({
-      principal: loan.principal,
-      annualRatePct: loan.annualRatePct || 0,
-      termMonths: loan.termMonths,
-      interestOnlyMonths: loan.interestOnlyMonths || 0,
-    });
-
-    if (monthsElapsed > 0 && monthsElapsed <= schedule.schedule.length) {
-      return schedule.schedule[monthsElapsed - 1]?.balance || 0;
-    }
-
-    return loan.principal;
-  } catch (error) {
-    console.error("Error calculating remaining loan balance:", error);
-    return loan?.principal || 0;
-  }
-}
+import { PropertyCard } from "../components/PropertyCard";
+import { PortfolioSummary } from "../components/PortfolioSummary";
+import {
+  calculatePropertyCardData,
+  sortProperties,
+  filterProperties,
+  PropertyCardData,
+} from "../propertyCardUtils";
 
 export function PropertiesList() {
   const navigate = useNavigate();
@@ -85,6 +48,10 @@ export function PropertiesList() {
   // Store all data from dashboard
   const [dashboardData, setDashboardData] = useState<any>(null);
 
+  // Filter and sort state
+  const [sortBy, setSortBy] = useState<string>("cashflow-desc");
+  const [filter, setFilter] = useState<string>("all");
+
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -93,7 +60,7 @@ export function PropertiesList() {
 
   const hasReachedLimit = useMemo(
     () => !limitsLoading && properties.length >= propertyLimit,
-    [limitsLoading, properties.length, propertyLimit]
+    [limitsLoading, properties.length, propertyLimit],
   );
 
   const loadData = useCallback(async () => {
@@ -121,14 +88,14 @@ export function PropertiesList() {
   }, [loadData]);
 
   // Build enriched rows with metrics
-  const [rows, setRows] = useState<any[]>([]);
+  const [cardData, setCardData] = useState<PropertyCardData[]>([]);
 
   useEffect(() => {
     let cancelled = false;
 
     const enrichRows = async () => {
       if (properties.length === 0 || !dashboardData) {
-        setRows([]);
+        setCardData([]);
         return;
       }
 
@@ -145,7 +112,8 @@ export function PropertiesList() {
         const roomsByProp: Record<string, any[]> = {};
 
         dashboardData.leases.forEach((lease: any) => {
-          if (!leasesByProp[lease.propertyId]) leasesByProp[lease.propertyId] = [];
+          if (!leasesByProp[lease.propertyId])
+            leasesByProp[lease.propertyId] = [];
           leasesByProp[lease.propertyId].push(lease);
         });
 
@@ -155,7 +123,8 @@ export function PropertiesList() {
         });
 
         dashboardData.recurringExpenses.forEach((expense: any) => {
-          if (!recurringByProp[expense.propertyId]) recurringByProp[expense.propertyId] = [];
+          if (!recurringByProp[expense.propertyId])
+            recurringByProp[expense.propertyId] = [];
           recurringByProp[expense.propertyId].push(expense);
         });
 
@@ -164,6 +133,22 @@ export function PropertiesList() {
           roomsByProp[room.propertyId].push(room);
         });
 
+        // Helper function to check if lease is active in a given month
+        const isLeaseActiveInMonth = (lease: any, monthDate: any): boolean => {
+          if (!lease.startDate) return false;
+          const start = dayjs(lease.startDate);
+          const end = lease.endDate ? dayjs(lease.endDate) : null;
+
+          const startsOnOrBefore =
+            monthDate.isSame(start, "month") || monthDate.isAfter(start, "month");
+          const endsOnOrAfter =
+            !end ||
+            monthDate.isSame(end, "month") ||
+            monthDate.isBefore(end, "month");
+
+          return startsOnOrBefore && endsOnOrAfter;
+        };
+
         const enriched = properties.map((property) => {
           // Get data for this property from grouped dashboard data
           const leases = leasesByProp[property.id] || [];
@@ -171,91 +156,67 @@ export function PropertiesList() {
           const recurring = recurringByProp[property.id] || [];
           const rooms = roomsByProp[property.id] || [];
 
-            const closingCostsTotal = sumClosingCosts(property.closingCosts);
-            const totalInvestment = property.purchasePrice + closingCostsTotal;
+          const agg = getAggregatedRentForMonth({
+            property,
+            leases,
+            rooms,
+            monthDate,
+          });
 
-            const remainingBalance = getRemainingLoanBalance(loan);
+          // ✅ CAMBIO: Usar RENTA NETA (dinero real que entra después de vacancia)
+          let monthlyRent: number;
+          let monthlyRentGross: number;
+          let occupancy: number;
 
-            const agg = getAggregatedRentForMonth({
-              property,
-              leases,
-              rooms,
-              monthDate,
-            });
+          if (property.rentalMode === "PER_ROOM") {
+            monthlyRentGross = agg.monthlyGross;
+            monthlyRent = agg.monthlyNet; // ✅ NET
+            occupancy =
+              agg.totalRooms > 0
+                ? (agg.occupiedRooms / agg.totalRooms) * 100
+                : 0;
+          } else {
+            const activeUnitLease = leases.find(
+              (lease) => !lease.roomId && isLeaseActiveInMonth(lease, monthDate),
+            );
 
-            let monthlyRentNet: number;
-            let monthlyRentGross: number;
-            let occupancy: number;
-
-            if (property.rentalMode === "PER_ROOM") {
-              monthlyRentNet = agg.monthlyNet;
-              monthlyRentGross = agg.monthlyGross;
-              occupancy =
-                agg.totalRooms > 0
-                  ? (agg.occupiedRooms / agg.totalRooms) * 100
-                  : 0;
+            if (!activeUnitLease) {
+              monthlyRent = 0;
+              monthlyRentGross = 0;
+              occupancy = 0;
             } else {
-              const activeUnitLease = leases.find(
-                (lease) => !lease.roomId && lease.isActive !== false
+              const currentRent = getMonthlyRentForDate(
+                activeUnitLease,
+                monthDate,
               );
-
-              if (!activeUnitLease) {
-                monthlyRentNet = 0;
-                monthlyRentGross = 0;
-                occupancy = 0;
-              } else {
-                const currentRent = getMonthlyRentForDate(activeUnitLease, monthDate);
-                monthlyRentNet =
-                  currentRent *
-                  (1 - (activeUnitLease.vacancyPct || 0));
-                monthlyRentGross = currentRent;
-                occupancy = (1 - (activeUnitLease.vacancyPct || 0)) * 100;
-              }
+              monthlyRentGross = currentRent;
+              const vacancyPct = activeUnitLease.vacancyPct || 0;
+              monthlyRent = currentRent * (1 - vacancyPct); // ✅ NET
+              occupancy = (1 - vacancyPct) * 100;
             }
+          }
 
-            const metrics = computeLeveredMetrics({
-              monthlyRent: monthlyRentGross,
-              vacancyPct: agg.effectiveVacancyPct,
-              recurring,
-              variableAnnualBudget: 0,
-              purchasePrice: property.purchasePrice,
-              closingCostsTotal,
-              loan,
-            });
-
-          return {
-            id: property.id,
-            address: property.address,
-            purchasePrice: property.purchasePrice,
-            currentValue: property.currentValue || property.purchasePrice,
-            totalInvestment,
-            monthlyRent: monthlyRentNet,
-            capRate: metrics.capRateNet,
-            cashOnCash: metrics.cashOnCash,
-            occupancy,
-            loanBalance: remainingBalance,
+          // Use calculation function (now uses computeLeveredMetrics internally)
+          return calculatePropertyCardData(
+            property,
+            monthlyRent, // ✅ NET rent (after vacancy)
+            monthlyRentGross, // ✅ GROSS rent (before vacancy)
+            recurring, // ✅ Pass full array, computeLeveredMetrics will annualize
             loan,
-            computed: {
-              monthlyRentNet,
-              monthlyRentGross,
-              effectiveVacancyPct: agg.effectiveVacancyPct,
-              occupiedRooms: agg.occupiedRooms,
-              totalRooms: agg.totalRooms,
-              rentalMode: property.rentalMode,
-            },
-          };
+            occupancy,
+          );
         });
 
-        if (!cancelled) setRows(enriched);
+        if (!cancelled) setCardData(enriched);
       } catch (error) {
         console.error("Error calculating metrics:", error);
         if (!cancelled) {
           setSnackbar({
             open: true,
-            message: `Error al calcular métricas: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+            message: `Error al calcular métricas: ${error instanceof Error ? error.message : "Error desconocido"}`,
             severity: "error",
           });
-          setRows([]);
+          setCardData([]);
         }
       } finally {
         if (!cancelled) setRowsLoading(false);
@@ -272,8 +233,35 @@ export function PropertiesList() {
   const showInitialLoading = loading && properties.length === 0;
   const showRowsLoading = rowsLoading && properties.length > 0;
 
+  // Calculate portfolio summary
+  const portfolioSummary = useMemo(() => {
+    const totalCashflow = cardData.reduce(
+      (sum, card) => sum + card.cashflow,
+      0,
+    );
+    const avgROI =
+      cardData.length > 0
+        ? cardData.reduce((sum, card) => sum + card.roi, 0) / cardData.length
+        : 0;
+    const totalEquity = cardData.reduce((sum, card) => sum + card.equity, 0);
+
+    return {
+      totalCashflow,
+      avgROI,
+      totalEquity,
+    };
+  }, [cardData]);
+
+  // Apply filters and sorting
+  const filteredAndSortedCards = useMemo(() => {
+    const filtered = filterProperties(cardData, filter);
+    const sorted = sortProperties(filtered, sortBy);
+    return sorted;
+  }, [cardData, filter, sortBy]);
+
   return (
     <Box>
+      {/* Header */}
       <Box
         sx={{
           display: "flex",
@@ -318,7 +306,7 @@ export function PropertiesList() {
         </Alert>
       )}
 
-      {!loading && !rowsLoading && rows.length === 0 && (
+      {!loading && !rowsLoading && properties.length === 0 && (
         <Card sx={{ p: 6, textAlign: "center", bgcolor: "background.default" }}>
           <Box
             sx={{
@@ -337,9 +325,14 @@ export function PropertiesList() {
           <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
             No tienes viviendas todavía
           </Typography>
-          <Typography variant="body1" color="text.secondary" paragraph sx={{ maxWidth: 500, margin: "0 auto 3" }}>
-            Añade tu primera vivienda para empezar a gestionar tus
-            ingresos, gastos y contratos de alquiler.
+          <Typography
+            variant="body1"
+            color="text.secondary"
+            paragraph
+            sx={{ maxWidth: 500, margin: "0 auto 3" }}
+          >
+            Añade tu primera vivienda para empezar a gestionar tus ingresos,
+            gastos y contratos de alquiler.
           </Typography>
           <Button
             variant="contained"
@@ -353,268 +346,89 @@ export function PropertiesList() {
         </Card>
       )}
 
-      <Grid container spacing={3}>
-        {rows.map((row) => (
-          <Grid item xs={12} sm={6} lg={4} key={row.id}>
-            <Card
-              sx={{
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                transition: "all 0.3s ease",
-                "&:hover": { transform: "translateY(-4px)", boxShadow: 4 },
-                cursor: "pointer",
-              }}
-              onClick={() => navigate(`/properties/${row.id}`)}
+      {/* Portfolio Summary Card */}
+      {!loading && cardData.length > 0 && (
+        <PortfolioSummary
+          totalCashflow={portfolioSummary.totalCashflow}
+          avgROI={portfolioSummary.avgROI}
+          totalEquity={portfolioSummary.totalEquity}
+          propertyCount={properties.length}
+        />
+      )}
+
+      {/* Plan limit warning */}
+      {!loading && hasReachedLimit && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Has alcanzado el límite de {propertyLimit} propiedades para tu plan.{" "}
+          <Link href="/billing" sx={{ fontWeight: 700, cursor: "pointer" }}>
+            Actualiza tu plan
+          </Link>
+        </Alert>
+      )}
+
+      {/* Filters and sorting */}
+      {!loading && cardData.length > 0 && (
+        <Stack direction="row" spacing={2} sx={{ mb: 3 }} flexWrap="wrap">
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Ordenar por</InputLabel>
+            <Select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              label="Ordenar por"
             >
-              <CardContent sx={{ flexGrow: 1, pb: 2 }}>
-                <Box sx={{ display: "flex", alignItems: "flex-start", mb: 3 }}>
-                  <Box
-                    sx={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: 2,
-                      bgcolor: "primary.main",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      mr: 2,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <HomeIcon sx={{ fontSize: 32, color: "white" }} />
-                  </Box>
+              <MenuItem value="cashflow-desc">
+                Cashflow (mayor a menor)
+              </MenuItem>
+              <MenuItem value="cashflow-asc">Cashflow (menor a mayor)</MenuItem>
+              <MenuItem value="roi-desc">ROI (mayor a menor)</MenuItem>
+              <MenuItem value="date-desc">Más reciente</MenuItem>
+              <MenuItem value="address">Dirección (A-Z)</MenuItem>
+            </Select>
+          </FormControl>
 
-                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                    <Typography
-                      variant="h6"
-                      component="div"
-                      sx={{
-                        lineHeight: 1.3,
-                        mb: 0.5,
-                        fontWeight: 600,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                      }}
-                    >
-                      {row.address.split(",")[0]}
-                    </Typography>
-                    <Box sx={{ display: "flex", alignItems: "center" }}>
-                      <LocationOnIcon
-                        sx={{ fontSize: 18, color: "text.secondary", mr: 0.5 }}
-                      />
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {row.address.split(",").slice(1).join(",")}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Box>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Filtrar</InputLabel>
+            <Select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              label="Filtrar"
+            >
+              <MenuItem value="all">Todas</MenuItem>
+              <MenuItem value="positive">Solo rentables</MenuItem>
+              <MenuItem value="negative">Solo con pérdidas</MenuItem>
+              <MenuItem value="vacant">Vacías</MenuItem>
+              <MenuItem value="expiring">Contratos por vencer</MenuItem>
+            </Select>
+          </FormControl>
 
-                <Stack spacing={2}>
-                  <Box sx={{ display: "flex", gap: 3 }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        display="block"
-                      >
-                        Precio Vivienda
-                      </Typography>
-                      <Typography
-                        variant="body1"
-                        fontWeight={600}
-                        color="primary.main"
-                      >
-                        {formatCurrency(row.purchasePrice)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        display="block"
-                        sx={{ mb: 0.5 }}
-                      >
-                        Valor Actual
-                      </Typography>
-                      <Typography
-                        variant="body1"
-                        fontWeight={600}
-                        color="secondary.main"
-                        sx={{ mb: 0.5 }}
-                      >
-                        {formatCurrency(row.currentValue)}
-                      </Typography>
-                      {(() => {
-                        const difference = row.currentValue - row.purchasePrice;
-                        const percentChange = (difference / row.purchasePrice) * 100;
-                        const isPositive = difference >= 0;
+          <Box flex={1} />
+        </Stack>
+      )}
 
-                        if (difference === 0) return null;
-
-                        return (
-                          <Box
-                            sx={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 0.5,
-                              px: 1,
-                              py: 0.5,
-                              borderRadius: 1,
-                              bgcolor: isPositive
-                                ? "rgba(46, 125, 50, 0.08)"
-                                : "rgba(211, 47, 47, 0.08)",
-                              border: "1px solid",
-                              borderColor: isPositive
-                                ? "rgba(46, 125, 50, 0.2)"
-                                : "rgba(211, 47, 47, 0.2)",
-                            }}
-                          >
-                            {isPositive ? (
-                              <TrendingUpIcon
-                                sx={{
-                                  fontSize: 16,
-                                  color: "success.main",
-                                  fontWeight: 700
-                                }}
-                              />
-                            ) : (
-                              <TrendingDownIcon
-                                sx={{
-                                  fontSize: 16,
-                                  color: "error.main",
-                                  fontWeight: 700
-                                }}
-                              />
-                            )}
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                fontWeight: 700,
-                                color: isPositive ? "success.dark" : "error.dark",
-                                letterSpacing: "0.02em",
-                              }}
-                            >
-                              {isPositive ? "+" : ""}
-                              {formatCurrency(Math.abs(difference))}
-                            </Typography>
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                fontWeight: 600,
-                                color: isPositive ? "success.main" : "error.main",
-                                fontSize: "0.7rem",
-                              }}
-                            >
-                              ({isPositive ? "+" : ""}
-                              {percentChange.toFixed(2)}%)
-                            </Typography>
-                          </Box>
-                        );
-                      })()}
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: "flex", gap: 3 }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        display="block"
-                      >
-                        Hipoteca Pendiente
-                      </Typography>
-                      <Typography
-                        variant="body1"
-                        fontWeight={600}
-                        color={
-                          row.loanBalance > 0 ? "error.main" : "success.main"
-                        }
-                      >
-                        {row.loanBalance > 0
-                          ? formatCurrency(row.loanBalance)
-                          : "Pagada"}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ flex: 1 }}>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        display="block"
-                      >
-                        Renta Mensual
-                      </Typography>
-                      <Typography
-                        variant="body1"
-                        fontWeight={600}
-                        color="success.main"
-                      >
-                        {formatCurrency(row.monthlyRent)}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box
-                    sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 1 }}
-                  >
-                    <Tooltip title="Cap Rate Neto">
-                      <Chip
-                        icon={<TrendingUpIcon />}
-                        label={formatPercent(row.capRate, 2)}
-                        color={
-                          row.capRate > 5
-                            ? "success"
-                            : row.capRate > 3
-                              ? "warning"
-                              : "default"
-                        }
-                        size="small"
-                      />
-                    </Tooltip>
-                    <Tooltip title="Cash-on-Cash">
-                      <Chip
-                        label={`CoC: ${formatPercent(row.cashOnCash, 2)}`}
-                        color={
-                          row.cashOnCash > 5
-                            ? "success"
-                            : row.cashOnCash > 3
-                              ? "warning"
-                              : "default"
-                        }
-                        size="small"
-                      />
-                    </Tooltip>
-                    <Tooltip title="Ocupación">
-                      <Chip
-                        label={`${formatPercent(row.occupancy, 0)}`}
-                        color={
-                          row.occupancy === 100
-                            ? "success"
-                            : row.occupancy > 0
-                              ? "warning"
-                              : "error"
-                        }
-                        size="small"
-                      />
-                    </Tooltip>
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
+      {/* Cards Grid */}
+      <Grid container spacing={3}>
+        {filteredAndSortedCards.map((card) => (
+          <Grid item xs={12} sm={6} lg={4} key={card.property.id}>
+            <PropertyCard data={card} />
           </Grid>
         ))}
       </Grid>
+
+      {/* Empty state after filtering */}
+      {!loading &&
+        filteredAndSortedCards.length === 0 &&
+        cardData.length > 0 && (
+          <Card
+            sx={{ p: 6, textAlign: "center", bgcolor: "background.default" }}
+          >
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+              No hay viviendas que coincidan con los filtros
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Intenta cambiar los filtros o el criterio de ordenación
+            </Typography>
+          </Card>
+        )}
 
       <Snackbar
         open={snackbar.open}

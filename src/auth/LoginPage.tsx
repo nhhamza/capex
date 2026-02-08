@@ -58,7 +58,11 @@ export function LoginPage() {
       <Card sx={{ maxWidth: 420, width: "100%" }}>
         <CardContent sx={{ p: 4 }}>
           <Box sx={{ display: "flex", justifyContent: "center", mb: 2 }}>
-            <Chip label="Acceso a tu panel" color="primary" variant="outlined" />
+            <Chip
+              label="Acceso a tu panel"
+              color="primary"
+              variant="outlined"
+            />
           </Box>
 
           <Typography variant="h5" component="h1" gutterBottom align="center">
@@ -68,7 +72,18 @@ export function LoginPage() {
             Entra para gestionar tus propiedades, gastos y rentabilidad.
           </Typography>
 
-          <Box component="form" onSubmit={onSubmit} sx={{ mt: 3 }}>
+          {/* Google OAuth Button */}
+          {/* <Box sx={{ mt: 3, mb: 2.5 }}>
+            <GoogleLogin />
+          </Box>
+
+          <Divider sx={{ my: 2.5 }}>
+            <Typography variant="caption" color="text.secondary">
+              O con email
+            </Typography>
+          </Divider> */}
+
+          <Box component="form" onSubmit={onSubmit} sx={{ mt: 2 }}>
             <TextField
               fullWidth
               label="Email"

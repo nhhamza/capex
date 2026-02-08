@@ -21,7 +21,7 @@ import dayjs, { Dayjs } from "dayjs";
  */
 export function getMonthlyRentForDate(
   lease: Lease,
-  date: Date | Dayjs | string
+  date: Date | Dayjs | string,
 ): number {
   // If no adjustments exist, return the base rent
   if (!lease.rentAdjustments || lease.rentAdjustments.length === 0) {
@@ -73,10 +73,15 @@ export function getMonthlyRentForDate(
 export function monthlyPaymentFrancesa(
   principal: number,
   annualRatePct: number,
-  termMonths: number
+  termMonths: number,
 ): number {
-  if (termMonths === 0 || annualRatePct === 0)
-    return principal / (termMonths || 1);
+  // Defensive: if termMonths is 0 or negative, treat as invalid loan (no payment)
+  if (termMonths <= 0) return 0;
+
+  // Interest-free loan: divide principal evenly over term
+  if (annualRatePct === 0) {
+    return principal / termMonths;
+  }
 
   const monthlyRate = annualRatePct / 100 / 12;
   const payment =
@@ -167,7 +172,7 @@ export function sumClosingCosts(costs?: AcquisitionCosts): number {
  */
 function annualizeExpense(
   amount: number,
-  periodicity: RecurringExpense["periodicity"]
+  periodicity: RecurringExpense["periodicity"],
 ): number {
   switch (periodicity) {
     case "monthly":
@@ -204,7 +209,7 @@ export function computeAnnuals(params: {
   const rentAnnualGross = monthlyRent * 12 * (1 - vacancyPct);
   const recurringAnnual = recurring.reduce(
     (sum, exp) => sum + annualizeExpense(exp.amount, exp.periodicity),
-    0
+    0,
   );
   const variableAnnual = variableAnnualBudget;
 
@@ -244,7 +249,14 @@ export function computeLeveredMetrics(params: {
     // No debt case - client invests everything (purchase + closing costs)
     const cfaf = annuals.noi;
     const initialInvestment = purchasePrice + closingCostsTotal;
-    const cashOnCash = initialInvestment > 0 ? (cfaf / initialInvestment) * 100 : 0;
+    const cashOnCash =
+      initialInvestment > 0 ? (cfaf / initialInvestment) * 100 : 0;
+
+    // Equity = current value (or purchase price if not updated), with NO loan
+    const effectiveValue =
+      typeof currentValue === "number" && currentValue > 0
+        ? currentValue
+        : purchasePrice;
 
     return {
       ...annuals,
@@ -252,7 +264,7 @@ export function computeLeveredMetrics(params: {
       interestsAnnual: 0,
       principalAnnual: 0,
       cfaf,
-      equity: purchasePrice + closingCostsTotal,
+      equity: effectiveValue,
       cashOnCash,
       dscr: 0,
       ltv: 0,
@@ -272,11 +284,11 @@ export function computeLeveredMetrics(params: {
   const firstYearPayments = schedule.slice(0, Math.min(12, schedule.length));
   const interestsAnnual = firstYearPayments.reduce(
     (sum, row) => sum + row.interest,
-    0
+    0,
   );
   const principalAnnual = firstYearPayments.reduce(
     (sum, row) => sum + row.principalPaid,
-    0
+    0,
   );
 
   const cfaf = annuals.noi - ads;
@@ -285,12 +297,13 @@ export function computeLeveredMetrics(params: {
     typeof currentValue === "number" && currentValue > 0
       ? currentValue
       : purchasePrice;
-  const equity = effectiveValue + closingCostsTotal - loan.principal;
+  const equity = effectiveValue - loan.principal;
 
   // Cash on Cash: use only client's initial investment (down payment + closing costs)
   const downPayment = purchasePrice - loan.principal;
   const initialInvestment = downPayment + closingCostsTotal;
-  const cashOnCash = initialInvestment > 0 ? (cfaf / initialInvestment) * 100 : 0;
+  const cashOnCash =
+    initialInvestment > 0 ? (cfaf / initialInvestment) * 100 : 0;
 
   const dscr = ads > 0 ? annuals.noi / ads : 0;
   // Dynamic LTV using currentValue if available
@@ -321,7 +334,7 @@ export interface AggregatedRentForMonthOptions {
 }
 
 export function getAggregatedRentForMonth(
-  options: AggregatedRentForMonthOptions
+  options: AggregatedRentForMonthOptions,
 ): AggregatedRentResult {
   const { property, leases, rooms, monthDate } = options;
 
@@ -345,7 +358,7 @@ export function getAggregatedRentForMonth(
   if (property.rentalMode === "ENTIRE_UNIT" || !property.rentalMode) {
     // Find active lease for this month
     const activeLease = leases.find(
-      (l) => !l.roomId && isLeaseActiveInMonth(l, monthDate)
+      (l) => !l.roomId && isLeaseActiveInMonth(l, monthDate),
     );
 
     if (!activeLease) {
@@ -378,7 +391,7 @@ export function getAggregatedRentForMonth(
 
   // Get active leases for this month with roomId
   const activeLeases = leases.filter(
-    (l) => l.roomId && isLeaseActiveInMonth(l, monthDate)
+    (l) => l.roomId && isLeaseActiveInMonth(l, monthDate),
   );
 
   if (activeLeases.length === 0) {
@@ -394,7 +407,7 @@ export function getAggregatedRentForMonth(
   // Calculate aggregated rent
   const monthlyGross = activeLeases.reduce(
     (sum, lease) => sum + getMonthlyRentForDate(lease, monthDate),
-    0
+    0,
   );
 
   const monthlyNet = activeLeases.reduce((sum, lease) => {
@@ -436,7 +449,7 @@ export interface AggregatedRentForYearResult {
 }
 
 export function getAggregatedRentForYear(
-  options: AggregatedRentForYearOptions
+  options: AggregatedRentForYearOptions,
 ): AggregatedRentForYearResult {
   const { property, leases, rooms, year } = options;
 

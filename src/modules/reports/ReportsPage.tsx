@@ -37,6 +37,8 @@ import { getMonthlyRentForDate } from "@/modules/properties/calculations";
 import { exportToExcel, exportToPDF } from "@/modules/expenses/exportUtils";
 import { exportTaxReportToExcel, exportTaxReportToPDF } from "./taxExportUtils";
 import { formatCurrency } from "@/utils/format";
+import { ShareableReport } from "./ShareableReportComponent";
+import { trackReportExported } from "./shareableReportUtils";
 
 export function ReportsPage() {
   const { userDoc } = useAuth();
@@ -367,6 +369,7 @@ export function ReportsPage() {
       });
     }
 
+    trackReportExported("excel");
     exportToPDF({
       expenses: filteredExpenses,
       recurringExpenses: filteredRecurring,
@@ -792,6 +795,53 @@ export function ReportsPage() {
           </Box>
         )}
       </Paper>
+
+      {/* Shareable Report Section - Portfolio Summary for Social Sharing */}
+      {properties.length > 0 && leases.length > 0 && (
+        <Paper sx={{ p: 3, mt: 3 }}>
+          <ShareableReport
+            properties={properties}
+            leases={leases}
+            monthlyIncome={leases.reduce(
+              (sum, lease) => sum + getMonthlyRentForDate(lease, dayjs()),
+              0,
+            )}
+            monthlyExpenses={
+              (recurringExpenses.reduce((sum, exp) => {
+                const multiplier =
+                  exp.periodicity === "yearly"
+                    ? 1 / 12
+                    : exp.periodicity === "quarterly"
+                      ? 1 / 3
+                      : 1;
+                return sum + exp.amount * multiplier;
+              }, 0) +
+                expenses.reduce((sum) => sum, 0)) /
+              12
+            }
+            avgROI={
+              properties.length > 0
+                ? properties.reduce((sum, prop) => {
+                    // Simple ROI calculation: (monthly_income / purchase_price) * 12 * 100
+                    const propLeases = leases.filter(
+                      (l) => l.propertyId === prop.id,
+                    );
+                    const monthlyIncome = propLeases.reduce(
+                      (sum, lease) =>
+                        sum + getMonthlyRentForDate(lease, dayjs()),
+                      0,
+                    );
+                    const roi =
+                      prop.purchasePrice > 0
+                        ? (monthlyIncome / prop.purchasePrice) * 12 * 100
+                        : 0;
+                    return sum + roi;
+                  }, 0) / properties.length
+                : 0
+            }
+          />
+        </Paper>
+      )}
     </Box>
   );
 }
