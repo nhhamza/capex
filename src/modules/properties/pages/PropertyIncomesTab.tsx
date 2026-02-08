@@ -61,7 +61,7 @@ export function PropertyIncomesTab({
         sizeM2: roomSize ? parseInt(roomSize, 10) : undefined,
         isActive: true,
       });
-      
+
       setRoomName("");
       setRoomSize("");
       setOpenAddRoom(false);
@@ -179,7 +179,10 @@ export function PropertyIncomesTab({
       )}
 
       {/* Dialog para crear nueva habitación */}
-      <Dialog open={openAddRoom} onClose={() => !creatingRoom && setOpenAddRoom(false)}>
+      <Dialog
+        open={openAddRoom}
+        onClose={() => !creatingRoom && setOpenAddRoom(false)}
+      >
         <DialogTitle>Añadir Nueva Habitación</DialogTitle>
         <DialogContent sx={{ minWidth: 400, pt: 2 }}>
           <TextField
@@ -203,13 +206,10 @@ export function PropertyIncomesTab({
           />
         </DialogContent>
         <DialogActions>
-          <Button 
-            onClick={() => setOpenAddRoom(false)}
-            disabled={creatingRoom}
-          >
+          <Button onClick={() => setOpenAddRoom(false)} disabled={creatingRoom}>
             Cancelar
           </Button>
-          <Button 
+          <Button
             onClick={handleCreateRoom}
             variant="contained"
             disabled={!roomName.trim() || creatingRoom}

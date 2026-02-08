@@ -140,7 +140,8 @@ export function PropertiesList() {
           const end = lease.endDate ? dayjs(lease.endDate) : null;
 
           const startsOnOrBefore =
-            monthDate.isSame(start, "month") || monthDate.isAfter(start, "month");
+            monthDate.isSame(start, "month") ||
+            monthDate.isAfter(start, "month");
           const endsOnOrAfter =
             !end ||
             monthDate.isSame(end, "month") ||
@@ -177,7 +178,8 @@ export function PropertiesList() {
                 : 0;
           } else {
             const activeUnitLease = leases.find(
-              (lease) => !lease.roomId && isLeaseActiveInMonth(lease, monthDate),
+              (lease) =>
+                !lease.roomId && isLeaseActiveInMonth(lease, monthDate),
             );
 
             if (!activeUnitLease) {

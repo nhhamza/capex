@@ -241,7 +241,10 @@ export function OnboardingWizard() {
           });
         }
       } catch (expenseErr) {
-        console.warn("[Onboarding] Recurring expense creation failed:", expenseErr);
+        console.warn(
+          "[Onboarding] Recurring expense creation failed:",
+          expenseErr,
+        );
       }
     }
   };
@@ -329,7 +332,10 @@ export function OnboardingWizard() {
           await createLoan({
             propertyId,
             principal: financingLoanAmount,
-            annualRatePct: typeof financingInterestRate === "number" ? financingInterestRate : 3.5,
+            annualRatePct:
+              typeof financingInterestRate === "number"
+                ? financingInterestRate
+                : 3.5,
             termMonths: 360, // Default 30 years
             startDate: dayjs().toISOString(),
             interestOnlyMonths: 0,
@@ -371,7 +377,10 @@ export function OnboardingWizard() {
             });
           }
         } catch (expenseErr) {
-          console.warn("[Onboarding] Recurring expense creation failed:", expenseErr);
+          console.warn(
+            "[Onboarding] Recurring expense creation failed:",
+            expenseErr,
+          );
         }
       }
 

@@ -1070,13 +1070,18 @@ export function PropertyExpensesTab({
                                 return;
                               }
                               // Get fresh URL from backend
-                              const url = await getCapexDownloadUrl(exp.storagePath);
+                              const url = await getCapexDownloadUrl(
+                                exp.storagePath,
+                              );
                               const a = document.createElement("a");
                               a.href = url;
                               a.download = exp.attachmentName || "archivo";
                               a.click();
                             } catch (error) {
-                              console.error("Failed to download attachment:", error);
+                              console.error(
+                                "Failed to download attachment:",
+                                error,
+                              );
                             }
                           }}
                           sx={{

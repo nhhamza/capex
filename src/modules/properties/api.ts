@@ -283,7 +283,9 @@ export async function uploadCapexAttachment(
   return r.data?.attachment as UploadedAttachment;
 }
 
-export async function getCapexDownloadUrl(storagePath: string): Promise<string> {
+export async function getCapexDownloadUrl(
+  storagePath: string,
+): Promise<string> {
   const r = await backendApi.post("/api/capex/download-url", { storagePath });
   return r.data?.url as string;
 }
