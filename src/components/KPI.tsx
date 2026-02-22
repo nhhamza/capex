@@ -73,12 +73,24 @@ export function KPI({
             </Tooltip>
           )}
         </Box>
-        <Box sx={{ display: "flex", alignItems: "baseline" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "baseline",
+            minWidth: 0,
+            flexWrap: "wrap",
+            gap: 0.5,
+          }}
+        >
           <Typography
             variant="h4"
             component="div"
             color={`${color}.main`}
-            sx={{ fontSize: { xs: "1.5rem", sm: "2rem" } }}
+            sx={{
+              fontSize: { xs: "1.3rem", sm: "2rem" },
+              wordBreak: "break-word",
+              minWidth: 0,
+            }}
           >
             {value}
           </Typography>

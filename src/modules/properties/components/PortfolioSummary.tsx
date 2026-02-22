@@ -25,15 +25,22 @@ export function PortfolioSummary({
         color: "white",
       }}
     >
-      <CardContent sx={{ p: 4 }}>
+      <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
         <Typography variant="h5" fontWeight={900} gutterBottom>
           Tu Portfolio
         </Typography>
 
         <Grid container spacing={3}>
           <Grid item xs={6} sm={3}>
-            <Box>
-              <Typography variant="h3" fontWeight={900}>
+            <Box sx={{ wordBreak: "break-word", minWidth: 0 }}>
+              <Typography
+                variant="h3"
+                fontWeight={900}
+                sx={{
+                  fontSize: { xs: "1.4rem", sm: "2rem", md: "3rem" },
+                  wordBreak: "break-word",
+                }}
+              >
                 {propertyCount}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -43,12 +50,14 @@ export function PortfolioSummary({
           </Grid>
 
           <Grid item xs={6} sm={3}>
-            <Box>
+            <Box sx={{ wordBreak: "break-word", minWidth: 0 }}>
               <Typography
                 variant="h3"
                 fontWeight={900}
                 sx={{
                   color: totalCashflow >= 0 ? "#c8e6c9" : "#ffcdd2",
+                  fontSize: { xs: "1.4rem", sm: "2rem", md: "3rem" },
+                  wordBreak: "break-word",
                 }}
               >
                 {totalCashflow >= 0 ? "+" : ""}
@@ -61,8 +70,15 @@ export function PortfolioSummary({
           </Grid>
 
           <Grid item xs={6} sm={3}>
-            <Box>
-              <Typography variant="h3" fontWeight={900}>
+            <Box sx={{ wordBreak: "break-word", minWidth: 0 }}>
+              <Typography
+                variant="h3"
+                fontWeight={900}
+                sx={{
+                  fontSize: { xs: "1.4rem", sm: "2rem", md: "3rem" },
+                  wordBreak: "break-word",
+                }}
+              >
                 {avgROI.toFixed(1)}%
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -72,8 +88,15 @@ export function PortfolioSummary({
           </Grid>
 
           <Grid item xs={6} sm={3}>
-            <Box>
-              <Typography variant="h3" fontWeight={900}>
+            <Box sx={{ wordBreak: "break-word", minWidth: 0 }}>
+              <Typography
+                variant="h3"
+                fontWeight={900}
+                sx={{
+                  fontSize: { xs: "1.4rem", sm: "2rem", md: "3rem" },
+                  wordBreak: "break-word",
+                }}
+              >
                 {formatCurrency(totalEquity)}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>

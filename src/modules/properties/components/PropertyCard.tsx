@@ -114,7 +114,7 @@ export function PropertyCard({ data }: PropertyCardProps) {
             <HomeIcon fontSize="large" />
           </Avatar>
 
-          <Box flex={1}>
+          <Box flex={1} sx={{ minWidth: 0, pr: { xs: 10, sm: 12 } }}>
             <Typography
               variant="h6"
               fontWeight={900}
@@ -158,6 +158,11 @@ export function PropertyCard({ data }: PropertyCardProps) {
                 variant="h6"
                 fontWeight={900}
                 color={cashflow > 0 ? "success.dark" : "error.dark"}
+                sx={{
+                  fontSize: { xs: "0.95rem", sm: "1.1rem", md: "1.25rem" },
+                  wordBreak: "break-word",
+                  lineHeight: 1.2,
+                }}
               >
                 {formatCurrency(cashflow)}
               </Typography>
@@ -171,7 +176,15 @@ export function PropertyCard({ data }: PropertyCardProps) {
               <Typography variant="caption" color="text.secondary">
                 ROI
               </Typography>
-              <Typography variant="h6" fontWeight={900}>
+              <Typography
+                variant="h6"
+                fontWeight={900}
+                sx={{
+                  fontSize: { xs: "0.95rem", sm: "1.1rem", md: "1.25rem" },
+                  wordBreak: "break-word",
+                  lineHeight: 1.2,
+                }}
+              >
                 {roi.toFixed(1)}%
               </Typography>
               <Typography variant="caption">anual</Typography>
@@ -184,7 +197,15 @@ export function PropertyCard({ data }: PropertyCardProps) {
               <Typography variant="caption" color="text.secondary">
                 Ocupación
               </Typography>
-              <Typography variant="h6" fontWeight={900}>
+              <Typography
+                variant="h6"
+                fontWeight={900}
+                sx={{
+                  fontSize: { xs: "0.95rem", sm: "1.1rem", md: "1.25rem" },
+                  wordBreak: "break-word",
+                  lineHeight: 1.2,
+                }}
+              >
                 {occupancyRate.toFixed(0)}%
               </Typography>
               {occupancyRate < 100 && (
@@ -201,7 +222,15 @@ export function PropertyCard({ data }: PropertyCardProps) {
               <Typography variant="caption" color="text.secondary">
                 Equity
               </Typography>
-              <Typography variant="h6" fontWeight={900}>
+              <Typography
+                variant="h6"
+                fontWeight={900}
+                sx={{
+                  fontSize: { xs: "0.95rem", sm: "1.1rem", md: "1.25rem" },
+                  wordBreak: "break-word",
+                  lineHeight: 1.2,
+                }}
+              >
                 {formatCurrency(equity)}
               </Typography>
               <Typography variant="caption">

@@ -454,11 +454,12 @@ export function Layout() {
         sx={{
           flexGrow: 1,
           p: { xs: 2, sm: 3 },
-          width: { xs: "100vw", md: `calc(100vw - ${DRAWER_WIDTH}px)` },
-          maxWidth: { xs: "100vw", md: `calc(100vw - ${DRAWER_WIDTH}px)` },
+          width: { xs: "100%", md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          maxWidth: { xs: "100%", md: `calc(100% - ${DRAWER_WIDTH}px)` },
           ml: { md: `${DRAWER_WIDTH}px` },
           mb: { xs: `${BOTTOM_NAV_HEIGHT}px`, md: 0 },
           overflow: "auto",
+          overflowX: "hidden",
           boxSizing: "border-box",
         }}
       >
