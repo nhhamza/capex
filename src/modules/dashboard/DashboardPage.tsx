@@ -679,7 +679,7 @@ export function DashboardPage() {
                     sx={{ bgcolor: alpha("#fff", 0.2), my: 2 }}
                   />
                 ) : (
-                  <Typography variant="h1" fontWeight={900} sx={{ my: 2 }}>
+                  <Typography variant="h2" fontWeight={900} sx={{ my: 2 }}>
                     {ytdCashflow >= 0 ? "+" : ""}
                     {formatCurrency(ytdCashflow)}
                   </Typography>
