@@ -11,15 +11,18 @@ import type {
 /**
  * Canonical doc meta type used by UI.
  * Keep organizationId required for multi-tenant consistency.
+ *
+ * IMPORTANT: storagePath is the durable source of truth for file location.
+ * url is legacy/compatibility only - avoid persisting new expiring signed URLs.
  */
 export type PropertyDocMeta = {
   id: string;
   propertyId: string;
   organizationId: string;
   name: string;
-  url: string;
+  url?: string; // Legacy: expiring signed URL - prefer storagePath for downloads
   uploadedAt?: string;
-  storagePath?: string;
+  storagePath?: string; // GCS storage path - canonical for on-demand URL generation
   mimeType?: string;
   size?: number;
 };
@@ -229,6 +232,18 @@ export async function uploadPropertyDoc(
 }
 
 /**
+ * Get fresh signed URL for property doc download.
+ */
+export async function getPropertyDocDownloadUrl(
+  storagePath: string,
+): Promise<string> {
+  const r = await backendApi.post("/api/propertyDocs/download-url", {
+    storagePath,
+  });
+  return r.data?.url as string;
+}
+
+/**
  * Backwards-compatible alias:
  * some components still import addPropertyDoc from ../api
  */
@@ -257,8 +272,8 @@ export async function deletePropertyDoc(docId: string): Promise<void> {
 
 export type UploadedAttachment = {
   name: string;
-  url: string;
-  storagePath?: string;
+  storagePath: string; // Canonical field for durable file reference
+  url?: string; // Legacy: only if returned by backend for immediate use
   mimeType?: string;
   size?: number;
 };
@@ -288,4 +303,85 @@ export async function getCapexDownloadUrl(
 ): Promise<string> {
   const r = await backendApi.post("/api/capex/download-url", { storagePath });
   return r.data?.url as string;
+}
+
+/**
+ * Tries to extract a GCS storagePath from a Firebase signed URL.
+ * This is used as a best-effort migration path for legacy records that only
+ * store an expiring URL.
+ */
+function extractStoragePathFromUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+
+    // Firebase storage backend signed URL pattern:
+    // https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<encodedPath>?...
+    const fbMatch = parsed.pathname.match(/\/v0\/b\/[^/]+\/o\/(.+)/);
+    if (fbMatch?.[1]) {
+      return decodeURIComponent(fbMatch[1]);
+    }
+
+    // Google Cloud Storage signed URL pattern:
+    // https://storage.googleapis.com/<bucket>/<path>?...
+    if (parsed.host.endsWith("storage.googleapis.com")) {
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      if (parts.length >= 2) {
+        // remove bucket segment
+        return parts.slice(1).join("/");
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
+ * Reusable helper for downloading attachments.
+ * Prefers storagePath for fresh signed URLs, falls back to legacy URLs.
+ */
+export async function downloadAttachment(
+  storagePath?: string,
+  legacyUrl?: string,
+  filename?: string,
+): Promise<void> {
+  if (!storagePath && !legacyUrl) return;
+
+  try {
+    let downloadUrl: string;
+    let pathToUse = storagePath;
+
+    if (!pathToUse && legacyUrl) {
+      pathToUse = extractStoragePathFromUrl(legacyUrl);
+      if (pathToUse) {
+        console.warn(
+          "Derived storagePath from legacy URL for download:",
+          pathToUse,
+        );
+      }
+    }
+
+    if (pathToUse) {
+      // Determine which download endpoint based on path structure
+      if (pathToUse.includes("/capex/")) {
+        downloadUrl = await getCapexDownloadUrl(pathToUse);
+      } else if (pathToUse.includes("/docs/")) {
+        downloadUrl = await getPropertyDocDownloadUrl(pathToUse);
+      } else {
+        console.error("Unknown storage path type:", pathToUse);
+        return;
+      }
+    } else if (legacyUrl) {
+      downloadUrl = legacyUrl;
+    } else {
+      return;
+    }
+
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename || "archivo";
+    a.click();
+  } catch (err) {
+    console.error("Failed to download attachment:", err);
+  }
 }

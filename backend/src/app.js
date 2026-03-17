@@ -35,7 +35,9 @@ let storageBucket = process.env.FIREBASE_STORAGE_BUCKET;
 
 try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    console.log("Initializing Firebase Admin with FIREBASE_SERVICE_ACCOUNT env...");
+    console.log(
+      "Initializing Firebase Admin with FIREBASE_SERVICE_ACCOUNT env...",
+    );
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     projectId = projectId || serviceAccount.project_id;
     storageBucket = storageBucket || serviceAccount.storage_bucket;
@@ -43,19 +45,23 @@ try {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       projectId,
-      storageBucket: storageBucket || (projectId ? `${projectId}.appspot.com` : undefined),
+      storageBucket:
+        storageBucket || (projectId ? `${projectId}.appspot.com` : undefined),
     });
   } else {
     if (isVercel) {
       throw new Error(
-        "FIREBASE_SERVICE_ACCOUNT is required on Vercel (do not use local serviceAccountKey.json in production)."
+        "FIREBASE_SERVICE_ACCOUNT is required on Vercel (do not use local serviceAccountKey.json in production).",
       );
     }
-    console.log("Initializing Firebase Admin with local ./serviceAccountKey.json ...");
+    console.log(
+      "Initializing Firebase Admin with local ./serviceAccountKey.json ...",
+    );
     admin.initializeApp({
       credential: admin.credential.cert("./serviceAccountKey.json"),
       projectId,
-      storageBucket: storageBucket || (projectId ? `${projectId}.appspot.com` : undefined),
+      storageBucket:
+        storageBucket || (projectId ? `${projectId}.appspot.com` : undefined),
     });
   }
 
@@ -77,8 +83,13 @@ if (firebaseReady) {
     bucket = admin.storage().bucket();
     console.log("Firebase Storage bucket initialized:", bucket.name);
   } catch (err) {
-    console.error("Failed to initialize Firebase Storage bucket:", err?.message);
-    console.error("Make sure FIREBASE_STORAGE_BUCKET is set in environment variables");
+    console.error(
+      "Failed to initialize Firebase Storage bucket:",
+      err?.message,
+    );
+    console.error(
+      "Make sure FIREBASE_STORAGE_BUCKET is set in environment variables",
+    );
     firebaseReady = false;
   }
 }
@@ -105,7 +116,10 @@ async function readBilling(orgId) {
 }
 
 async function writeBilling(orgId, data) {
-  await billingDocRef(orgId).set({ ...data, updatedAt: nowIso() }, { merge: true });
+  await billingDocRef(orgId).set(
+    { ...data, updatedAt: nowIso() },
+    { merge: true },
+  );
 }
 
 async function setOrgPlan(orgId, plan) {
@@ -122,10 +136,12 @@ function isBillingAllowed(billing) {
   const now = new Date().toISOString();
 
   if (status === "active" || status === "trialing") return { allowed: true };
-  if (status === "canceled") return { allowed: false, reason: "Subscription canceled" };
+  if (status === "canceled")
+    return { allowed: false, reason: "Subscription canceled" };
 
   if (status === "past_due" || status === "unpaid") {
-    if (graceUntil && now <= graceUntil) return { allowed: true, reason: "Grace period active", graceUntil };
+    if (graceUntil && now <= graceUntil)
+      return { allowed: true, reason: "Grace period active", graceUntil };
     return { allowed: false, reason: "Payment overdue", graceUntil };
   }
 
@@ -164,7 +180,7 @@ const allowedOrigins = new Set(
     "https://propietarioplus.com",
     "https://www.propietarioplus.com",
     ...envOrigins,
-  ].map((s) => s.replace(/\/$/, ""))
+  ].map((s) => s.replace(/\/$/, "")),
 );
 
 function isAllowedOrigin(origin) {
@@ -199,8 +215,6 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-
-
 // (C) Preflight manual universal (control total para Authorization header)
 app.options("*", (req, res) => {
   const origin = req.headers.origin;
@@ -223,12 +237,14 @@ app.options("*", (req, res) => {
 
   res.setHeader(
     "Access-Control-Allow-Headers",
-    req.headers["access-control-request-headers"] || "Authorization,Content-Type,Stripe-Signature"
+    req.headers["access-control-request-headers"] ||
+      "Authorization,Content-Type,Stripe-Signature",
   );
 
   res.setHeader(
     "Access-Control-Allow-Methods",
-    req.headers["access-control-request-method"] || "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    req.headers["access-control-request-method"] ||
+      "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   );
 
   return res.sendStatus(204);
@@ -253,164 +269,184 @@ app.use((req, res, next) => {
 });
 
 // Stripe webhook MUST be before express.json()
-app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  let event;
+app.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
 
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error("Webhook signature verification failed:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  try {
-    // --- Checkout complete ---
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-
-      // Only process if payment was successful
-      if (session.payment_status !== "paid") {
-        console.log("[Webhook] Checkout session not paid, skipping", {
-          sessionId: session.id,
-          paymentStatus: session.payment_status,
-        });
-        return res.status(200).send("OK");
-      }
-
-      const customerId = session.customer;
-      if (!session.subscription) {
-        console.log("[Webhook] No subscription in session, skipping");
-        return res.status(200).send("OK");
-      }
-
-      const subscriptionId =
-        typeof session.subscription === "string" ? session.subscription : session.subscription.id;
-
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-      const priceId = subscription.items.data[0].price.id;
-      const status = subscription.status;
-
-      const customer = await stripe.customers.retrieve(customerId);
-      const orgId = customer.metadata?.orgId;
-
-      if (orgId && db) {
-        const limits = mapPrice(priceId);
-        await writeBilling(orgId, {
-          plan: limits.plan,
-          status,
-          priceId,
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: subscription.id,
-          propertyLimit: limits.propertyLimit,
-          seatLimit: limits.seatLimit,
-        });
-      }
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET,
+      );
+    } catch (err) {
+      console.error("Webhook signature verification failed:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // --- Subscription updates/creates ---
-    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
-      const sub = event.data.object;
-      const priceId = sub.items.data[0].price.id;
-      const status = sub.status;
+    try {
+      // --- Checkout complete ---
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object;
 
-      const customer = await stripe.customers.retrieve(sub.customer);
-      const orgId = customer.metadata?.orgId;
-
-      if (orgId && db) {
-        const limits = mapPrice(priceId);
-        await writeBilling(orgId, {
-          plan: limits.plan,
-          status,
-          priceId,
-          stripeCustomerId: sub.customer,
-          stripeSubscriptionId: sub.id,
-          propertyLimit: limits.propertyLimit,
-          seatLimit: limits.seatLimit,
-        });
-      }
-    }
-
-    // --- Subscription deleted ---
-    if (event.type === "customer.subscription.deleted") {
-      const sub = event.data.object;
-      const customer = await stripe.customers.retrieve(sub.customer);
-      const orgId = customer.metadata?.orgId;
-      if (orgId && db) {
-        await writeBilling(orgId, { plan: "free", status: "canceled" });
-      }
-    }
-
-    // --- Payment failed ---
-    if (event.type === "invoice.payment_failed") {
-      const invoice = event.data.object;
-      const customer = await stripe.customers.retrieve(invoice.customer);
-      const orgId = customer.metadata?.orgId;
-
-      if (orgId && db) {
-        let priceId = null;
-        let status = "past_due";
-
-        if (invoice.subscription) {
-          const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
-          const sub = await stripe.subscriptions.retrieve(subId);
-          priceId = sub.items?.data?.[0]?.price?.id || null;
-          status = sub.status || status;
+        // Only process if payment was successful
+        if (session.payment_status !== "paid") {
+          console.log("[Webhook] Checkout session not paid, skipping", {
+            sessionId: session.id,
+            paymentStatus: session.payment_status,
+          });
+          return res.status(200).send("OK");
         }
 
-        const limits = mapPrice(priceId);
-        const graceUntil = addDaysIso(nowIso(), 7);
+        const customerId = session.customer;
+        if (!session.subscription) {
+          console.log("[Webhook] No subscription in session, skipping");
+          return res.status(200).send("OK");
+        }
 
-        await writeBilling(orgId, {
-          plan: limits.plan,
-          status,
-          priceId,
-          stripeCustomerId: invoice.customer,
-          stripeSubscriptionId: invoice.subscription || null,
-          lastInvoiceId: invoice.id,
-          lastInvoiceStatus: invoice.status || null,
-          lastPaymentError: invoice.last_payment_error?.message || null,
-          propertyLimit: limits.propertyLimit,
-          seatLimit: limits.seatLimit,
-          graceUntil,
-        });
+        const subscriptionId =
+          typeof session.subscription === "string"
+            ? session.subscription
+            : session.subscription.id;
+
+        const subscription =
+          await stripe.subscriptions.retrieve(subscriptionId);
+        const priceId = subscription.items.data[0].price.id;
+        const status = subscription.status;
+
+        const customer = await stripe.customers.retrieve(customerId);
+        const orgId = customer.metadata?.orgId;
+
+        if (orgId && db) {
+          const limits = mapPrice(priceId);
+          await writeBilling(orgId, {
+            plan: limits.plan,
+            status,
+            priceId,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: subscription.id,
+            propertyLimit: limits.propertyLimit,
+            seatLimit: limits.seatLimit,
+          });
+        }
       }
-    }
 
-    // --- Payment succeeded ---
-    if (event.type === "invoice.payment_succeeded") {
-      const invoice = event.data.object;
-      const customer = await stripe.customers.retrieve(invoice.customer);
-      const orgId = customer.metadata?.orgId;
+      // --- Subscription updates/creates ---
+      if (
+        event.type === "customer.subscription.updated" ||
+        event.type === "customer.subscription.created"
+      ) {
+        const sub = event.data.object;
+        const priceId = sub.items.data[0].price.id;
+        const status = sub.status;
 
-      if (orgId && db && invoice.subscription) {
-        const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
-        const sub = await stripe.subscriptions.retrieve(subId);
-        const priceId = sub.items?.data?.[0]?.price?.id || null;
+        const customer = await stripe.customers.retrieve(sub.customer);
+        const orgId = customer.metadata?.orgId;
 
-        const limits = mapPrice(priceId);
-        await writeBilling(orgId, {
-          plan: limits.plan,
-          status: sub.status,
-          priceId,
-          stripeCustomerId: invoice.customer,
-          stripeSubscriptionId: sub.id,
-          lastInvoiceId: invoice.id,
-          lastInvoiceStatus: invoice.status || null,
-          lastPaymentError: null,
-          propertyLimit: limits.propertyLimit,
-          seatLimit: limits.seatLimit,
-          graceUntil: null,
-        });
+        if (orgId && db) {
+          const limits = mapPrice(priceId);
+          await writeBilling(orgId, {
+            plan: limits.plan,
+            status,
+            priceId,
+            stripeCustomerId: sub.customer,
+            stripeSubscriptionId: sub.id,
+            propertyLimit: limits.propertyLimit,
+            seatLimit: limits.seatLimit,
+          });
+        }
       }
-    }
 
-    return res.status(200).send("OK");
-  } catch (error) {
-    console.error("Error processing webhook:", error);
-    return res.status(500).send("Webhook processing failed");
-  }
-});
+      // --- Subscription deleted ---
+      if (event.type === "customer.subscription.deleted") {
+        const sub = event.data.object;
+        const customer = await stripe.customers.retrieve(sub.customer);
+        const orgId = customer.metadata?.orgId;
+        if (orgId && db) {
+          await writeBilling(orgId, { plan: "free", status: "canceled" });
+        }
+      }
+
+      // --- Payment failed ---
+      if (event.type === "invoice.payment_failed") {
+        const invoice = event.data.object;
+        const customer = await stripe.customers.retrieve(invoice.customer);
+        const orgId = customer.metadata?.orgId;
+
+        if (orgId && db) {
+          let priceId = null;
+          let status = "past_due";
+
+          if (invoice.subscription) {
+            const subId =
+              typeof invoice.subscription === "string"
+                ? invoice.subscription
+                : invoice.subscription.id;
+            const sub = await stripe.subscriptions.retrieve(subId);
+            priceId = sub.items?.data?.[0]?.price?.id || null;
+            status = sub.status || status;
+          }
+
+          const limits = mapPrice(priceId);
+          const graceUntil = addDaysIso(nowIso(), 7);
+
+          await writeBilling(orgId, {
+            plan: limits.plan,
+            status,
+            priceId,
+            stripeCustomerId: invoice.customer,
+            stripeSubscriptionId: invoice.subscription || null,
+            lastInvoiceId: invoice.id,
+            lastInvoiceStatus: invoice.status || null,
+            lastPaymentError: invoice.last_payment_error?.message || null,
+            propertyLimit: limits.propertyLimit,
+            seatLimit: limits.seatLimit,
+            graceUntil,
+          });
+        }
+      }
+
+      // --- Payment succeeded ---
+      if (event.type === "invoice.payment_succeeded") {
+        const invoice = event.data.object;
+        const customer = await stripe.customers.retrieve(invoice.customer);
+        const orgId = customer.metadata?.orgId;
+
+        if (orgId && db && invoice.subscription) {
+          const subId =
+            typeof invoice.subscription === "string"
+              ? invoice.subscription
+              : invoice.subscription.id;
+          const sub = await stripe.subscriptions.retrieve(subId);
+          const priceId = sub.items?.data?.[0]?.price?.id || null;
+
+          const limits = mapPrice(priceId);
+          await writeBilling(orgId, {
+            plan: limits.plan,
+            status: sub.status,
+            priceId,
+            stripeCustomerId: invoice.customer,
+            stripeSubscriptionId: sub.id,
+            lastInvoiceId: invoice.id,
+            lastInvoiceStatus: invoice.status || null,
+            lastPaymentError: null,
+            propertyLimit: limits.propertyLimit,
+            seatLimit: limits.seatLimit,
+            graceUntil: null,
+          });
+        }
+      }
+
+      return res.status(200).send("OK");
+    } catch (error) {
+      console.error("Error processing webhook:", error);
+      return res.status(500).send("Webhook processing failed");
+    }
+  },
+);
 
 // JSON parser for all other routes
 app.use(express.json());
@@ -418,14 +454,19 @@ app.use(express.json());
 // -------------------- Auth --------------------
 async function requireAuth(req, res, next) {
   try {
-    if (!firebaseReady) return res.status(503).json({ error: "firebase_not_configured" });
+    if (!firebaseReady)
+      return res.status(503).json({ error: "firebase_not_configured" });
 
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
     if (!token) return res.status(401).json({ error: "Missing Bearer token" });
 
     const decoded = await admin.auth().verifyIdToken(token);
-    req.user = { uid: decoded.uid, email: decoded.email || null, claims: decoded };
+    req.user = {
+      uid: decoded.uid,
+      email: decoded.email || null,
+      claims: decoded,
+    };
     return next();
   } catch (err) {
     console.error("[auth] verifyIdToken failed", err?.message || err);
@@ -435,7 +476,8 @@ async function requireAuth(req, res, next) {
 
 async function requireOrg(req, res, next) {
   if (!req.user?.uid) return res.status(401).json({ error: "unauthorized" });
-  if (!firebaseReady || !db) return res.status(503).json({ error: "firebase_not_configured" });
+  if (!firebaseReady || !db)
+    return res.status(503).json({ error: "firebase_not_configured" });
 
   try {
     const u = await getUserDoc(req.user.uid);
@@ -501,7 +543,7 @@ async function requireSuperAdmin(req, res, next) {
   if (req.orgId !== SUPER_ADMIN_ORG_ID) {
     console.warn("[SuperAdmin] Access denied", {
       attemptedBy: req.user?.email,
-      orgId: req.orgId
+      orgId: req.orgId,
     });
     return res.status(403).json({ error: "forbidden - admin access only" });
   }
@@ -519,12 +561,17 @@ function mapPrice(priceId) {
   const PRICE_PRO = process.env.STRIPE_PRICE_PRO;
   const PRICE_AGENCY = process.env.STRIPE_PRICE_AGENCY;
 
-  if (priceId === PRICE_SOLO) return { plan: "solo", propertyLimit: 10, seatLimit: 1 };
-  if (priceId === PRICE_PRO) return { plan: "pro", propertyLimit: 50, seatLimit: 3 };
-  if (priceId === PRICE_AGENCY) return { plan: "agency", propertyLimit: 200, seatLimit: 10 };
+  if (priceId === PRICE_SOLO)
+    return { plan: "solo", propertyLimit: 10, seatLimit: 1 };
+  if (priceId === PRICE_PRO)
+    return { plan: "pro", propertyLimit: 50, seatLimit: 3 };
+  if (priceId === PRICE_AGENCY)
+    return { plan: "agency", propertyLimit: 200, seatLimit: 10 };
 
   // Fallback to free if price not recognized
-  console.warn(`[mapPrice] Unknown priceId: ${priceId}, defaulting to free plan`);
+  console.warn(
+    `[mapPrice] Unknown priceId: ${priceId}, defaulting to free plan`,
+  );
   return { plan: "free", propertyLimit: 1, seatLimit: 1 };
 }
 
@@ -545,12 +592,17 @@ app.get("/", (req, res) => {
 
 // Optional Firestore health
 app.get("/api/health/firestore", async (req, res) => {
-  if (!firebaseReady || !db) return res.status(503).json({ status: "error", message: "firebase_not_configured" });
+  if (!firebaseReady || !db)
+    return res
+      .status(503)
+      .json({ status: "error", message: "firebase_not_configured" });
   try {
     await db.collection("_health").doc("ping").get();
     return res.json({ status: "ok" });
   } catch (err) {
-    return res.status(503).json({ status: "error", message: err?.message || String(err) });
+    return res
+      .status(503)
+      .json({ status: "error", message: err?.message || String(err) });
   }
 });
 
@@ -576,7 +628,8 @@ app.get("/api/health/storage", async (req, res) => {
   if (!bucket) {
     return res.status(503).json({
       status: "error",
-      message: "Storage bucket is not configured. Check FIREBASE_STORAGE_BUCKET environment variable.",
+      message:
+        "Storage bucket is not configured. Check FIREBASE_STORAGE_BUCKET environment variable.",
       diagnostics,
     });
   }
@@ -605,160 +658,192 @@ app.get("/api/health/storage", async (req, res) => {
 // -------------------- Super Admin Endpoints --------------------
 
 // List all organizations
-app.get("/api/admin/organizations", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
-  try {
-    const orgsSnap = await db.collection("organizations").orderBy("createdAt", "desc").get();
+app.get(
+  "/api/admin/organizations",
+  requireAuth,
+  requireOrg,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const orgsSnap = await db
+        .collection("organizations")
+        .orderBy("createdAt", "desc")
+        .get();
 
-    const orgs = await Promise.all(
-      orgsSnap.docs.map(async (doc) => {
-        const orgId = doc.id;
-        const orgData = doc.data();
+      const orgs = await Promise.all(
+        orgsSnap.docs.map(async (doc) => {
+          const orgId = doc.id;
+          const orgData = doc.data();
 
-        // Get billing info
-        const billingSnap = await billingDocRef(orgId).get();
-        const billing = billingSnap.exists ? billingSnap.data() : {};
+          // Get billing info
+          const billingSnap = await billingDocRef(orgId).get();
+          const billing = billingSnap.exists ? billingSnap.data() : {};
 
-        // Count users
-        const usersSnap = await db.collection("users")
-          .where("organizationId", "==", orgId)
-          .get();
+          // Count users
+          const usersSnap = await db
+            .collection("users")
+            .where("organizationId", "==", orgId)
+            .get();
 
-        const usersCount = usersSnap.size;
+          const usersCount = usersSnap.size;
 
-        // Count properties
-        const propertiesSnap = await db.collection("properties")
-          .where("organizationId", "==", orgId)
-          .get();
+          // Count properties
+          const propertiesSnap = await db
+            .collection("properties")
+            .where("organizationId", "==", orgId)
+            .get();
 
-        const propertiesCount = propertiesSnap.size;
+          const propertiesCount = propertiesSnap.size;
 
-        return {
-          id: orgId,
-          name: orgData.name || "Sin nombre",
-          createdAt: orgData.createdAt,
-          plan: billing.plan || "free",
-          status: billing.status || "active",
-          propertyLimit: billing.propertyLimit || 1,
-          seatLimit: billing.seatLimit || 1,
-          usersCount,
-          propertiesCount,
-        };
-      })
-    );
+          return {
+            id: orgId,
+            name: orgData.name || "Sin nombre",
+            createdAt: orgData.createdAt,
+            plan: billing.plan || "free",
+            status: billing.status || "active",
+            propertyLimit: billing.propertyLimit || 1,
+            seatLimit: billing.seatLimit || 1,
+            usersCount,
+            propertiesCount,
+          };
+        }),
+      );
 
-    return res.json({ organizations: orgs });
-  } catch (err) {
-    console.error("[admin] list organizations failed", err);
-    return res.status(500).json({ error: "Failed to list organizations" });
-  }
-});
+      return res.json({ organizations: orgs });
+    } catch (err) {
+      console.error("[admin] list organizations failed", err);
+      return res.status(500).json({ error: "Failed to list organizations" });
+    }
+  },
+);
 
 // Get users for an organization
-app.get("/api/admin/users/:orgId", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
-  try {
-    const { orgId } = req.params;
+app.get(
+  "/api/admin/users/:orgId",
+  requireAuth,
+  requireOrg,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { orgId } = req.params;
 
-    // Get org info
-    const orgSnap = await db.collection("organizations").doc(orgId).get();
-    if (!orgSnap.exists) {
-      return res.status(404).json({ error: "Organization not found" });
+      // Get org info
+      const orgSnap = await db.collection("organizations").doc(orgId).get();
+      if (!orgSnap.exists) {
+        return res.status(404).json({ error: "Organization not found" });
+      }
+
+      // Get users
+      const usersSnap = await db
+        .collection("users")
+        .where("organizationId", "==", orgId)
+        .get();
+
+      const users = usersSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      return res.json({
+        organization: {
+          id: orgId,
+          ...orgSnap.data(),
+        },
+        users,
+      });
+    } catch (err) {
+      console.error("[admin] get users failed", err);
+      return res.status(500).json({ error: "Failed to get users" });
     }
-
-    // Get users
-    const usersSnap = await db.collection("users")
-      .where("organizationId", "==", orgId)
-      .get();
-
-    const users = usersSnap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    return res.json({
-      organization: {
-        id: orgId,
-        ...orgSnap.data(),
-      },
-      users,
-    });
-  } catch (err) {
-    console.error("[admin] get users failed", err);
-    return res.status(500).json({ error: "Failed to get users" });
-  }
-});
+  },
+);
 
 // Get billing info for an organization
-app.get("/api/admin/billing/:orgId", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
-  try {
-    const { orgId } = req.params;
+app.get(
+  "/api/admin/billing/:orgId",
+  requireAuth,
+  requireOrg,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { orgId } = req.params;
 
-    const billing = await readBilling(orgId);
+      const billing = await readBilling(orgId);
 
-    return res.json({ billing });
-  } catch (err) {
-    console.error("[admin] get billing failed", err);
-    return res.status(500).json({ error: "Failed to get billing" });
-  }
-});
+      return res.json({ billing });
+    } catch (err) {
+      console.error("[admin] get billing failed", err);
+      return res.status(500).json({ error: "Failed to get billing" });
+    }
+  },
+);
 
 // Upgrade/downgrade organization plan
-app.post("/api/admin/upgrade", requireAuth, requireOrg, requireSuperAdmin, async (req, res) => {
-  try {
-    const { orgId, plan } = req.body;
+app.post(
+  "/api/admin/upgrade",
+  requireAuth,
+  requireOrg,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const { orgId, plan } = req.body;
 
-    if (!orgId || !plan) {
-      return res.status(400).json({ error: "orgId and plan are required" });
-    }
+      if (!orgId || !plan) {
+        return res.status(400).json({ error: "orgId and plan are required" });
+      }
 
-    // Validate plan
-    const planLimits = {
-      free: { propertyLimit: 1, seatLimit: 1 },
-      solo: { propertyLimit: 10, seatLimit: 1 },
-      pro: { propertyLimit: 50, seatLimit: 3 },
-      agency: { propertyLimit: 200, seatLimit: 10 },
-    };
+      // Validate plan
+      const planLimits = {
+        free: { propertyLimit: 1, seatLimit: 1 },
+        solo: { propertyLimit: 10, seatLimit: 1 },
+        pro: { propertyLimit: 50, seatLimit: 3 },
+        agency: { propertyLimit: 200, seatLimit: 10 },
+      };
 
-    if (!planLimits[plan]) {
-      return res.status(400).json({
-        error: "Invalid plan",
-        validPlans: Object.keys(planLimits)
+      if (!planLimits[plan]) {
+        return res.status(400).json({
+          error: "Invalid plan",
+          validPlans: Object.keys(planLimits),
+        });
+      }
+
+      const limits = planLimits[plan];
+
+      // Update billing
+      await writeBilling(orgId, {
+        plan,
+        status: "active",
+        propertyLimit: limits.propertyLimit,
+        seatLimit: limits.seatLimit,
+        updatedBy: req.user.email || req.user.uid,
+        updatedReason: "Manual upgrade by super admin",
       });
+
+      console.log("[admin] Plan updated", {
+        orgId,
+        plan,
+        by: req.user.email,
+      });
+
+      return res.json({
+        success: true,
+        orgId,
+        plan,
+        limits,
+      });
+    } catch (err) {
+      console.error("[admin] upgrade failed", err);
+      return res.status(500).json({ error: "Failed to upgrade plan" });
     }
-
-    const limits = planLimits[plan];
-
-    // Update billing
-    await writeBilling(orgId, {
-      plan,
-      status: "active",
-      propertyLimit: limits.propertyLimit,
-      seatLimit: limits.seatLimit,
-      updatedBy: req.user.email || req.user.uid,
-      updatedReason: "Manual upgrade by super admin",
-    });
-
-    console.log("[admin] Plan updated", {
-      orgId,
-      plan,
-      by: req.user.email,
-    });
-
-    return res.json({
-      success: true,
-      orgId,
-      plan,
-      limits,
-    });
-  } catch (err) {
-    console.error("[admin] upgrade failed", err);
-    return res.status(500).json({ error: "Failed to upgrade plan" });
-  }
-});
+  },
+);
 
 // -------------------- Google OAuth --------------------
 app.post("/api/auth/google", async (req, res) => {
-  if (!firebaseReady || !db) return res.status(503).json({ error: "firebase_not_configured" });
-  if (!googleClient) return res.status(500).json({ error: "google_oauth_not_configured" });
+  if (!firebaseReady || !db)
+    return res.status(503).json({ error: "firebase_not_configured" });
+  if (!googleClient)
+    return res.status(500).json({ error: "google_oauth_not_configured" });
 
   try {
     const { token } = req.body;
@@ -773,7 +858,8 @@ app.post("/api/auth/google", async (req, res) => {
     const payload = ticket.getPayload();
     const { sub: googleId, email, name } = payload;
 
-    if (!email) return res.status(400).json({ error: "email_required_from_google" });
+    if (!email)
+      return res.status(400).json({ error: "email_required_from_google" });
 
     const uid = googleId;
     const userRef = db.collection("users").doc(uid);
@@ -818,13 +904,24 @@ app.post("/api/auth/google", async (req, res) => {
       const orgId = orgRef.id;
       const orgName = name || email.split("@")[0];
 
-      tx.set(orgRef, { name: orgName, createdAt: nowIso(), updatedAt: nowIso() });
+      tx.set(orgRef, {
+        name: orgName,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      });
 
       // Set billing doc
       tx.set(
         db.doc(billingDocPath(orgId)),
-        { plan: "free", status: "active", propertyLimit: 1, seatLimit: 1, createdAt: nowIso(), updatedAt: nowIso() },
-        { merge: true }
+        {
+          plan: "free",
+          status: "active",
+          propertyLimit: 1,
+          seatLimit: 1,
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        },
+        { merge: true },
       );
 
       // Create user doc
@@ -863,7 +960,8 @@ app.post("/api/auth/google", async (req, res) => {
 
 // -------------------- Signup init (ONLY place to create org/profile) --------------------
 app.post("/api/signup/initialize", requireAuth, async (req, res) => {
-  if (!firebaseReady || !db) return res.status(503).json({ error: "firebase_not_configured" });
+  if (!firebaseReady || !db)
+    return res.status(503).json({ error: "firebase_not_configured" });
 
   try {
     const uid = req.user.uid;
@@ -871,7 +969,8 @@ app.post("/api/signup/initialize", requireAuth, async (req, res) => {
     const body = req.body || {};
 
     // Must be explicit
-    if (!body.createOrg) return res.status(400).json({ error: "createOrg_required" });
+    if (!body.createOrg)
+      return res.status(400).json({ error: "createOrg_required" });
 
     const userRef = db.collection("users").doc(uid);
 
@@ -881,21 +980,37 @@ app.post("/api/signup/initialize", requireAuth, async (req, res) => {
       // Idempotent: already initialized -> return
       if (snap.exists) {
         const existing = { id: uid, ...snap.data() };
-        return { alreadyInitialized: true, user: existing, orgId: pickOrgId(existing) };
+        return {
+          alreadyInitialized: true,
+          user: existing,
+          orgId: pickOrgId(existing),
+        };
       }
 
       const orgName = body.orgName || "Mi organización";
-      const profile = body.profile && typeof body.profile === "object" ? body.profile : {};
+      const profile =
+        body.profile && typeof body.profile === "object" ? body.profile : {};
 
       const orgRef = db.collection("organizations").doc();
       const orgId = orgRef.id;
 
-      tx.set(orgRef, { name: orgName, createdAt: nowIso(), updatedAt: nowIso() });
+      tx.set(orgRef, {
+        name: orgName,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      });
 
       tx.set(
         db.doc(billingDocPath(orgId)),
-        { plan: "free", status: "active", propertyLimit: 1, seatLimit: 1, createdAt: nowIso(), updatedAt: nowIso() },
-        { merge: true }
+        {
+          plan: "free",
+          status: "active",
+          propertyLimit: 1,
+          seatLimit: 1,
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        },
+        { merge: true },
       );
 
       const userDoc = {
@@ -910,7 +1025,11 @@ app.post("/api/signup/initialize", requireAuth, async (req, res) => {
 
       tx.set(userRef, userDoc);
 
-      return { alreadyInitialized: false, user: { id: uid, ...userDoc }, orgId };
+      return {
+        alreadyInitialized: false,
+        user: { id: uid, ...userDoc },
+        orgId,
+      };
     });
 
     return res.json(result);
@@ -969,7 +1088,10 @@ app.post("/checkout", requireAuth, requireOrg, async (req, res) => {
     const { priceId, successUrl, cancelUrl } = req.body || {};
     const orgId = req.orgId;
 
-    if (!orgId) return res.status(400).json({ error: "Missing orgId (from user profile)" });
+    if (!orgId)
+      return res
+        .status(400)
+        .json({ error: "Missing orgId (from user profile)" });
     if (!priceId) return res.status(400).json({ error: "priceId is required" });
 
     const billing = await readBilling(orgId);
@@ -981,7 +1103,9 @@ app.post("/checkout", requireAuth, requireOrg, async (req, res) => {
         await stripe.customers.retrieve(customerId);
       } catch (err) {
         // Customer no existe (probablemente de otro modo - test vs live)
-        console.log(`[checkout] Customer ${customerId} no existe, creando uno nuevo...`);
+        console.log(
+          `[checkout] Customer ${customerId} no existe, creando uno nuevo...`,
+        );
         customerId = null;
       }
     }
@@ -1012,43 +1136,60 @@ app.post("/checkout", requireAuth, requireOrg, async (req, res) => {
   }
 });
 
-app.get("/check-session/:sessionId", requireAuth, requireOrg, async (req, res) => {
-  try {
-    const { sessionId } = req.params;
+app.get(
+  "/check-session/:sessionId",
+  requireAuth,
+  requireOrg,
+  async (req, res) => {
+    try {
+      const { sessionId } = req.params;
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
-    const sessionOrgId = session.metadata?.orgId;
-
-    if (!sessionOrgId || sessionOrgId !== req.orgId) return res.status(403).json({ error: "forbidden" });
-
-    if (session.payment_status === "paid" && session.subscription) {
-      const subscription =
-        typeof session.subscription === "string"
-          ? await stripe.subscriptions.retrieve(session.subscription)
-          : session.subscription;
-
-      const priceId = subscription.items.data[0].price.id;
-      const limits = mapPrice(priceId);
-
-      await writeBilling(req.orgId, {
-        plan: limits.plan,
-        status: subscription.status,
-        priceId,
-        stripeCustomerId: session.customer,
-        stripeSubscriptionId: subscription.id,
-        propertyLimit: limits.propertyLimit,
-        seatLimit: limits.seatLimit,
+      const session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ["subscription"],
       });
+      const sessionOrgId = session.metadata?.orgId;
 
-      return res.json({ success: true, paid: true, plan: limits.plan, status: subscription.status });
+      if (!sessionOrgId || sessionOrgId !== req.orgId)
+        return res.status(403).json({ error: "forbidden" });
+
+      if (session.payment_status === "paid" && session.subscription) {
+        const subscription =
+          typeof session.subscription === "string"
+            ? await stripe.subscriptions.retrieve(session.subscription)
+            : session.subscription;
+
+        const priceId = subscription.items.data[0].price.id;
+        const limits = mapPrice(priceId);
+
+        await writeBilling(req.orgId, {
+          plan: limits.plan,
+          status: subscription.status,
+          priceId,
+          stripeCustomerId: session.customer,
+          stripeSubscriptionId: subscription.id,
+          propertyLimit: limits.propertyLimit,
+          seatLimit: limits.seatLimit,
+        });
+
+        return res.json({
+          success: true,
+          paid: true,
+          plan: limits.plan,
+          status: subscription.status,
+        });
+      }
+
+      return res.json({
+        success: true,
+        paid: false,
+        payment_status: session.payment_status,
+      });
+    } catch (error) {
+      console.error("❌ Error checking session:", error);
+      return res.status(500).json({ error: error.message });
     }
-
-    return res.json({ success: true, paid: false, payment_status: session.payment_status });
-  } catch (error) {
-    console.error("❌ Error checking session:", error);
-    return res.status(500).json({ error: error.message });
-  }
-});
+  },
+);
 
 // -------------------- Collections --------------------
 const relatedCollections = Object.freeze([
@@ -1062,105 +1203,165 @@ const relatedCollections = Object.freeze([
 ]);
 
 // -------------------- Properties CRUD --------------------
-app.get("/api/properties", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const snap = await db.collection("properties").where("organizationId", "==", req.orgId).get();
-    return res.json({ properties: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
-  } catch (err) {
-    console.error("[properties] list failed", err);
-    return res.status(500).json({ error: "failed to list properties" });
-  }
-});
-
-app.post("/api/properties", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const payload = req.body || {};
-    payload.organizationId = req.orgId;
-
-    const ref = db.collection("properties").doc();
-    await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
-
-    const snap = await ref.get();
-    return res.json({ property: { id: ref.id, ...snap.data() } });
-  } catch (err) {
-    console.error("[properties] create failed", err);
-    return res.status(500).json({ error: "failed to create property" });
-  }
-});
-
-app.put("/api/properties/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const ref = db.collection("properties").doc(req.params.id);
-    const snap = await ref.get();
-    if (!snap.exists) return res.status(404).json({ error: "property not found" });
-    if (snap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
-
-    const payload = req.body || {};
-    delete payload.organizationId;
-
-    await ref.set({ ...payload, updatedAt: nowIso() }, { merge: true });
-
-    const updated = await ref.get();
-    return res.json({ property: { id: ref.id, ...updated.data() } });
-  } catch (err) {
-    console.error("[properties] update failed", err);
-    return res.status(500).json({ error: "failed to update property" });
-  }
-});
-
-app.delete("/api/properties/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const id = req.params.id;
-    const ref = db.collection("properties").doc(id);
-    const snap = await ref.get();
-
-    if (!snap.exists) return res.status(404).json({ error: "property not found" });
-    const orgId = snap.data().organizationId;
-    if (orgId !== req.orgId) return res.status(403).json({ error: "forbidden" });
-
-    const batch = db.batch();
-    batch.delete(ref);
-
-    for (const col of relatedCollections) {
-      const relSnap = await db.collection(col).where("organizationId", "==", orgId).get();
-      relSnap.docs.filter((d) => d.data().propertyId === id).forEach((d) => batch.delete(d.ref));
+app.get(
+  "/api/properties",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const snap = await db
+        .collection("properties")
+        .where("organizationId", "==", req.orgId)
+        .get();
+      return res.json({
+        properties: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    } catch (err) {
+      console.error("[properties] list failed", err);
+      return res.status(500).json({ error: "failed to list properties" });
     }
+  },
+);
 
-    await batch.commit();
-    return res.json({ success: true });
-  } catch (err) {
-    console.error("[properties] delete failed", err);
-    return res.status(500).json({ error: "failed to delete property" });
-  }
-});
+app.post(
+  "/api/properties",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const payload = req.body || {};
+      payload.organizationId = req.orgId;
+
+      const ref = db.collection("properties").doc();
+      await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
+
+      const snap = await ref.get();
+      return res.json({ property: { id: ref.id, ...snap.data() } });
+    } catch (err) {
+      console.error("[properties] create failed", err);
+      return res.status(500).json({ error: "failed to create property" });
+    }
+  },
+);
+
+app.put(
+  "/api/properties/:id",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const ref = db.collection("properties").doc(req.params.id);
+      const snap = await ref.get();
+      if (!snap.exists)
+        return res.status(404).json({ error: "property not found" });
+      if (snap.data().organizationId !== req.orgId)
+        return res.status(403).json({ error: "forbidden" });
+
+      const payload = req.body || {};
+      delete payload.organizationId;
+
+      await ref.set({ ...payload, updatedAt: nowIso() }, { merge: true });
+
+      const updated = await ref.get();
+      return res.json({ property: { id: ref.id, ...updated.data() } });
+    } catch (err) {
+      console.error("[properties] update failed", err);
+      return res.status(500).json({ error: "failed to update property" });
+    }
+  },
+);
+
+app.delete(
+  "/api/properties/:id",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+      const ref = db.collection("properties").doc(id);
+      const snap = await ref.get();
+
+      if (!snap.exists)
+        return res.status(404).json({ error: "property not found" });
+      const orgId = snap.data().organizationId;
+      if (orgId !== req.orgId)
+        return res.status(403).json({ error: "forbidden" });
+
+      const batch = db.batch();
+      batch.delete(ref);
+
+      for (const col of relatedCollections) {
+        const relSnap = await db
+          .collection(col)
+          .where("organizationId", "==", orgId)
+          .get();
+        relSnap.docs
+          .filter((d) => d.data().propertyId === id)
+          .forEach((d) => batch.delete(d.ref));
+      }
+
+      await batch.commit();
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("[properties] delete failed", err);
+      return res.status(500).json({ error: "failed to delete property" });
+    }
+  },
+);
 
 // -------------------- Dashboard --------------------
-app.get("/api/dashboard", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const orgId = req.orgId;
+app.get(
+  "/api/dashboard",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const orgId = req.orgId;
 
-    const [propsSnap, leasesSnap, loansSnap, recurringSnap, oneOffSnap, roomsSnap] = await Promise.all([
-      db.collection("properties").where("organizationId", "==", orgId).get(),
-      db.collection("leases").where("organizationId", "==", orgId).get(),
-      db.collection("loans").where("organizationId", "==", orgId).get(),
-      db.collection("recurringExpenses").where("organizationId", "==", orgId).get(),
-      db.collection("oneOffExpenses").where("organizationId", "==", orgId).get(),
-      db.collection("rooms").where("organizationId", "==", orgId).get(),
-    ]);
+      const [
+        propsSnap,
+        leasesSnap,
+        loansSnap,
+        recurringSnap,
+        oneOffSnap,
+        roomsSnap,
+      ] = await Promise.all([
+        db.collection("properties").where("organizationId", "==", orgId).get(),
+        db.collection("leases").where("organizationId", "==", orgId).get(),
+        db.collection("loans").where("organizationId", "==", orgId).get(),
+        db
+          .collection("recurringExpenses")
+          .where("organizationId", "==", orgId)
+          .get(),
+        db
+          .collection("oneOffExpenses")
+          .where("organizationId", "==", orgId)
+          .get(),
+        db.collection("rooms").where("organizationId", "==", orgId).get(),
+      ]);
 
-    return res.json({
-      properties: propsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      leases: leasesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      loans: loansSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      recurringExpenses: recurringSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      oneOffExpenses: oneOffSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      rooms: roomsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-    });
-  } catch (err) {
-    console.error("[dashboard] failed", err);
-    return res.status(500).json({ error: "failed to load dashboard" });
-  }
-});
+      return res.json({
+        properties: propsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        leases: leasesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        loans: loansSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        recurringExpenses: recurringSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })),
+        oneOffExpenses: oneOffSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+        rooms: roomsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    } catch (err) {
+      console.error("[dashboard] failed", err);
+      return res.status(500).json({ error: "failed to load dashboard" });
+    }
+  },
+);
 
 // -------------------- Stripe Mode Check --------------------
 app.get("/api/stripe-mode", requireAuth, async (req, res) => {
@@ -1169,8 +1370,8 @@ app.get("/api/stripe-mode", requireAuth, async (req, res) => {
     const prefix = key.startsWith("sk_live_")
       ? "sk_live_"
       : key.startsWith("sk_test_")
-      ? "sk_test_"
-      : "unknown";
+        ? "sk_test_"
+        : "unknown";
 
     // Llamada real a Stripe para confirmar el modo
     const account = await stripe.accounts.retrieve();
@@ -1190,370 +1391,545 @@ app.get("/api/stripe-mode", requireAuth, async (req, res) => {
 });
 
 // -------------------- Generic collection CRUD --------------------
-app.get("/api/:collection", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.get(
+  "/api/:collection",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const snap = await db.collection(col).where("organizationId", "==", req.orgId).get();
-    return res.json({ [col]: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
-  } catch (err) {
-    console.error(`[${req.params.collection}] list failed`, err);
-    return res.status(500).json({ error: `failed to list ${req.params.collection}` });
-  }
-});
+      const snap = await db
+        .collection(col)
+        .where("organizationId", "==", req.orgId)
+        .get();
+      return res.json({
+        [col]: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    } catch (err) {
+      console.error(`[${req.params.collection}] list failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to list ${req.params.collection}` });
+    }
+  },
+);
 
-app.post("/api/:collection", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.post(
+  "/api/:collection",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const payload = req.body || {};
-    payload.organizationId = req.orgId;
+      const payload = req.body || {};
+      payload.organizationId = req.orgId;
 
-    const ref = db.collection(col).doc();
-    await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
+      const ref = db.collection(col).doc();
+      await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
 
-    const snap = await ref.get();
-    return res.json({ [col.slice(0, -1)]: { id: ref.id, ...snap.data() } });
-  } catch (err) {
-    console.error(`[${req.params.collection}] create failed`, err);
-    return res.status(500).json({ error: `failed to create ${req.params.collection}` });
-  }
-});
+      const snap = await ref.get();
+      return res.json({ [col.slice(0, -1)]: { id: ref.id, ...snap.data() } });
+    } catch (err) {
+      console.error(`[${req.params.collection}] create failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to create ${req.params.collection}` });
+    }
+  },
+);
 
-app.put("/api/:collection/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.put(
+  "/api/:collection/:id",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const ref = db.collection(col).doc(req.params.id);
-    const snap = await ref.get();
+      const ref = db.collection(col).doc(req.params.id);
+      const snap = await ref.get();
 
-    if (!snap.exists) return res.status(404).json({ error: "not found" });
-    if (snap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
+      if (!snap.exists) return res.status(404).json({ error: "not found" });
+      if (snap.data().organizationId !== req.orgId)
+        return res.status(403).json({ error: "forbidden" });
 
-    const payload = req.body || {};
-    delete payload.organizationId;
+      const payload = req.body || {};
+      delete payload.organizationId;
 
-    await ref.set({ ...payload, updatedAt: nowIso() }, { merge: true });
+      await ref.set({ ...payload, updatedAt: nowIso() }, { merge: true });
 
-    const updated = await ref.get();
-    return res.json({ [col.slice(0, -1)]: { id: ref.id, ...updated.data() } });
-  } catch (err) {
-    console.error(`[${req.params.collection}] update failed`, err);
-    return res.status(500).json({ error: `failed to update ${req.params.collection}` });
-  }
-});
+      const updated = await ref.get();
+      return res.json({
+        [col.slice(0, -1)]: { id: ref.id, ...updated.data() },
+      });
+    } catch (err) {
+      console.error(`[${req.params.collection}] update failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to update ${req.params.collection}` });
+    }
+  },
+);
 
-app.delete("/api/:collection/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.delete(
+  "/api/:collection/:id",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const ref = db.collection(col).doc(req.params.id);
-    const snap = await ref.get();
+      const ref = db.collection(col).doc(req.params.id);
+      const snap = await ref.get();
 
-    if (!snap.exists) return res.status(404).json({ error: "not found" });
-    if (snap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
+      if (!snap.exists) return res.status(404).json({ error: "not found" });
+      if (snap.data().organizationId !== req.orgId)
+        return res.status(403).json({ error: "forbidden" });
 
-    await ref.delete();
-    return res.json({ success: true });
-  } catch (err) {
-    console.error(`[${req.params.collection}] delete failed`, err);
-    return res.status(500).json({ error: `failed to delete ${req.params.collection}` });
-  }
-});
+      await ref.delete();
+      return res.json({ success: true });
+    } catch (err) {
+      console.error(`[${req.params.collection}] delete failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to delete ${req.params.collection}` });
+    }
+  },
+);
 
 // -------------------- Compatibility /collection/:collection --------------------
-app.get("/api/collection/:collection", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.get(
+  "/api/collection/:collection",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const propertyId = req.query.propertyId;
-    let query = db.collection(col).where("organizationId", "==", req.orgId);
-    if (propertyId) query = query.where("propertyId", "==", propertyId);
+      const propertyId = req.query.propertyId;
+      let query = db.collection(col).where("organizationId", "==", req.orgId);
+      if (propertyId) query = query.where("propertyId", "==", propertyId);
 
-    const snap = await query.get();
-    const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    return res.json({ items });
-  } catch (err) {
-    console.error(`[collection/${req.params.collection}] list failed`, err);
-    return res.status(500).json({ error: `failed to list ${req.params.collection}` });
-  }
-});
+      const snap = await query.get();
+      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return res.json({ items });
+    } catch (err) {
+      console.error(`[collection/${req.params.collection}] list failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to list ${req.params.collection}` });
+    }
+  },
+);
 
-app.post("/api/collection/:collection", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.post(
+  "/api/collection/:collection",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const payload = req.body || {};
-    payload.organizationId = req.orgId;
+      const payload = req.body || {};
+      payload.organizationId = req.orgId;
 
-    const ref = db.collection(col).doc();
-    await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
+      const ref = db.collection(col).doc();
+      await ref.set({ ...payload, createdAt: nowIso(), updatedAt: nowIso() });
 
-    const snap = await ref.get();
-    return res.json({ item: { id: ref.id, ...snap.data() } });
-  } catch (err) {
-    console.error(`[collection/${req.params.collection}] create failed`, err);
-    return res.status(500).json({ error: `failed to create ${req.params.collection}` });
-  }
-});
+      const snap = await ref.get();
+      return res.json({ item: { id: ref.id, ...snap.data() } });
+    } catch (err) {
+      console.error(`[collection/${req.params.collection}] create failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to create ${req.params.collection}` });
+    }
+  },
+);
 
-app.put("/api/collection/:collection/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.put(
+  "/api/collection/:collection/:id",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const ref = db.collection(col).doc(req.params.id);
-    const snap = await ref.get();
+      const ref = db.collection(col).doc(req.params.id);
+      const snap = await ref.get();
 
-    if (!snap.exists) return res.status(404).json({ error: "not found" });
-    if (snap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
+      if (!snap.exists) return res.status(404).json({ error: "not found" });
+      if (snap.data().organizationId !== req.orgId)
+        return res.status(403).json({ error: "forbidden" });
 
-    const payload = req.body || {};
-    delete payload.organizationId;
+      const payload = req.body || {};
+      delete payload.organizationId;
 
-    await ref.set({ ...payload, updatedAt: nowIso() }, { merge: true });
+      await ref.set({ ...payload, updatedAt: nowIso() }, { merge: true });
 
-    const updated = await ref.get();
-    return res.json({ item: { id: ref.id, ...updated.data() } });
-  } catch (err) {
-    console.error(`[collection/${req.params.collection}] update failed`, err);
-    return res.status(500).json({ error: `failed to update ${req.params.collection}` });
-  }
-});
+      const updated = await ref.get();
+      return res.json({ item: { id: ref.id, ...updated.data() } });
+    } catch (err) {
+      console.error(`[collection/${req.params.collection}] update failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to update ${req.params.collection}` });
+    }
+  },
+);
 
-app.delete("/api/collection/:collection/:id", requireAuth, requireOrg, requireBillingOk, async (req, res) => {
-  try {
-    const col = req.params.collection;
-    if (!relatedCollections.includes(col)) return res.status(400).json({ error: "unknown collection" });
+app.delete(
+  "/api/collection/:collection/:id",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  async (req, res) => {
+    try {
+      const col = req.params.collection;
+      if (!relatedCollections.includes(col))
+        return res.status(400).json({ error: "unknown collection" });
 
-    const ref = db.collection(col).doc(req.params.id);
-    const snap = await ref.get();
+      const ref = db.collection(col).doc(req.params.id);
+      const snap = await ref.get();
 
-    if (!snap.exists) return res.status(404).json({ error: "not found" });
-    if (snap.data().organizationId !== req.orgId) return res.status(403).json({ error: "forbidden" });
+      if (!snap.exists) return res.status(404).json({ error: "not found" });
+      if (snap.data().organizationId !== req.orgId)
+        return res.status(403).json({ error: "forbidden" });
 
-    await ref.delete();
-    return res.json({ success: true });
-  } catch (err) {
-    console.error(`[collection/${req.params.collection}] delete failed`, err);
-    return res.status(500).json({ error: `failed to delete ${req.params.collection}` });
-  }
-});
+      await ref.delete();
+      return res.json({ success: true });
+    } catch (err) {
+      console.error(`[collection/${req.params.collection}] delete failed`, err);
+      return res
+        .status(500)
+        .json({ error: `failed to delete ${req.params.collection}` });
+    }
+  },
+);
 
 // -------------------- Uploads --------------------
-app.post("/api/propertyDocs/upload", requireAuth, requireOrg, requireBillingOk, upload.single("file"), async (req, res) => {
-  try {
-    console.log("[propertyDocs/upload] Starting upload...", {
-      hasFile: !!req.file,
-      propertyId: req.body?.propertyId,
-      orgId: req.orgId,
-    });
+app.post(
+  "/api/propertyDocs/upload",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      console.log("[propertyDocs/upload] Starting upload...", {
+        hasFile: !!req.file,
+        propertyId: req.body?.propertyId,
+        orgId: req.orgId,
+      });
 
-    if (!firebaseReady) {
-      console.error("[propertyDocs/upload] Firebase not ready");
-      return res.status(503).json({ error: "firebase_not_configured", message: "Firebase is not initialized" });
-    }
+      if (!firebaseReady) {
+        console.error("[propertyDocs/upload] Firebase not ready");
+        return res
+          .status(503)
+          .json({
+            error: "firebase_not_configured",
+            message: "Firebase is not initialized",
+          });
+      }
 
-    if (!bucket) {
-      console.error("[propertyDocs/upload] Storage bucket not configured");
-      return res.status(503).json({ error: "storage_not_configured", message: "Firebase Storage bucket is not configured" });
-    }
+      if (!bucket) {
+        console.error("[propertyDocs/upload] Storage bucket not configured");
+        return res
+          .status(503)
+          .json({
+            error: "storage_not_configured",
+            message: "Firebase Storage bucket is not configured",
+          });
+      }
 
-    const file = req.file;
-    if (!file) {
-      console.error("[propertyDocs/upload] No file in request");
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+      const file = req.file;
+      if (!file) {
+        console.error("[propertyDocs/upload] No file in request");
+        return res.status(400).json({ error: "No file uploaded" });
+      }
 
-    const { propertyId, name } = req.body;
-    if (!propertyId) {
-      console.error("[propertyDocs/upload] No propertyId provided");
-      return res.status(400).json({ error: "propertyId required" });
-    }
+      const { propertyId, name } = req.body;
+      if (!propertyId) {
+        console.error("[propertyDocs/upload] No propertyId provided");
+        return res.status(400).json({ error: "propertyId required" });
+      }
 
-    console.log("[propertyDocs/upload] Checking property ownership...");
-    const propSnap = await db.collection("properties").doc(propertyId).get();
-    if (!propSnap.exists) {
-      console.error("[propertyDocs/upload] Property not found:", propertyId);
-      return res.status(404).json({ error: "property not found" });
-    }
-    if (propSnap.data().organizationId !== req.orgId) {
-      console.error("[propertyDocs/upload] Property doesn't belong to org");
-      return res.status(403).json({ error: "forbidden" });
-    }
+      console.log("[propertyDocs/upload] Checking property ownership...");
+      const propSnap = await db.collection("properties").doc(propertyId).get();
+      if (!propSnap.exists) {
+        console.error("[propertyDocs/upload] Property not found:", propertyId);
+        return res.status(404).json({ error: "property not found" });
+      }
+      if (propSnap.data().organizationId !== req.orgId) {
+        console.error("[propertyDocs/upload] Property doesn't belong to org");
+        return res.status(403).json({ error: "forbidden" });
+      }
 
-    const docRef = db.collection("propertyDocs").doc();
-    const docId = docRef.id;
+      const docRef = db.collection("propertyDocs").doc();
+      const docId = docRef.id;
 
-    const safeName = (name || file.originalname || "document").replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `organizations/${req.orgId}/properties/${propertyId}/docs/${docId}_${safeName}`;
+      const safeName = (name || file.originalname || "document").replace(
+        /[^a-zA-Z0-9._-]/g,
+        "_",
+      );
+      const storagePath = `organizations/${req.orgId}/properties/${propertyId}/docs/${docId}_${safeName}`;
 
-    console.log("[propertyDocs/upload] Uploading to storage:", storagePath);
-    const gcsFile = bucket.file(storagePath);
-    await gcsFile.save(file.buffer, {
-      contentType: file.mimetype,
-      resumable: false,
-      metadata: { cacheControl: "public, max-age=3600" },
-    });
+      console.log("[propertyDocs/upload] Uploading to storage:", storagePath);
+      const gcsFile = bucket.file(storagePath);
+      await gcsFile.save(file.buffer, {
+        contentType: file.mimetype,
+        resumable: false,
+        metadata: { cacheControl: "public, max-age=3600" },
+      });
 
-    console.log("[propertyDocs/upload] Generating signed URL...");
-    // Generate signed URL valid for 7 days (instead of makePublic)
-    const [signedUrl] = await gcsFile.getSignedUrl({
-      action: "read",
-      expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
-    const publicUrl = signedUrl;
-
-    console.log("[propertyDocs/upload] Saving to Firestore...");
-    await docRef.set({
-      organizationId: req.orgId,
-      propertyId,
-      name: safeName,
-      url: publicUrl,
-      storagePath,
-      contentType: file.mimetype,
-      size: file.size,
-      uploadedAt: nowIso(),
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    });
-
-    const snap = await docRef.get();
-    console.log("[propertyDocs/upload] Upload successful:", docId);
-    return res.json({ doc: { id: docId, ...snap.data() } });
-  } catch (err) {
-    console.error("[propertyDocs/upload] failed:", {
-      message: err?.message,
-      code: err?.code,
-      stack: err?.stack,
-    });
-    return res.status(500).json({
-      error: "failed to upload doc",
-      message: err?.message || "Unknown error",
-      code: err?.code,
-    });
-  }
-});
-
-app.post("/api/capex/upload", requireAuth, requireOrg, requireBillingOk, upload.single("file"), async (req, res) => {
-  try {
-    console.log("[capex/upload] Starting upload...", {
-      hasFile: !!req.file,
-      propertyId: req.body?.propertyId,
-      orgId: req.orgId,
-    });
-
-    if (!firebaseReady) {
-      console.error("[capex/upload] Firebase not ready");
-      return res.status(503).json({ error: "firebase_not_configured", message: "Firebase is not initialized" });
-    }
-
-    if (!bucket) {
-      console.error("[capex/upload] Storage bucket not configured");
-      return res.status(503).json({ error: "storage_not_configured", message: "Firebase Storage bucket is not configured" });
-    }
-
-    const file = req.file;
-    if (!file) {
-      console.error("[capex/upload] No file in request");
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    const { propertyId, name } = req.body;
-    if (!propertyId) {
-      console.error("[capex/upload] No propertyId provided");
-      return res.status(400).json({ error: "propertyId required" });
-    }
-
-    console.log("[capex/upload] Checking property ownership...");
-    const propSnap = await db.collection("properties").doc(propertyId).get();
-    if (!propSnap.exists) {
-      console.error("[capex/upload] Property not found:", propertyId);
-      return res.status(404).json({ error: "property not found" });
-    }
-    if (propSnap.data().organizationId !== req.orgId) {
-      console.error("[capex/upload] Property doesn't belong to org");
-      return res.status(403).json({ error: "forbidden - property does not belong to organization" });
-    }
-
-    const timestamp = Date.now();
-    const safeName = (name || file.originalname || "attachment").replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `organizations/${req.orgId}/properties/${propertyId}/capex/${timestamp}_${safeName}`;
-
-    console.log("[capex/upload] Uploading to storage:", storagePath);
-    const gcsFile = bucket.file(storagePath);
-    await gcsFile.save(file.buffer, {
-      contentType: file.mimetype,
-      resumable: false,
-      metadata: { cacheControl: "public, max-age=3600" },
-    });
-
-    console.log("[capex/upload] Upload successful");
-    return res.json({
-      attachment: {
+      // We persist only durable metadata (storagePath). Signed URLs would expire and must not be stored.
+      console.log("[propertyDocs/upload] Saving to Firestore...");
+      await docRef.set({
+        organizationId: req.orgId,
+        propertyId,
         name: safeName,
         storagePath,
-        mimeType: file.mimetype,
-      },
-    });
-  } catch (err) {
-    console.error("[capex/upload] failed:", {
-      message: err?.message,
-      code: err?.code,
-      stack: err?.stack,
-    });
-    return res.status(500).json({
-      error: "failed to upload capex file",
-      message: err?.message || "Unknown error",
-      code: err?.code,
-    });
-  }
-});
+        contentType: file.mimetype,
+        size: file.size,
+        uploadedAt: nowIso(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      });
+
+      const snap = await docRef.get();
+      console.log("[propertyDocs/upload] Upload successful:", docId);
+      return res.json({ doc: { id: docId, ...snap.data() } });
+    } catch (err) {
+      console.error("[propertyDocs/upload] failed:", {
+        message: err?.message,
+        code: err?.code,
+        stack: err?.stack,
+      });
+      return res.status(500).json({
+        error: "failed to upload doc",
+        message: err?.message || "Unknown error",
+        code: err?.code,
+      });
+    }
+  },
+);
+
+app.post(
+  "/api/capex/upload",
+  requireAuth,
+  requireOrg,
+  requireBillingOk,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      console.log("[capex/upload] Starting upload...", {
+        hasFile: !!req.file,
+        propertyId: req.body?.propertyId,
+        orgId: req.orgId,
+      });
+
+      if (!firebaseReady) {
+        console.error("[capex/upload] Firebase not ready");
+        return res
+          .status(503)
+          .json({
+            error: "firebase_not_configured",
+            message: "Firebase is not initialized",
+          });
+      }
+
+      if (!bucket) {
+        console.error("[capex/upload] Storage bucket not configured");
+        return res
+          .status(503)
+          .json({
+            error: "storage_not_configured",
+            message: "Firebase Storage bucket is not configured",
+          });
+      }
+
+      const file = req.file;
+      if (!file) {
+        console.error("[capex/upload] No file in request");
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { propertyId, name } = req.body;
+      if (!propertyId) {
+        console.error("[capex/upload] No propertyId provided");
+        return res.status(400).json({ error: "propertyId required" });
+      }
+
+      console.log("[capex/upload] Checking property ownership...");
+      const propSnap = await db.collection("properties").doc(propertyId).get();
+      if (!propSnap.exists) {
+        console.error("[capex/upload] Property not found:", propertyId);
+        return res.status(404).json({ error: "property not found" });
+      }
+      if (propSnap.data().organizationId !== req.orgId) {
+        console.error("[capex/upload] Property doesn't belong to org");
+        return res
+          .status(403)
+          .json({
+            error: "forbidden - property does not belong to organization",
+          });
+      }
+
+      const timestamp = Date.now();
+      const safeName = (name || file.originalname || "attachment").replace(
+        /[^a-zA-Z0-9._-]/g,
+        "_",
+      );
+      const storagePath = `organizations/${req.orgId}/properties/${propertyId}/capex/${timestamp}_${safeName}`;
+
+      console.log("[capex/upload] Uploading to storage:", storagePath);
+      const gcsFile = bucket.file(storagePath);
+      await gcsFile.save(file.buffer, {
+        contentType: file.mimetype,
+        resumable: false,
+        metadata: { cacheControl: "public, max-age=3600" },
+      });
+
+      console.log("[capex/upload] Upload successful");
+      return res.json({
+        attachment: {
+          name: safeName,
+          storagePath,
+          mimeType: file.mimetype,
+        },
+      });
+    } catch (err) {
+      console.error("[capex/upload] failed:", {
+        message: err?.message,
+        code: err?.code,
+        stack: err?.stack,
+      });
+      return res.status(500).json({
+        error: "failed to upload capex file",
+        message: err?.message || "Unknown error",
+        code: err?.code,
+      });
+    }
+  },
+);
 
 // ========== Get signed URL for capex attachment ==========
-app.post("/api/capex/download-url", requireAuth, requireOrg, async (req, res) => {
-  try {
-    const { storagePath } = req.body;
-    
-    if (!storagePath) {
-      return res.status(400).json({ error: "storagePath required" });
+app.post(
+  "/api/capex/download-url",
+  requireAuth,
+  requireOrg,
+  async (req, res) => {
+    try {
+      const { storagePath } = req.body;
+
+      if (!storagePath) {
+        return res.status(400).json({ error: "storagePath required" });
+      }
+
+      if (!firebaseReady || !bucket) {
+        return res.status(503).json({ error: "firebase_not_configured" });
+      }
+
+      // Verify ownership by checking the storagePath structure
+      if (!storagePath.startsWith(`organizations/${req.orgId}/`)) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+
+      console.log(
+        "[capex/download-url] Generating fresh signed URL for:",
+        storagePath,
+      );
+      const gcsFile = bucket.file(storagePath);
+
+      // Generate signed URL valid for 1 hour
+      const [signedUrl] = await gcsFile.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 1 * 60 * 60 * 1000, // 1 hour
+      });
+
+      return res.json({ url: signedUrl });
+    } catch (err) {
+      console.error("[capex/download-url] failed:", {
+        message: err?.message,
+        code: err?.code,
+      });
+      return res.status(500).json({
+        error: "failed to generate download url",
+        message: err?.message,
+      });
     }
+  },
+);
 
-    if (!firebaseReady || !bucket) {
-      return res.status(503).json({ error: "firebase_not_configured" });
+// ========== Get signed URL for property doc ==========
+app.post(
+  "/api/propertyDocs/download-url",
+  requireAuth,
+  requireOrg,
+  async (req, res) => {
+    try {
+      const { storagePath } = req.body;
+
+      if (!storagePath) {
+        return res.status(400).json({ error: "storagePath required" });
+      }
+
+      if (!firebaseReady || !bucket) {
+        return res.status(503).json({ error: "firebase_not_configured" });
+      }
+
+      // Verify ownership by checking the storagePath structure
+      if (!storagePath.startsWith(`organizations/${req.orgId}/`)) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+
+      console.log(
+        "[propertyDocs/download-url] Generating fresh signed URL for:",
+        storagePath,
+      );
+      const gcsFile = bucket.file(storagePath);
+
+      // Generate signed URL valid for 1 hour
+      const [signedUrl] = await gcsFile.getSignedUrl({
+        action: "read",
+        expires: Date.now() + 1 * 60 * 60 * 1000, // 1 hour
+      });
+
+      return res.json({ url: signedUrl });
+    } catch (err) {
+      console.error("[propertyDocs/download-url] failed:", {
+        message: err?.message,
+        code: err?.code,
+      });
+      return res.status(500).json({
+        error: "failed to generate download url",
+        message: err?.message,
+      });
     }
-
-    // Verify ownership by checking the storagePath structure
-    if (!storagePath.startsWith(`organizations/${req.orgId}/`)) {
-      return res.status(403).json({ error: "forbidden" });
-    }
-
-    console.log("[capex/download-url] Generating fresh signed URL for:", storagePath);
-    const gcsFile = bucket.file(storagePath);
-    
-    // Generate signed URL valid for 1 hour
-    const [signedUrl] = await gcsFile.getSignedUrl({
-      action: "read",
-      expires: Date.now() + 1 * 60 * 60 * 1000, // 1 hour
-    });
-
-    return res.json({ url: signedUrl });
-  } catch (err) {
-    console.error("[capex/download-url] failed:", {
-      message: err?.message,
-      code: err?.code,
-    });
-    return res.status(500).json({
-      error: "failed to generate download url",
-      message: err?.message,
-    });
-  }
-});
+  },
+);
 
 export default app;

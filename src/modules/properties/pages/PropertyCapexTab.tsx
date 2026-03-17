@@ -37,6 +37,7 @@ import {
   updateOneOffExpense,
   deleteOneOffExpense,
   uploadCapexAttachment,
+  downloadAttachment,
 } from "../api";
 import { parseDate, toISOString, formatDate } from "@/utils/date";
 import { Money } from "@/components/Money";
@@ -91,13 +92,14 @@ export function PropertyCapexTab({
 }: PropertyCapexTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<OneOffExpense | null>(
-    null
+    null,
   );
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<{
     name: string;
-    url: string;
+    storagePath?: string; // Durable storage path for generating signed URLs
+    legacyUrl?: string; // Legacy expiring signed URL (fallback only)
   } | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -142,10 +144,16 @@ export function PropertyCapexTab({
       attachmentUrl: expense.attachmentUrl || "",
       attachmentName: expense.attachmentName || "",
     });
-    if (expense.attachmentUrl) {
+    if (expense.storagePath) {
       setUploadedFile({
         name: expense.attachmentName || "archivo",
-        url: expense.attachmentUrl,
+        storagePath: expense.storagePath,
+      });
+    } else if (expense.attachmentUrl) {
+      // Legacy attachment stored as expiring URL; keep as fallback but do not treat as canonical.
+      setUploadedFile({
+        name: expense.attachmentName || "archivo",
+        legacyUrl: expense.attachmentUrl,
       });
     } else {
       setUploadedFile(null);
@@ -173,8 +181,15 @@ export function PropertyCapexTab({
     setUploadProgress(0);
     try {
       const file = e.target.files[0]; // Only take first file
-      const attachment = await uploadCapexAttachment(propertyId, file, file.name);
-      setUploadedFile({ name: attachment.name, url: attachment.url });
+      const attachment = await uploadCapexAttachment(
+        propertyId,
+        file,
+        file.name,
+      );
+      setUploadedFile({
+        name: attachment.name,
+        storagePath: attachment.storagePath,
+      });
     } catch (err: any) {
       const errorMsg =
         err?.response?.data?.error ||
@@ -209,7 +224,11 @@ export function PropertyCapexTab({
         invoiceNumber: data.invoiceNumber,
         isDeductible: data.isDeductible,
         notes: data.notes,
-        attachmentUrl: uploadedFile?.url || undefined,
+        attachmentUrl:
+          uploadedFile && !uploadedFile.storagePath
+            ? uploadedFile.legacyUrl
+            : undefined,
+        storagePath: uploadedFile?.storagePath || undefined,
         attachmentName: uploadedFile?.name || undefined,
       };
 
@@ -233,7 +252,7 @@ export function PropertyCapexTab({
 
   // Sort by date descending
   const sortedExpenses = [...expenses].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
   return (
@@ -369,7 +388,7 @@ export function PropertyCapexTab({
                         {expense.notes}
                       </Typography>
                     )}
-                    {expense.attachmentUrl && (
+                    {(expense.storagePath || expense.attachmentUrl) && (
                       <Box
                         sx={{
                           display: "flex",
@@ -390,12 +409,13 @@ export function PropertyCapexTab({
                             cursor: "pointer",
                             "&:hover": { textDecoration: "underline" },
                           }}
-                          onClick={() => {
-                            const a = document.createElement("a");
-                            a.href = expense.attachmentUrl!;
-                            a.download = expense.attachmentName || "archivo";
-                            a.click();
-                          }}
+                          onClick={() =>
+                            downloadAttachment(
+                              expense.storagePath,
+                              expense.attachmentUrl,
+                              expense.attachmentName,
+                            )
+                          }
                         >
                           {expense.attachmentName || "Archivo adjunto"}
                         </Typography>
@@ -407,15 +427,16 @@ export function PropertyCapexTab({
                 {/* Actions */}
                 <Divider />
                 <Box sx={{ display: "flex", justifyContent: "flex-end", p: 1 }}>
-                  {expense.attachmentUrl && (
+                  {(expense.storagePath || expense.attachmentUrl) && (
                     <Tooltip title="Descargar archivo">
                       <IconButton
-                        onClick={() => {
-                          const a = document.createElement("a");
-                          a.href = expense.attachmentUrl!;
-                          a.download = expense.attachmentName || "archivo";
-                          a.click();
-                        }}
+                        onClick={() =>
+                          downloadAttachment(
+                            expense.storagePath,
+                            expense.attachmentUrl,
+                            expense.attachmentName,
+                          )
+                        }
                         sx={{ minWidth: 48, minHeight: 48 }}
                       >
                         <DownloadIcon />
@@ -600,12 +621,13 @@ export function PropertyCapexTab({
                       <Tooltip title="Descargar">
                         <IconButton
                           size="small"
-                          onClick={() => {
-                            const a = document.createElement("a");
-                            a.href = uploadedFile.url;
-                            a.download = uploadedFile.name;
-                            a.click();
-                          }}
+                          onClick={() =>
+                            downloadAttachment(
+                              uploadedFile.storagePath,
+                              uploadedFile.legacyUrl,
+                              uploadedFile.name,
+                            )
+                          }
                         >
                           <DownloadIcon />
                         </IconButton>

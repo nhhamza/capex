@@ -46,7 +46,7 @@ import {
   updateOneOffExpense,
   deleteOneOffExpense,
   uploadCapexAttachment,
-  getCapexDownloadUrl,
+  downloadAttachment,
 } from "../api";
 import { parseDate, toISOString, formatDate } from "@/utils/date";
 import { Money } from "@/components/Money";
@@ -148,7 +148,8 @@ export function PropertyExpensesTab({
   const [uploading, setUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<{
     name: string;
-    url: string;
+    storagePath?: string; // Durable storage path for signed URLs
+    legacyUrl?: string; // Legacy expiring URL fallback
   } | null>(null);
   const [addMenuAnchor, setAddMenuAnchor] = useState<null | HTMLElement>(null);
 
@@ -281,10 +282,15 @@ export function PropertyExpensesTab({
       attachmentUrl: expense.attachmentUrl || "",
       attachmentName: expense.attachmentName || "",
     });
-    if (expense.attachmentUrl) {
+    if (expense.storagePath) {
       setUploadedFile({
         name: expense.attachmentName || "archivo",
-        url: expense.attachmentUrl,
+        storagePath: expense.storagePath,
+      });
+    } else if (expense.attachmentUrl) {
+      setUploadedFile({
+        name: expense.attachmentName || "archivo",
+        legacyUrl: expense.attachmentUrl,
       });
     } else {
       setUploadedFile(null);
@@ -326,7 +332,10 @@ export function PropertyExpensesTab({
         file,
         file.name,
       );
-      setUploadedFile({ name: attachment.name, url: attachment.url });
+      setUploadedFile({
+        name: attachment.name,
+        storagePath: attachment.storagePath,
+      });
     } catch (err: any) {
       const errorMsg =
         err?.response?.data?.error ||
@@ -387,7 +396,11 @@ export function PropertyExpensesTab({
         invoiceNumber: data.invoiceNumber,
         isDeductible: data.isDeductible,
         notes: data.notes,
-        attachmentUrl: uploadedFile?.url || undefined,
+        attachmentUrl:
+          uploadedFile && !uploadedFile.storagePath
+            ? uploadedFile.legacyUrl
+            : undefined,
+        storagePath: uploadedFile?.storagePath || undefined,
         attachmentName: uploadedFile?.name || undefined,
       };
 
@@ -1039,7 +1052,7 @@ export function PropertyExpensesTab({
                             borderRadius: 1,
                             border: "1px solid",
                             borderColor: "grey.200",
-                            mb: exp.attachmentUrl ? 1.5 : 0,
+                            mb: exp.storagePath || exp.attachmentUrl ? 1.5 : 0,
                           }}
                         >
                           <Typography
@@ -1057,33 +1070,15 @@ export function PropertyExpensesTab({
                       )}
 
                       {/* Attachment */}
-                      {exp.attachmentUrl && (
+                      {(exp.storagePath || exp.attachmentUrl) && (
                         <Box
-                          onClick={async () => {
-                            try {
-                              if (!exp.storagePath) {
-                                // Fallback to old URL if no storagePath
-                                const a = document.createElement("a");
-                                a.href = exp.attachmentUrl!;
-                                a.download = exp.attachmentName || "archivo";
-                                a.click();
-                                return;
-                              }
-                              // Get fresh URL from backend
-                              const url = await getCapexDownloadUrl(
-                                exp.storagePath,
-                              );
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = exp.attachmentName || "archivo";
-                              a.click();
-                            } catch (error) {
-                              console.error(
-                                "Failed to download attachment:",
-                                error,
-                              );
-                            }
-                          }}
+                          onClick={() =>
+                            downloadAttachment(
+                              exp.storagePath,
+                              exp.attachmentUrl,
+                              exp.attachmentName,
+                            )
+                          }
                           sx={{
                             display: "flex",
                             alignItems: "center",
@@ -1401,12 +1396,13 @@ export function PropertyExpensesTab({
                     <Tooltip title="Descargar">
                       <IconButton
                         size="small"
-                        onClick={() => {
-                          const a = document.createElement("a");
-                          a.href = uploadedFile.url;
-                          a.download = uploadedFile.name;
-                          a.click();
-                        }}
+                        onClick={() =>
+                          downloadAttachment(
+                            uploadedFile.storagePath,
+                            uploadedFile.legacyUrl,
+                            uploadedFile.name,
+                          )
+                        }
                       >
                         <DownloadIcon />
                       </IconButton>

@@ -1,3 +1,8 @@
+// LEGACY MODULE: This module stores attachments as base64 data URLs in attachmentUrl.
+// It does not use the durable storagePath + on-demand signed URL pattern.
+// TODO: Migrate to use uploadCapexAttachment and storagePath for consistency.
+// For now, it remains functional for existing facturas stored as base64.
+
 import { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,6 +31,7 @@ import { OneOffExpense, Property } from "@/modules/properties/types";
 import {
   createOneOffExpense,
   updateOneOffExpense,
+  downloadAttachment,
 } from "@/modules/properties/api";
 import { parseDate, toISOString } from "@/utils/date";
 
@@ -148,12 +154,14 @@ export function ExpenseFormDialog({
   };
 
   const handleDownloadAttachment = () => {
-    if (existingAttachment) {
-      const link = document.createElement("a");
-      link.href = existingAttachment;
-      link.download = `factura-${expense?.invoiceNumber || "documento"}`;
-      link.click();
-    }
+    if (!existingAttachment) return;
+
+    // Try to resolve a fresh signed URL if the existing attachment is a legacy expiring link.
+    downloadAttachment(
+      undefined,
+      existingAttachment,
+      `factura-${expense?.invoiceNumber || "documento"}`,
+    );
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -168,7 +176,9 @@ export function ExpenseFormDialog({
   const onSubmit = async (data: FormData) => {
     // Prevent double-submit
     if (loading) {
-      console.warn("[ExpenseFormDialog] Already submitting, ignoring duplicate request");
+      console.warn(
+        "[ExpenseFormDialog] Already submitting, ignoring duplicate request",
+      );
       return;
     }
 

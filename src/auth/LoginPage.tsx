@@ -13,7 +13,9 @@ import {
   Alert,
   Link,
   Chip,
+  Divider,
 } from "@mui/material";
+import { GoogleLogin } from "@/components/GoogleLogin";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -73,7 +75,7 @@ export function LoginPage() {
           </Typography>
 
           {/* Google OAuth Button */}
-          {/* <Box sx={{ mt: 3, mb: 2.5 }}>
+          <Box sx={{ mt: 3, mb: 2.5 }}>
             <GoogleLogin />
           </Box>
 
@@ -81,7 +83,7 @@ export function LoginPage() {
             <Typography variant="caption" color="text.secondary">
               O con email
             </Typography>
-          </Divider> */}
+          </Divider>
 
           <Box component="form" onSubmit={onSubmit} sx={{ mt: 2 }}>
             <TextField

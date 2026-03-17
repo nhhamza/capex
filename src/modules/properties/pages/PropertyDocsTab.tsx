@@ -17,6 +17,7 @@ import {
   listPropertyDocs,
   uploadPropertyDoc, // ✅ new backend upload
   deletePropertyDoc,
+  downloadAttachment,
   PropertyDocMeta,
 } from "../api";
 
@@ -42,7 +43,7 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
           const ta = a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
           const tb = b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
           return tb - ta;
-        })
+        }),
       );
     } catch (e: any) {
       setError(e?.message || "Error cargando documentos");
@@ -66,7 +67,7 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
     try {
       // Upload in parallel (faster)
       await Promise.all(
-        files.map((file) => uploadPropertyDoc(propertyId, file, file.name))
+        files.map((file) => uploadPropertyDoc(propertyId, file, file.name)),
       );
 
       await load();
@@ -192,10 +193,9 @@ export function PropertyDocsTab({ propertyId }: PropertyDocsTabProps) {
               <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>
                 <Tooltip title="Descargar">
                   <IconButton
-                    onClick={() => {
-                      // signed URL from backend
-                      window.open(doc.url, "_blank", "noopener,noreferrer");
-                    }}
+                    onClick={() =>
+                      downloadAttachment(doc.storagePath, doc.url, doc.name)
+                    }
                     sx={{ minWidth: 48, minHeight: 48 }}
                     color="primary"
                   >

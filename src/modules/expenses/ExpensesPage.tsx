@@ -24,6 +24,7 @@ import { useAuth } from "@/auth/authContext";
 import {
   getDashboard,
   deleteOneOffExpense,
+  downloadAttachment,
 } from "@/modules/properties/api";
 import { Property, OneOffExpense } from "@/modules/properties/types";
 import { Money } from "@/components/Money";
@@ -54,7 +55,7 @@ export function ExpensesPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<OneOffExpense | null>(
-    null
+    null,
   );
 
   const loadData = async () => {
@@ -84,7 +85,7 @@ export function ExpensesPage() {
 
     if (selectedPropertyId !== "all") {
       filtered = filtered.filter(
-        (exp) => exp.propertyId === selectedPropertyId
+        (exp) => exp.propertyId === selectedPropertyId,
       );
     }
 
@@ -135,7 +136,7 @@ export function ExpensesPage() {
   // Calculate totals
   const totalExpenses = filteredExpenses.reduce(
     (sum, exp) => sum + exp.amount,
-    0
+    0,
   );
   const deductibleTotal = filteredExpenses
     .filter((exp) => exp.isDeductible !== false)
@@ -151,16 +152,16 @@ export function ExpensesPage() {
   ];
 
   const expenseYears = Array.from(
-    new Set(expenses.map((exp) => new Date(exp.date).getFullYear().toString()))
+    new Set(expenses.map((exp) => new Date(exp.date).getFullYear().toString())),
   );
 
   const availableYears = Array.from(
-    new Set([...defaultYears, ...expenseYears])
+    new Set([...defaultYears, ...expenseYears]),
   ).sort((a, b) => parseInt(b) - parseInt(a));
 
   // Sort expenses by date descending
   const sortedExpenses = [...filteredExpenses].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
   return (
@@ -403,7 +404,7 @@ export function ExpensesPage() {
                         • #{expense.invoiceNumber}
                       </Typography>
                     )}
-                    {expense.attachmentUrl && (
+                    {(expense.storagePath || expense.attachmentUrl) && (
                       <Tooltip title="Ver factura adjunta">
                         <AttachFileIcon
                           fontSize="small"
@@ -415,12 +416,11 @@ export function ExpensesPage() {
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            const link = document.createElement("a");
-                            link.href = expense.attachmentUrl!;
-                            link.download = `factura-${
-                              expense.invoiceNumber || "documento"
-                            }`;
-                            link.click();
+                            downloadAttachment(
+                              expense.storagePath,
+                              expense.attachmentUrl,
+                              `factura-${expense.invoiceNumber || "documento"}`,
+                            );
                           }}
                         />
                       </Tooltip>

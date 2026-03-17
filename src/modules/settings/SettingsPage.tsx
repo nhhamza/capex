@@ -1,9 +1,27 @@
-import { Box, Typography, Paper, TextField, Alert, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, CircularProgress, Chip } from "@mui/material";
+import {
+  Box,
+  Typography,
+  Paper,
+  TextField,
+  Alert,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Button,
+  CircularProgress,
+  Chip,
+} from "@mui/material";
 import { useAuth } from "@/auth/authContext";
 import { useState, useEffect } from "react";
 import { backendApi } from "@/lib/backendApi";
 import DownloadIcon from "@mui/icons-material/Download";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+
+// Note: hostedInvoiceUrl and invoicePdf are Stripe-hosted permanent URLs, not expiring signed URLs.
+// They are safe to use directly in href attributes.
 
 interface Invoice {
   id: string;
@@ -36,7 +54,9 @@ export function SettingsPage() {
       setInvoices(data.invoices || []);
     } catch (err: any) {
       console.error("Error fetching invoices:", err);
-      setInvoicesError(err?.response?.data?.error || "Error al cargar facturas");
+      setInvoicesError(
+        err?.response?.data?.error || "Error al cargar facturas",
+      );
     } finally {
       setLoadingInvoices(false);
     }
@@ -51,7 +71,10 @@ export function SettingsPage() {
   };
 
   const getStatusLabel = (status: string) => {
-    const statusMap: Record<string, { label: string; color: "success" | "warning" | "error" | "default" }> = {
+    const statusMap: Record<
+      string,
+      { label: string; color: "success" | "warning" | "error" | "default" }
+    > = {
       paid: { label: "Pagada", color: "success" },
       open: { label: "Pendiente", color: "warning" },
       void: { label: "Anulada", color: "default" },
@@ -136,19 +159,32 @@ export function SettingsPage() {
           </Box>
         ) : invoices.length === 0 ? (
           <Alert severity="info">
-            No hay facturas disponibles. Las facturas aparecerán aquí cuando realices tu primera compra.
+            No hay facturas disponibles. Las facturas aparecerán aquí cuando
+            realices tu primera compra.
           </Alert>
         ) : (
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell><strong>Número</strong></TableCell>
-                  <TableCell><strong>Fecha</strong></TableCell>
-                  <TableCell><strong>Período</strong></TableCell>
-                  <TableCell><strong>Importe</strong></TableCell>
-                  <TableCell><strong>Estado</strong></TableCell>
-                  <TableCell><strong>Acciones</strong></TableCell>
+                  <TableCell>
+                    <strong>Número</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Fecha</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Período</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Importe</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Estado</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Acciones</strong>
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -159,10 +195,12 @@ export function SettingsPage() {
                       <TableCell>{invoice.number || invoice.id}</TableCell>
                       <TableCell>{formatDate(invoice.created)}</TableCell>
                       <TableCell>
-                        {formatDate(invoice.periodStart)} - {formatDate(invoice.periodEnd)}
+                        {formatDate(invoice.periodStart)} -{" "}
+                        {formatDate(invoice.periodEnd)}
                       </TableCell>
                       <TableCell>
-                        {invoice.amount.toFixed(2)} {invoice.currency.toUpperCase()}
+                        {invoice.amount.toFixed(2)}{" "}
+                        {invoice.currency.toUpperCase()}
                       </TableCell>
                       <TableCell>
                         <Chip

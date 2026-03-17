@@ -43,7 +43,7 @@ const getTabs = (): PropertyTabConfig[] => [
   },
   {
     value: "gastos",
-    label: "💳 Gastos",
+    label: "💳 Gastos y Hipoteca ",
     icon: <ReceiptIcon fontSize="small" />,
   },
   {
