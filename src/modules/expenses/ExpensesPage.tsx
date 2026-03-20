@@ -167,7 +167,7 @@ export function ExpensesPage() {
   return (
     <Box>
       <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
-        <Typography variant="h4">Gastos y Reparaciones</Typography>
+        <Typography variant="h4">Gastos y Reparaciones Puntuales</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
           Nuevo Gasto
         </Button>

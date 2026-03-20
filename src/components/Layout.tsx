@@ -165,7 +165,7 @@ export function Layout() {
   const menuItems = [
     { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon /> },
     { label: "Viviendas", path: "/properties", icon: <HomeWorkIcon /> },
-    { label: "Gastos", path: "/expenses", icon: <ReceiptIcon /> },
+    { label: "Gastos Puntuales", path: "/expenses", icon: <ReceiptIcon /> },
     { label: "Cashflow", path: "/cashflow", icon: <AccountBalanceIcon /> },
     { label: "Reportes", path: "/reports", icon: <AssessmentIcon /> },
     ...(isAdmin
