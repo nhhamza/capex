@@ -82,7 +82,7 @@ export function PropertyRecurringTab({
 }: PropertyRecurringTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<RecurringExpense | null>(
-    null
+    null,
   );
   const [loading, setLoading] = useState(false);
 
@@ -176,8 +176,8 @@ export function PropertyRecurringTab({
       exp.periodicity === "monthly"
         ? 12
         : exp.periodicity === "quarterly"
-        ? 4
-        : 1;
+          ? 4
+          : 1;
     return sum + exp.amount * multiplier;
   }, 0);
 
@@ -287,8 +287,8 @@ export function PropertyRecurringTab({
                           (expense.periodicity === "monthly"
                             ? 12
                             : expense.periodicity === "quarterly"
-                            ? 4
-                            : 1)
+                              ? 4
+                              : 1)
                         }
                       />
                     </Typography>
@@ -374,6 +374,7 @@ export function PropertyRecurringTab({
                   fullWidth
                   label="Importe"
                   type="number"
+                  inputProps={{ step: "0.01", min: "0" }}
                   {...register("amount", { valueAsNumber: true })}
                   error={!!errors.amount}
                   helperText={errors.amount?.message}

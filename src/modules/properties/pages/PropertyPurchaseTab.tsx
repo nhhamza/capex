@@ -83,7 +83,7 @@ export function PropertyPurchaseTab({
 
   const closingCostsTotal: number = watchedCosts.reduce<number>(
     (acc, val) => acc + (val || 0),
-    0
+    0,
   );
   const watchedPrice = watch("purchasePrice");
   const totalInvestment = watchedPrice + closingCostsTotal;
@@ -139,18 +139,18 @@ export function PropertyPurchaseTab({
           </Grid>
 
           <Grid item xs={12} sm={6}>
-            <TextField 
-              fullWidth 
-              label="Ciudad" 
+            <TextField
+              fullWidth
+              label="Ciudad"
               {...register("city")}
               size="medium"
             />
           </Grid>
 
           <Grid item xs={12} sm={6}>
-            <TextField 
-              fullWidth 
-              label="Código Postal" 
+            <TextField
+              fullWidth
+              label="Código Postal"
               {...register("zip")}
               size="medium"
             />
@@ -161,6 +161,7 @@ export function PropertyPurchaseTab({
               fullWidth
               label="Precio de Compra"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("purchasePrice", { valueAsNumber: true })}
               error={!!errors.purchasePrice}
               helperText={errors.purchasePrice?.message}
@@ -173,6 +174,7 @@ export function PropertyPurchaseTab({
               fullWidth
               label="Valor Actual"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("currentValue", { valueAsNumber: true })}
               helperText="Estimación valor mercado para ratio endeudamiento"
               size="medium"
@@ -207,6 +209,7 @@ export function PropertyPurchaseTab({
               fullWidth
               label="ITP"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("itp", { valueAsNumber: true })}
               size="medium"
             />
@@ -217,6 +220,7 @@ export function PropertyPurchaseTab({
               fullWidth
               label="Notaría"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("notary", { valueAsNumber: true })}
               size="medium"
             />
@@ -227,6 +231,7 @@ export function PropertyPurchaseTab({
               fullWidth
               label="Registro"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("registry", { valueAsNumber: true })}
               size="medium"
             />
@@ -237,6 +242,7 @@ export function PropertyPurchaseTab({
               fullWidth
               label="AJD"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("ajd", { valueAsNumber: true })}
               size="medium"
             />
@@ -248,6 +254,7 @@ export function PropertyPurchaseTab({
               label="Reforma Inicial"
               size="medium"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("initialRenovation", { valueAsNumber: true })}
             />
           </Grid>
@@ -257,6 +264,7 @@ export function PropertyPurchaseTab({
               fullWidth
               label="Electrodomésticos"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("appliances", { valueAsNumber: true })}
               size="medium"
             />
@@ -267,13 +275,21 @@ export function PropertyPurchaseTab({
               fullWidth
               label="Otros Gastos"
               type="number"
+              inputProps={{ step: "0.01", min: "0" }}
               {...register("others", { valueAsNumber: true })}
               size="medium"
             />
           </Grid>
         </Grid>
 
-        <Box sx={{ bgcolor: "grey.100", p: { xs: 2, sm: 3 }, borderRadius: 1, mb: 3 }}>
+        <Box
+          sx={{
+            bgcolor: "grey.100",
+            p: { xs: 2, sm: 3 },
+            borderRadius: 1,
+            mb: 3,
+          }}
+        >
           <Grid container spacing={2}>
             <Grid item xs={6}>
               <Typography variant="body2" color="text.secondary">
@@ -303,9 +319,9 @@ export function PropertyPurchaseTab({
           </Grid>
         </Box>
 
-        <Button 
-          type="submit" 
-          variant="contained" 
+        <Button
+          type="submit"
+          variant="contained"
           disabled={loading}
           size="large"
           sx={{ minHeight: 48 }}

@@ -53,6 +53,7 @@ interface Organization {
   seatLimit: number;
   usersCount: number;
   propertiesCount: number;
+  lastSignInTime?: string | null;
 }
 
 interface User {
@@ -60,10 +61,17 @@ interface User {
   email: string;
   role: string;
   createdAt: string;
+  lastSignInTime?: string | null;
 }
 
 type OrderDirection = "asc" | "desc";
-type OrderBy = "name" | "createdAt" | "plan" | "usersCount" | "propertiesCount";
+type OrderBy =
+  | "name"
+  | "createdAt"
+  | "plan"
+  | "usersCount"
+  | "propertiesCount"
+  | "lastSignInTime";
 
 const PLAN_COLORS = {
   free: "default",
@@ -158,7 +166,9 @@ export function AdminPage() {
         plan: newPlan,
       });
 
-      setSuccess(`✅ "${selectedOrg.name}" actualizada a plan ${PLAN_NAMES[newPlan as keyof typeof PLAN_NAMES]}`);
+      setSuccess(
+        `✅ "${selectedOrg.name}" actualizada a plan ${PLAN_NAMES[newPlan as keyof typeof PLAN_NAMES]}`,
+      );
       setUpgradeDialogOpen(false);
       setSelectedOrg(null);
       setNewPlan("");
@@ -196,7 +206,7 @@ export function AdminPage() {
       filtered = filtered.filter(
         (org) =>
           org.name.toLowerCase().includes(search) ||
-          org.id.toLowerCase().includes(search)
+          org.id.toLowerCase().includes(search),
       );
     }
 
@@ -216,7 +226,7 @@ export function AdminPage() {
       let bValue: any = b[orderBy];
 
       // Handle dates
-      if (orderBy === "createdAt") {
+      if (orderBy === "createdAt" || orderBy === "lastSignInTime") {
         aValue = new Date(aValue || 0).getTime();
         bValue = new Date(bValue || 0).getTime();
       }
@@ -227,19 +237,37 @@ export function AdminPage() {
     });
 
     return filtered;
-  }, [organizations, searchText, filterPlan, filterStatus, orderBy, orderDirection]);
+  }, [
+    organizations,
+    searchText,
+    filterPlan,
+    filterStatus,
+    orderBy,
+    orderDirection,
+  ]);
 
   // Statistics
   const stats = useMemo(() => {
     const total = organizations.length;
-    const totalUsers = organizations.reduce((sum, org) => sum + org.usersCount, 0);
-    const totalProperties = organizations.reduce((sum, org) => sum + org.propertiesCount, 0);
-    const activeOrgs = organizations.filter((org) => org.status === "active").length;
+    const totalUsers = organizations.reduce(
+      (sum, org) => sum + org.usersCount,
+      0,
+    );
+    const totalProperties = organizations.reduce(
+      (sum, org) => sum + org.propertiesCount,
+      0,
+    );
+    const activeOrgs = organizations.filter(
+      (org) => org.status === "active",
+    ).length;
 
-    const planCounts = organizations.reduce((acc, org) => {
-      acc[org.plan] = (acc[org.plan] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const planCounts = organizations.reduce(
+      (acc, org) => {
+        acc[org.plan] = (acc[org.plan] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     return {
       total,
@@ -294,9 +322,19 @@ export function AdminPage() {
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
                     Total Organizaciones
                   </Typography>
                   <Typography variant="h4">{stats.total}</Typography>
@@ -304,7 +342,9 @@ export function AdminPage() {
                     {stats.activeOrgs} activas
                   </Typography>
                 </Box>
-                <DashboardIcon sx={{ fontSize: 40, color: "primary.main", opacity: 0.3 }} />
+                <DashboardIcon
+                  sx={{ fontSize: 40, color: "primary.main", opacity: 0.3 }}
+                />
               </Box>
             </CardContent>
           </Card>
@@ -313,9 +353,19 @@ export function AdminPage() {
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
                     Total Usuarios
                   </Typography>
                   <Typography variant="h4">{stats.totalUsers}</Typography>
@@ -323,7 +373,9 @@ export function AdminPage() {
                     En {stats.total} orgs
                   </Typography>
                 </Box>
-                <PeopleIcon sx={{ fontSize: 40, color: "secondary.main", opacity: 0.3 }} />
+                <PeopleIcon
+                  sx={{ fontSize: 40, color: "secondary.main", opacity: 0.3 }}
+                />
               </Box>
             </CardContent>
           </Card>
@@ -332,9 +384,19 @@ export function AdminPage() {
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
                     Total Propiedades
                   </Typography>
                   <Typography variant="h4">{stats.totalProperties}</Typography>
@@ -342,7 +404,9 @@ export function AdminPage() {
                     Gestionadas
                   </Typography>
                 </Box>
-                <BusinessIcon sx={{ fontSize: 40, color: "success.main", opacity: 0.3 }} />
+                <BusinessIcon
+                  sx={{ fontSize: 40, color: "success.main", opacity: 0.3 }}
+                />
               </Box>
             </CardContent>
           </Card>
@@ -408,7 +472,11 @@ export function AdminPage() {
           <Grid item xs={12} md={4}>
             <FormControl fullWidth>
               <InputLabel>Plan</InputLabel>
-              <Select value={filterPlan} onChange={(e) => setFilterPlan(e.target.value)} label="Plan">
+              <Select
+                value={filterPlan}
+                onChange={(e) => setFilterPlan(e.target.value)}
+                label="Plan"
+              >
                 <MenuItem value="all">Todos los planes</MenuItem>
                 <MenuItem value="free">Free</MenuItem>
                 <MenuItem value="solo">Solo</MenuItem>
@@ -420,7 +488,11 @@ export function AdminPage() {
           <Grid item xs={12} md={4}>
             <FormControl fullWidth>
               <InputLabel>Estado</InputLabel>
-              <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} label="Estado">
+              <Select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                label="Estado"
+              >
                 <MenuItem value="all">Todos los estados</MenuItem>
                 <MenuItem value="active">Activo</MenuItem>
                 <MenuItem value="canceled">Cancelado</MenuItem>
@@ -429,9 +501,17 @@ export function AdminPage() {
             </FormControl>
           </Grid>
         </Grid>
-        <Box sx={{ mt: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Box
+          sx={{
+            mt: 2,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <Typography variant="body2" color="text.secondary">
-            Mostrando {filteredOrganizations.length} de {organizations.length} organizaciones
+            Mostrando {filteredOrganizations.length} de {organizations.length}{" "}
+            organizaciones
           </Typography>
           {(searchText || filterPlan !== "all" || filterStatus !== "all") && (
             <Button
@@ -485,7 +565,9 @@ export function AdminPage() {
               <TableCell align="center">
                 <TableSortLabel
                   active={orderBy === "propertiesCount"}
-                  direction={orderBy === "propertiesCount" ? orderDirection : "asc"}
+                  direction={
+                    orderBy === "propertiesCount" ? orderDirection : "asc"
+                  }
                   onClick={() => handleSort("propertiesCount")}
                 >
                   Propiedades
@@ -501,6 +583,17 @@ export function AdminPage() {
                   Fecha Creación
                 </TableSortLabel>
               </TableCell>
+              <TableCell>
+                <TableSortLabel
+                  active={orderBy === "lastSignInTime"}
+                  direction={
+                    orderBy === "lastSignInTime" ? orderDirection : "asc"
+                  }
+                  onClick={() => handleSort("lastSignInTime")}
+                >
+                  Última Conexión
+                </TableSortLabel>
+              </TableCell>
               <TableCell>Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -509,7 +602,9 @@ export function AdminPage() {
               <TableRow>
                 <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
-                    {searchText || filterPlan !== "all" || filterStatus !== "all"
+                    {searchText ||
+                    filterPlan !== "all" ||
+                    filterStatus !== "all"
                       ? "No se encontraron organizaciones con los filtros aplicados"
                       : "No hay organizaciones"}
                   </Typography>
@@ -535,13 +630,19 @@ export function AdminPage() {
                       </IconButton>
                     </TableCell>
                     <TableCell>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
                         <BusinessIcon fontSize="small" color="action" />
                         <Box>
                           <Typography variant="body2" fontWeight="medium">
                             {org.name}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontFamily: "monospace" }}
+                          >
                             {org.id}
                           </Typography>
                         </Box>
@@ -549,8 +650,14 @@ export function AdminPage() {
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={PLAN_NAMES[org.plan as keyof typeof PLAN_NAMES] || org.plan}
-                        color={PLAN_COLORS[org.plan as keyof typeof PLAN_COLORS] || "default"}
+                        label={
+                          PLAN_NAMES[org.plan as keyof typeof PLAN_NAMES] ||
+                          org.plan
+                        }
+                        color={
+                          PLAN_COLORS[org.plan as keyof typeof PLAN_COLORS] ||
+                          "default"
+                        }
                         size="small"
                       />
                     </TableCell>
@@ -563,17 +670,44 @@ export function AdminPage() {
                       />
                     </TableCell>
                     <TableCell align="center">
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 0.5,
+                        }}
+                      >
                         <PeopleIcon fontSize="small" color="action" />
-                        <Typography variant="body2" fontWeight={org.usersCount >= org.seatLimit ? "bold" : "normal"}
-                          color={org.usersCount >= org.seatLimit ? "error.main" : "inherit"}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={
+                            org.usersCount >= org.seatLimit ? "bold" : "normal"
+                          }
+                          color={
+                            org.usersCount >= org.seatLimit
+                              ? "error.main"
+                              : "inherit"
+                          }
+                        >
                           {org.usersCount} / {org.seatLimit}
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell align="center">
-                      <Typography variant="body2" fontWeight={org.propertiesCount >= org.propertyLimit ? "bold" : "normal"}
-                        color={org.propertiesCount >= org.propertyLimit ? "error.main" : "inherit"}>
+                      <Typography
+                        variant="body2"
+                        fontWeight={
+                          org.propertiesCount >= org.propertyLimit
+                            ? "bold"
+                            : "normal"
+                        }
+                        color={
+                          org.propertiesCount >= org.propertyLimit
+                            ? "error.main"
+                            : "inherit"
+                        }
+                      >
                         {org.propertiesCount} / {org.propertyLimit}
                       </Typography>
                       {org.propertiesCount >= org.propertyLimit && (
@@ -590,7 +724,14 @@ export function AdminPage() {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{formatDate(org.createdAt)}</Typography>
+                      <Typography variant="body2">
+                        {formatDate(org.createdAt)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {formatDate(org.lastSignInTime || "")}
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -607,10 +748,15 @@ export function AdminPage() {
                   {expandedOrg === org.id && orgUsers[org.id] && (
                     <TableRow>
                       <TableCell colSpan={9} sx={{ py: 0 }}>
-                        <Collapse in={expandedOrg === org.id} timeout="auto" unmountOnExit>
+                        <Collapse
+                          in={expandedOrg === org.id}
+                          timeout="auto"
+                          unmountOnExit
+                        >
                           <Box sx={{ py: 2, px: 4, bgcolor: "action.hover" }}>
                             <Typography variant="subtitle2" gutterBottom>
-                              👥 Usuarios de {org.name} ({orgUsers[org.id].length})
+                              👥 Usuarios de {org.name} (
+                              {orgUsers[org.id].length})
                             </Typography>
                             <Table size="small">
                               <TableHead>
@@ -619,6 +765,7 @@ export function AdminPage() {
                                   <TableCell>ID de Usuario</TableCell>
                                   <TableCell>Role</TableCell>
                                   <TableCell>Fecha Creación</TableCell>
+                                  <TableCell>Última Conexión</TableCell>
                                 </TableRow>
                               </TableHead>
                               <TableBody>
@@ -626,7 +773,10 @@ export function AdminPage() {
                                   <TableRow key={user.id}>
                                     <TableCell>{user.email}</TableCell>
                                     <TableCell>
-                                      <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
+                                      <Typography
+                                        variant="caption"
+                                        sx={{ fontFamily: "monospace" }}
+                                      >
                                         {user.id}
                                       </Typography>
                                     </TableCell>
@@ -634,10 +784,19 @@ export function AdminPage() {
                                       <Chip
                                         label={user.role}
                                         size="small"
-                                        color={user.role === "admin" ? "primary" : "default"}
+                                        color={
+                                          user.role === "admin"
+                                            ? "primary"
+                                            : "default"
+                                        }
                                       />
                                     </TableCell>
-                                    <TableCell>{formatDate(user.createdAt)}</TableCell>
+                                    <TableCell>
+                                      {formatDate(user.createdAt)}
+                                    </TableCell>
+                                    <TableCell>
+                                      {formatDate(user.lastSignInTime || "")}
+                                    </TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>
@@ -655,7 +814,12 @@ export function AdminPage() {
       </TableContainer>
 
       {/* Upgrade Dialog */}
-      <Dialog open={upgradeDialogOpen} onClose={() => setUpgradeDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={upgradeDialogOpen}
+        onClose={() => setUpgradeDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Cambiar Plan de Organización</DialogTitle>
         <DialogContent>
           {selectedOrg && (
@@ -665,10 +829,12 @@ export function AdminPage() {
                   <strong>Organización:</strong> {selectedOrg.name}
                 </Typography>
                 <Typography variant="body2" gutterBottom>
-                  <strong>Plan actual:</strong> {PLAN_NAMES[selectedOrg.plan as keyof typeof PLAN_NAMES]}
+                  <strong>Plan actual:</strong>{" "}
+                  {PLAN_NAMES[selectedOrg.plan as keyof typeof PLAN_NAMES]}
                 </Typography>
                 <Typography variant="body2">
-                  <strong>Uso actual:</strong> {selectedOrg.propertiesCount} propiedades, {selectedOrg.usersCount} usuarios
+                  <strong>Uso actual:</strong> {selectedOrg.propertiesCount}{" "}
+                  propiedades, {selectedOrg.usersCount} usuarios
                 </Typography>
               </Alert>
 
@@ -681,7 +847,9 @@ export function AdminPage() {
                 >
                   <MenuItem value="free">
                     <Box>
-                      <Typography variant="body2" fontWeight="bold">Free</Typography>
+                      <Typography variant="body2" fontWeight="bold">
+                        Free
+                      </Typography>
                       <Typography variant="caption" color="text.secondary">
                         1 propiedad, 1 usuario
                       </Typography>
@@ -689,7 +857,9 @@ export function AdminPage() {
                   </MenuItem>
                   <MenuItem value="solo">
                     <Box>
-                      <Typography variant="body2" fontWeight="bold">Solo</Typography>
+                      <Typography variant="body2" fontWeight="bold">
+                        Solo
+                      </Typography>
                       <Typography variant="caption" color="text.secondary">
                         10 propiedades, 1 usuario
                       </Typography>
@@ -697,7 +867,9 @@ export function AdminPage() {
                   </MenuItem>
                   <MenuItem value="pro">
                     <Box>
-                      <Typography variant="body2" fontWeight="bold">Pro</Typography>
+                      <Typography variant="body2" fontWeight="bold">
+                        Pro
+                      </Typography>
                       <Typography variant="caption" color="text.secondary">
                         50 propiedades, 3 usuarios
                       </Typography>
@@ -705,7 +877,9 @@ export function AdminPage() {
                   </MenuItem>
                   <MenuItem value="agency">
                     <Box>
-                      <Typography variant="body2" fontWeight="bold">Agency</Typography>
+                      <Typography variant="body2" fontWeight="bold">
+                        Agency
+                      </Typography>
                       <Typography variant="caption" color="text.secondary">
                         200 propiedades, 10 usuarios
                       </Typography>
@@ -716,7 +890,8 @@ export function AdminPage() {
 
               {newPlan && newPlan !== selectedOrg.plan && (
                 <Alert severity="warning" sx={{ mt: 2 }}>
-                  Los cambios se aplicarán inmediatamente. Los usuarios verán los nuevos límites al refrescar.
+                  Los cambios se aplicarán inmediatamente. Los usuarios verán
+                  los nuevos límites al refrescar.
                 </Alert>
               )}
             </Box>
@@ -724,7 +899,11 @@ export function AdminPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setUpgradeDialogOpen(false)}>Cancelar</Button>
-          <Button onClick={handleUpgrade} variant="contained" disabled={!newPlan || newPlan === selectedOrg?.plan}>
+          <Button
+            onClick={handleUpgrade}
+            variant="contained"
+            disabled={!newPlan || newPlan === selectedOrg?.plan}
+          >
             Actualizar Plan
           </Button>
         </DialogActions>

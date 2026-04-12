@@ -1290,6 +1290,7 @@ export function PropertyExpensesTab({
                   fullWidth
                   label="Importe"
                   type="number"
+                  inputProps={{ step: "0.01", min: "0" }}
                   {...capexForm.register("amount", { valueAsNumber: true })}
                   error={!!capexForm.formState.errors.amount}
                   helperText={capexForm.formState.errors.amount?.message}

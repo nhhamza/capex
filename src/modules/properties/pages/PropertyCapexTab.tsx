@@ -501,6 +501,7 @@ export function PropertyCapexTab({
                   fullWidth
                   label="Importe"
                   type="number"
+                  inputProps={{ step: "0.01", min: "0" }}
                   {...register("amount", { valueAsNumber: true })}
                   error={!!errors.amount}
                   helperText={errors.amount?.message}

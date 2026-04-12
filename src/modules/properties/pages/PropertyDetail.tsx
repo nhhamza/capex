@@ -10,8 +10,16 @@ import {
   Alert,
   Skeleton,
   LinearProgress,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  TextField,
+  DialogActions,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import EditIcon from "@mui/icons-material/Edit";
 import {
   getProperty,
   getLease,
@@ -20,6 +28,7 @@ import {
   getOneOffExpenses,
   getLeases,
   getRooms,
+  updateProperty,
 } from "../api";
 import {
   Property,
@@ -61,6 +70,9 @@ export function PropertyDetail() {
     message: "",
     severity: "success" as "success" | "error",
   });
+  const [editNameDialogOpen, setEditNameDialogOpen] = useState(false);
+  const [editNameValue, setEditNameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const currentTab = searchParams.get("tab") || "quick";
   const roomIdFromUrl = searchParams.get("roomId") ?? null;
@@ -132,6 +144,40 @@ export function PropertyDetail() {
 
   const handleCloseSnackbar = () => {
     setSnackbar((prev) => ({ ...prev, open: false }));
+  };
+
+  const handleOpenEditName = () => {
+    setEditNameValue(property?.address || "");
+    setEditNameDialogOpen(true);
+  };
+
+  const handleCloseEditName = () => {
+    setEditNameDialogOpen(false);
+  };
+
+  const handleSaveName = async () => {
+    if (!property || !editNameValue.trim()) return;
+    setRenaming(true);
+    try {
+      const newAddress = editNameValue.trim();
+      await updateProperty(property.id, { address: newAddress });
+      setProperty({ ...property, address: newAddress });
+      setSnackbar({
+        open: true,
+        message: "Nombre de vivienda actualizado",
+        severity: "success",
+      });
+      setEditNameDialogOpen(false);
+    } catch (error) {
+      console.error("Error renombrando vivienda:", error);
+      setSnackbar({
+        open: true,
+        message: "No se pudo actualizar el nombre. Intenta de nuevo.",
+        severity: "error",
+      });
+    } finally {
+      setRenaming(false);
+    }
   };
 
   // 🔵 Primera carga: skeleton más profesional en lugar de solo un spinner
@@ -218,19 +264,36 @@ export function PropertyDetail() {
         >
           Volver
         </Button>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="h4"
+        <Box
+          sx={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}
+        >
+          <Box
             sx={{
-              fontSize: { xs: "1.5rem", sm: "2rem" },
-              wordBreak: "break-word",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              flexWrap: "wrap",
             }}
           >
-            {property.address}
-          </Typography>
-          {/* Subtítulo suave para contexto (puedes cambiar por city/ref si la tienes en el modelo) */}
+            <Typography
+              variant="h4"
+              sx={{
+                fontSize: { xs: "1.5rem", sm: "2rem" },
+                wordBreak: "break-word",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {property.address}
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={handleOpenEditName}
+              aria-label="Editar nombre de la vivienda"
+            >
+              <EditIcon />
+            </IconButton>
+          </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             Vista detallada de la vivienda: resumen, compra, contrato, gastos,
             financiación y notas.
@@ -345,6 +408,42 @@ export function PropertyDetail() {
           )}
         </Box>
       </Paper>
+
+      <Dialog
+        open={editNameDialogOpen}
+        onClose={handleCloseEditName}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Editar nombre de la vivienda</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Actualiza el nombre o la dirección de la vivienda. Este valor se
+            mostrará en la cabecera y en las listas.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            fullWidth
+            label="Nombre / Dirección"
+            value={editNameValue}
+            onChange={(event) => setEditNameValue(event.target.value)}
+            disabled={renaming}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditName} disabled={renaming}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSaveName}
+            disabled={renaming || !editNameValue.trim()}
+            variant="contained"
+          >
+            {renaming ? "Guardando..." : "Guardar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbar.open}

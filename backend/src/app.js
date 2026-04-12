@@ -466,6 +466,7 @@ async function requireAuth(req, res, next) {
       uid: decoded.uid,
       email: decoded.email || null,
       claims: decoded,
+      authTime: decoded.auth_time || decoded.iat || null,
     };
     return next();
   } catch (err) {
@@ -485,6 +486,28 @@ async function requireOrg(req, res, next) {
 
     const orgId = pickOrgId(u);
     if (!orgId) return res.status(403).json({ error: "not_initialized" });
+
+    const authTime =
+      typeof req.user.authTime === "string"
+        ? parseInt(req.user.authTime, 10)
+        : req.user.authTime;
+    if (Number.isFinite(authTime)) {
+      const lastSignInTime = new Date(authTime * 1000).toISOString();
+      if (
+        !u.lastSignInTime ||
+        new Date(lastSignInTime).getTime() >
+          new Date(u.lastSignInTime).getTime()
+      ) {
+        await db.collection("users").doc(req.user.uid).set(
+          {
+            lastSignInTime,
+            updatedAt: nowIso(),
+          },
+          { merge: true },
+        );
+        u.lastSignInTime = lastSignInTime;
+      }
+    }
 
     req.userDoc = u;
     req.orgId = orgId;
@@ -679,13 +702,29 @@ app.get(
           const billingSnap = await billingDocRef(orgId).get();
           const billing = billingSnap.exists ? billingSnap.data() : {};
 
-          // Count users
+          // Count users and determine latest sign-in across the org
           const usersSnap = await db
             .collection("users")
             .where("organizationId", "==", orgId)
             .get();
 
-          const usersCount = usersSnap.size;
+          const userIds = usersSnap.docs.map((userDoc) => userDoc.id);
+          const usersCount = userIds.length;
+
+          let lastSignInTime = null;
+          if (userIds.length) {
+            const signInTimes = usersSnap.docs
+              .map((doc) => doc.data().lastSignInTime)
+              .filter(Boolean);
+
+            if (signInTimes.length) {
+              lastSignInTime = signInTimes.reduce((latest, current) => {
+                return new Date(latest).getTime() > new Date(current).getTime()
+                  ? latest
+                  : current;
+              });
+            }
+          }
 
           // Count properties
           const propertiesSnap = await db
@@ -705,6 +744,7 @@ app.get(
             seatLimit: billing.seatLimit || 1,
             usersCount,
             propertiesCount,
+            lastSignInTime,
           };
         }),
       );
@@ -871,6 +911,18 @@ app.post("/api/auth/google", async (req, res) => {
       if (snap.exists) {
         const existing = { id: uid, ...snap.data() };
         const orgId = pickOrgId(existing);
+        const lastSignInTime = nowIso();
+
+        tx.set(
+          userRef,
+          {
+            lastSignInTime,
+            updatedAt: lastSignInTime,
+          },
+          { merge: true },
+        );
+
+        existing.lastSignInTime = lastSignInTime;
 
         // Create custom token
         const customToken = await admin.auth().createCustomToken(uid);
@@ -933,6 +985,7 @@ app.post("/api/auth/google", async (req, res) => {
         organizationId: orgId,
         createdAt: nowIso(),
         updatedAt: nowIso(),
+        lastSignInTime: nowIso(),
       };
 
       tx.set(userRef, userDoc);
@@ -1021,6 +1074,7 @@ app.post("/api/signup/initialize", requireAuth, async (req, res) => {
         organizationId: orgId,
         createdAt: nowIso(),
         updatedAt: nowIso(),
+        lastSignInTime: nowIso(),
       };
 
       tx.set(userRef, userDoc);
@@ -1274,44 +1328,38 @@ app.put(
   },
 );
 
-app.delete(
-  "/api/properties/:id",
-  requireAuth,
-  requireOrg,
-  requireBillingOk,
-  async (req, res) => {
-    try {
-      const id = req.params.id;
-      const ref = db.collection("properties").doc(id);
-      const snap = await ref.get();
+app.delete("/api/properties/:id", requireAuth, requireOrg, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const ref = db.collection("properties").doc(id);
+    const snap = await ref.get();
 
-      if (!snap.exists)
-        return res.status(404).json({ error: "property not found" });
-      const orgId = snap.data().organizationId;
-      if (orgId !== req.orgId)
-        return res.status(403).json({ error: "forbidden" });
+    if (!snap.exists)
+      return res.status(404).json({ error: "property not found" });
+    const orgId = snap.data().organizationId;
+    if (orgId !== req.orgId)
+      return res.status(403).json({ error: "forbidden" });
 
-      const batch = db.batch();
-      batch.delete(ref);
+    const batch = db.batch();
+    batch.delete(ref);
 
-      for (const col of relatedCollections) {
-        const relSnap = await db
-          .collection(col)
-          .where("organizationId", "==", orgId)
-          .get();
-        relSnap.docs
-          .filter((d) => d.data().propertyId === id)
-          .forEach((d) => batch.delete(d.ref));
-      }
-
-      await batch.commit();
-      return res.json({ success: true });
-    } catch (err) {
-      console.error("[properties] delete failed", err);
-      return res.status(500).json({ error: "failed to delete property" });
+    for (const col of relatedCollections) {
+      const relSnap = await db
+        .collection(col)
+        .where("organizationId", "==", orgId)
+        .get();
+      relSnap.docs
+        .filter((d) => d.data().propertyId === id)
+        .forEach((d) => batch.delete(d.ref));
     }
-  },
-);
+
+    await batch.commit();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("[properties] delete failed", err);
+    return res.status(500).json({ error: "failed to delete property" });
+  }
+});
 
 // -------------------- Dashboard --------------------
 app.get(
@@ -1647,22 +1695,18 @@ app.post(
 
       if (!firebaseReady) {
         console.error("[propertyDocs/upload] Firebase not ready");
-        return res
-          .status(503)
-          .json({
-            error: "firebase_not_configured",
-            message: "Firebase is not initialized",
-          });
+        return res.status(503).json({
+          error: "firebase_not_configured",
+          message: "Firebase is not initialized",
+        });
       }
 
       if (!bucket) {
         console.error("[propertyDocs/upload] Storage bucket not configured");
-        return res
-          .status(503)
-          .json({
-            error: "storage_not_configured",
-            message: "Firebase Storage bucket is not configured",
-          });
+        return res.status(503).json({
+          error: "storage_not_configured",
+          message: "Firebase Storage bucket is not configured",
+        });
       }
 
       const file = req.file;
@@ -1753,22 +1797,18 @@ app.post(
 
       if (!firebaseReady) {
         console.error("[capex/upload] Firebase not ready");
-        return res
-          .status(503)
-          .json({
-            error: "firebase_not_configured",
-            message: "Firebase is not initialized",
-          });
+        return res.status(503).json({
+          error: "firebase_not_configured",
+          message: "Firebase is not initialized",
+        });
       }
 
       if (!bucket) {
         console.error("[capex/upload] Storage bucket not configured");
-        return res
-          .status(503)
-          .json({
-            error: "storage_not_configured",
-            message: "Firebase Storage bucket is not configured",
-          });
+        return res.status(503).json({
+          error: "storage_not_configured",
+          message: "Firebase Storage bucket is not configured",
+        });
       }
 
       const file = req.file;
@@ -1791,11 +1831,9 @@ app.post(
       }
       if (propSnap.data().organizationId !== req.orgId) {
         console.error("[capex/upload] Property doesn't belong to org");
-        return res
-          .status(403)
-          .json({
-            error: "forbidden - property does not belong to organization",
-          });
+        return res.status(403).json({
+          error: "forbidden - property does not belong to organization",
+        });
       }
 
       const timestamp = Date.now();
