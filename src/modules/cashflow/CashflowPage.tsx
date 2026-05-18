@@ -232,6 +232,55 @@ export function CashflowPage() {
     setLoading(true);
     const currentYear = dayjs().year();
 
+    const getValidDate = (value?: string | null) => {
+      if (!value) return null;
+
+      const date = dayjs(value);
+      return date.isValid() ? date : null;
+    };
+
+    const getEarliestDate = (dates: Array<dayjs.Dayjs | null>) => {
+      const validDates = dates.filter((date): date is dayjs.Dayjs => Boolean(date));
+
+      if (!validDates.length) return null;
+
+      return validDates.reduce((earliest, date) =>
+        date.isBefore(earliest, "day") ? date : earliest
+      );
+    };
+
+    const getPropertyCashflowStartDate = (prop: Property) => {
+      const leases = leasesByProp[prop.id] || [];
+      const loans = loansByProp[prop.id] || [];
+      const oneOffExpenses = oneOffByProp[prop.id] || [];
+
+      return getEarliestDate([
+        getValidDate(prop.purchaseDate),
+        ...leases.map((lease) => getValidDate(lease.startDate)),
+        ...loans.map((loan) => getValidDate(loan.startDate)),
+        ...oneOffExpenses.map((expense) => getValidDate(expense.date)),
+      ]);
+    };
+
+    const getFirstCashflowYear = () => {
+      const firstDate = getEarliestDate(
+        propsToProcess.map((prop) => getPropertyCashflowStartDate(prop))
+      );
+
+      return firstDate ? firstDate.year() : currentYear;
+    };
+
+    const shouldSkipPropertyForMonth = (
+      prop: Property,
+      monthDate: dayjs.Dayjs
+    ) => {
+      const startDate = getPropertyCashflowStartDate(prop);
+
+      return Boolean(
+        startDate && monthDate.endOf("month").isBefore(startDate, "day")
+      );
+    };
+
     const computeMonthCashflow = (monthDate: dayjs.Dayjs): CashflowRow => {
       const period = monthDate.format("MMM YYYY");
       let rentIncome = 0;
@@ -242,6 +291,8 @@ export function CashflowPage() {
       let debtPrincipal = 0;
 
       for (const prop of propsToProcess) {
+        if (shouldSkipPropertyForMonth(prop, monthDate)) continue;
+
         const leases = leasesByProp[prop.id] || [];
         const rooms = roomsByProp[prop.id] || [];
 
@@ -298,6 +349,9 @@ export function CashflowPage() {
               if (monthDate.isSame(dueDate, "month")) {
                 recurringExpenses += exp.amount;
               }
+            } else if (monthDate.month() === 0) {
+              // If no due date is set, count the annual expense once per year.
+              recurringExpenses += exp.amount;
             }
           }
         }
@@ -399,153 +453,36 @@ export function CashflowPage() {
     };
 
     const computeYearCashflow = (year: number): CashflowRow => {
-      const period = `${year}`;
-      let rentIncome = 0;
-      let recurringExpenses = 0;
-      let oneOffExpenses = 0;
-      let debtPayment = 0;
-      let debtInterest = 0;
-      let debtPrincipal = 0;
+      const months = Array.from({ length: 12 }, (_, index) =>
+        computeMonthCashflow(dayjs(`${year}-${(index + 1).toString().padStart(2, "0")}-01`))
+      );
 
-      const yearStart = dayjs(`${year}-01-01`);
-      const yearEnd = dayjs(`${year}-12-31`);
-
-      for (const prop of propsToProcess) {
-        const leases = leasesByProp[prop.id] || [];
-        if (!leases.length) continue;
-
-        const leaseFallback = leases[0];
-        const activeLease =
-          leases.find((l) => {
-            if (!l || !l.startDate) return false;
-            const ls = dayjs(l.startDate);
-            const le = l.endDate ? dayjs(l.endDate) : null;
-            const startsOnOrBeforeYearEnd =
-              ls.isSame(yearEnd, "day") || ls.isBefore(yearEnd, "day");
-            const endsOnOrAfterYearStart =
-              !le ||
-              le.isSame(yearStart, "day") ||
-              le.isAfter(yearStart, "day");
-            return startsOnOrBeforeYearEnd && endsOnOrAfterYearStart;
-          }) || leaseFallback;
-
-        // Annual rent
-        const rooms = roomsByProp[prop.id] || [];
-        if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
-          for (let month = 1; month <= 12; month++) {
-            const monthDate = dayjs(
-              `${year}-${month.toString().padStart(2, "0")}-01`
-            );
-            const agg = getAggregatedRentForMonth({
-              property: prop,
-              leases,
-              rooms,
-              monthDate,
-            });
-            rentIncome += agg.monthlyGross;
-          }
-        } else {
-          // Calculate month by month to account for rent adjustments throughout the year
-          for (let month = 1; month <= 12; month++) {
-            const monthDate = dayjs(
-              `${year}-${month.toString().padStart(2, "0")}-01`
-            );
-            const monthlyRent = getMonthlyRentForDate(activeLease, monthDate);
-            rentIncome += monthlyRent * (1 - (activeLease.vacancyPct || 0));
-          }
+      const totals = months.reduce(
+        (acc, row) => ({
+          rentIncome: acc.rentIncome + row.rentIncome,
+          recurringExpenses: acc.recurringExpenses + row.recurringExpenses,
+          oneOffExpenses: acc.oneOffExpenses + row.oneOffExpenses,
+          debtPayment: acc.debtPayment + row.debtPayment,
+          debtInterest: acc.debtInterest + row.debtInterest,
+          debtPrincipal: acc.debtPrincipal + row.debtPrincipal,
+          noi: acc.noi + row.noi,
+          netCashflow: acc.netCashflow + row.netCashflow,
+        }),
+        {
+          rentIncome: 0,
+          recurringExpenses: 0,
+          oneOffExpenses: 0,
+          debtPayment: 0,
+          debtInterest: 0,
+          debtPrincipal: 0,
+          noi: 0,
+          netCashflow: 0,
         }
-
-        // Recurring expenses
-        const recurring = recurringByProp[prop.id] || [];
-        for (const exp of recurring) {
-          if (exp.periodicity === "monthly") {
-            recurringExpenses += exp.amount * 12;
-          } else if (exp.periodicity === "quarterly") {
-            recurringExpenses += exp.amount * 4;
-          } else if (exp.periodicity === "yearly") {
-            recurringExpenses += exp.amount;
-          }
-        }
-
-        // One-off for this year
-        const capex = oneOffByProp[prop.id] || [];
-        for (const exp of capex) {
-          const expDate = dayjs(exp.date);
-          if (expDate.year() === year) {
-            oneOffExpenses += exp.amount;
-          }
-        }
-
-        // Debt (annual)
-        const loans = loansByProp[prop.id] || [];
-        const loan = loans.length > 0 ? loans[0] : null;
-
-        if (loan) {
-          // Calculate average monthly rent for the year
-          let avgMonthlyRent = 0;
-          let avgVacancyPct = 0;
-
-          if (prop.rentalMode === "PER_ROOM" && rooms.length > 0) {
-            let totalGross = 0;
-            let totalVacancyPct = 0;
-            for (let month = 1; month <= 12; month++) {
-              const monthDate = dayjs(
-                `${year}-${month.toString().padStart(2, "0")}-01`
-              );
-              const agg = getAggregatedRentForMonth({
-                property: prop,
-                leases,
-                rooms,
-                monthDate,
-              });
-              totalGross += agg.monthlyGross;
-              totalVacancyPct += agg.effectiveVacancyPct;
-            }
-            avgMonthlyRent = totalGross / 12;
-            avgVacancyPct = totalVacancyPct / 12;
-          } else {
-            // Calculate average rent across all months to account for adjustments
-            let totalRent = 0;
-            for (let month = 1; month <= 12; month++) {
-              const monthDate = dayjs(
-                `${year}-${month.toString().padStart(2, "0")}-01`
-              );
-              totalRent += getMonthlyRentForDate(activeLease, monthDate);
-            }
-            avgMonthlyRent = totalRent / 12;
-            avgVacancyPct = activeLease.vacancyPct || 0;
-          }
-
-          const closingCostsTotal = sumClosingCosts(prop.closingCosts);
-          const metrics = computeLeveredMetrics({
-            monthlyRent: avgMonthlyRent,
-            vacancyPct: avgVacancyPct,
-            recurring,
-            variableAnnualBudget: 0,
-            purchasePrice: prop.purchasePrice,
-            closingCostsTotal,
-            loan,
-          });
-
-          debtPayment += metrics.ads;
-          debtInterest += metrics.interestsAnnual;
-          debtPrincipal += metrics.principalAnnual;
-        }
-      }
-
-      const noi = rentIncome - recurringExpenses - oneOffExpenses;
-      const netCashflow = noi - debtPayment;
+      );
 
       return {
-        period,
-        rentIncome,
-        recurringExpenses,
-        oneOffExpenses,
-        debtPayment,
-        debtInterest,
-        debtPrincipal,
-        noi,
-        netCashflow,
+        period: `${year}`,
+        ...totals,
       };
     };
 
@@ -557,8 +494,8 @@ export function CashflowPage() {
     }
 
     const yearly: CashflowRow[] = [];
-    for (let i = 0; i < 5; i++) {
-      const year = currentYear - 4 + i;
+    const firstCashflowYear = getFirstCashflowYear();
+    for (let year = firstCashflowYear; year <= currentYear; year++) {
       yearly.push(computeYearCashflow(year));
     }
 
@@ -577,6 +514,7 @@ export function CashflowPage() {
     recurringByProp,
     oneOffByProp,
     loansByProp,
+    roomsByProp,
     selectedPropertyId,
     viewMode,
   ]);
