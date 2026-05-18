@@ -37,13 +37,11 @@ ChartJS.register(
   PointElement,
   LineElement,
   ChartTooltip,
-  ChartLegend
+  ChartLegend,
 );
 
 import { useAuth } from "@/auth/authContext";
-import {
-  getDashboard,
-} from "@/modules/properties/api";
+import { getDashboard } from "@/modules/properties/api";
 import {
   Property,
   Lease,
@@ -202,7 +200,7 @@ export function CashflowPage() {
       selectedPropertyId === "all"
         ? properties
         : properties.filter((p) => p.id === selectedPropertyId),
-    [properties, selectedPropertyId]
+    [properties, selectedPropertyId],
   );
 
   // 3) Compute monthly & yearly data with caching
@@ -240,12 +238,14 @@ export function CashflowPage() {
     };
 
     const getEarliestDate = (dates: Array<dayjs.Dayjs | null>) => {
-      const validDates = dates.filter((date): date is dayjs.Dayjs => Boolean(date));
+      const validDates = dates.filter((date): date is dayjs.Dayjs =>
+        Boolean(date),
+      );
 
       if (!validDates.length) return null;
 
       return validDates.reduce((earliest, date) =>
-        date.isBefore(earliest, "day") ? date : earliest
+        date.isBefore(earliest, "day") ? date : earliest,
       );
     };
 
@@ -264,7 +264,7 @@ export function CashflowPage() {
 
     const getFirstCashflowYear = () => {
       const firstDate = getEarliestDate(
-        propsToProcess.map((prop) => getPropertyCashflowStartDate(prop))
+        propsToProcess.map((prop) => getPropertyCashflowStartDate(prop)),
       );
 
       return firstDate ? firstDate.year() : currentYear;
@@ -272,12 +272,12 @@ export function CashflowPage() {
 
     const shouldSkipPropertyForMonth = (
       prop: Property,
-      monthDate: dayjs.Dayjs
+      monthDate: dayjs.Dayjs,
     ) => {
       const startDate = getPropertyCashflowStartDate(prop);
 
       return Boolean(
-        startDate && monthDate.endOf("month").isBefore(startDate, "day")
+        startDate && monthDate.endOf("month").isBefore(startDate, "day"),
       );
     };
 
@@ -330,7 +330,8 @@ export function CashflowPage() {
 
           if (activeLease) {
             rentIncome +=
-              getMonthlyRentForDate(activeLease, monthDate) * (1 - (activeLease.vacancyPct || 0));
+              getMonthlyRentForDate(activeLease, monthDate) *
+              (1 - (activeLease.vacancyPct || 0));
           }
         }
 
@@ -412,7 +413,10 @@ export function CashflowPage() {
                 return startsOnOrBefore && endsOnOrAfter;
               });
               if (activeLease) {
-                monthlyRentForMetrics = getMonthlyRentForDate(activeLease, monthDate);
+                monthlyRentForMetrics = getMonthlyRentForDate(
+                  activeLease,
+                  monthDate,
+                );
                 vacancyPctForMetrics = activeLease.vacancyPct || 0;
               }
             }
@@ -454,7 +458,9 @@ export function CashflowPage() {
 
     const computeYearCashflow = (year: number): CashflowRow => {
       const months = Array.from({ length: 12 }, (_, index) =>
-        computeMonthCashflow(dayjs(`${year}-${(index + 1).toString().padStart(2, "0")}-01`))
+        computeMonthCashflow(
+          dayjs(`${year}-${(index + 1).toString().padStart(2, "0")}-01`),
+        ),
       );
 
       const totals = months.reduce(
@@ -477,7 +483,7 @@ export function CashflowPage() {
           debtPrincipal: 0,
           noi: 0,
           netCashflow: 0,
-        }
+        },
       );
 
       return {
@@ -486,16 +492,28 @@ export function CashflowPage() {
       };
     };
 
-    // Build monthly + yearly arrays once
+    // Build monthly + yearly arrays once.
+    // Show the most recent periods first and then go backwards.
+    const firstCashflowDate = getEarliestDate(
+      propsToProcess.map((prop) => getPropertyCashflowStartDate(prop)),
+    );
+
     const monthly: CashflowRow[] = [];
-    for (let i = 0; i < 12; i++) {
-      const monthDate = dayjs().year(currentYear).month(i);
-      monthly.push(computeMonthCashflow(monthDate));
+    let monthCursor = dayjs().startOf("month");
+
+    while (
+      monthly.length < 12 &&
+      (!firstCashflowDate ||
+        monthCursor.endOf("month").isSame(firstCashflowDate, "month") ||
+        monthCursor.endOf("month").isAfter(firstCashflowDate, "month"))
+    ) {
+      monthly.push(computeMonthCashflow(monthCursor));
+      monthCursor = monthCursor.subtract(1, "month");
     }
 
     const yearly: CashflowRow[] = [];
     const firstCashflowYear = getFirstCashflowYear();
-    for (let year = firstCashflowYear; year <= currentYear; year++) {
+    for (let year = currentYear; year >= firstCashflowYear; year--) {
       yearly.push(computeYearCashflow(year));
     }
 
@@ -545,9 +563,9 @@ export function CashflowPage() {
           debtPrincipal: 0,
           noi: 0,
           netCashflow: 0,
-        }
+        },
       ),
-    [cashflowData]
+    [cashflowData],
   );
 
   const chartData = useMemo(
@@ -559,7 +577,7 @@ export function CashflowPage() {
         deuda: row.debtPayment,
         flujoNeto: row.netCashflow,
       })),
-    [cashflowData]
+    [cashflowData],
   );
 
   const displayTotals = useMemo(() => {
@@ -858,7 +876,7 @@ export function CashflowPage() {
                     callbacks: {
                       label: (context) =>
                         `${context.dataset.label}: ${formatCurrency(
-                          context.parsed.y ?? 0
+                          context.parsed.y ?? 0,
                         )}`,
                     },
                   },
